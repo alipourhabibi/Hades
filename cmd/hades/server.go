@@ -19,7 +19,12 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 
-			_ = configs
+			log, err := getLogger(configs.Logger)
+			if err != nil {
+				return err
+			}
+
+			log.Info("Server Running...")
 
 			return nil
 		},
