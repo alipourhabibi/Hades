@@ -1,0 +1,38 @@
+logger:
+  engine: zap # slog, zap
+
+  # General configs
+  format: json # json, text
+  level: debug # debug, info, warn, error
+  addSource: true
+  output: stdout # stdout, stderr, file path
+
+  # Encoder settings
+  timeFormat: ISO8601 # ISO8601, RFC3339, RFC3339Nano, epoch, epoch_millis, epoch_nanos
+  levelFormat: lowercase # lowercase, capital, capitalColor, color
+  durationFormat: string # string, nanos, ms
+  callerFormat: full # full, short
+
+  # Custom key names
+  timeKey: time
+  levelKey: level
+  nameKey: name
+  callerKey: caller
+  messageKey: message
+  stacktraceKey: stacktrace
+
+  # Sampling configuration
+  sampling:
+    initial: 100 # Sample the first N entries
+    thereafter: 10 # Sample every Nth entry after Initial
+
+gitaly:
+  port: 9999
+
+db:
+  host: localhost
+  port: 5432
+  user: hades
+  password: hades
+  dbName: hsr_db
+  sslMode: false
