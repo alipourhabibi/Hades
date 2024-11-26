@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/alipourhabibi/Hades/config"
+	"github.com/alipourhabibi/Hades/models"
+	"github.com/alipourhabibi/Hades/storage/db/user"
 	"github.com/alipourhabibi/Hades/utils/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -11,6 +13,8 @@ import (
 
 // DBs holds an instance of the storage/db packages that are needed by other packages
 type DBs struct {
+	gormDB      *gorm.DB
+	UserStorage *user.UserStorage
 }
 
 // New creates an instance of DBs
@@ -29,8 +33,21 @@ func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
 		return nil, err
 	}
 
-	// it will be injected to all the db packages
-	_ = gormDB
+	userStorage := user.New(gormDB)
 
-	return &DBs{}, nil
+	return &DBs{
+		gormDB:      gormDB,
+		UserStorage: userStorage,
+	}, nil
+}
+
+// AutoMigrate will migrate the dbs
+func (d *DBs) AutoMigrate() error {
+	var err error
+	err = d.gormDB.AutoMigrate(&models.User{})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

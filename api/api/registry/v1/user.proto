@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package hades.api.registry.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/registry/v1";
+
+message User {
+  string id = 1;
+
+  google.protobuf.Timestamp create_time = 2;
+  google.protobuf.Timestamp update_time = 3;
+
+  string username = 4;
+
+  // User Description
+  string description = 5;
+}
+
+message CreateUserRequest {
+  string username = 1;
+  string description = 2;
+}
+
+message CreateUserResponse {
+  User user = 1;
+}
+
+service UserService {
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+}

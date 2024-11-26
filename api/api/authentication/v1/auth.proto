@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package hades.api.authentication.v1;
+
+import "api/registry/v1/user.proto";
+
+option go_package = "gen/api/authentication/v1";
+
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string token = 1;
+}
+
+message SigninRequest {
+  string username = 1;
+  string password = 2;
+  string description = 3;
+}
+
+message SigninResponse {
+  hades.api.registry.v1.User user = 1;
+}
+
+
+service AuthenticationService {
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Signin(SigninRequest) returns (SigninResponse);
+}

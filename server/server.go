@@ -6,11 +6,16 @@ import (
 	"net/http"
 
 	"connectrpc.com/grpcreflect"
-	"github.com/alipourhabibi/Hades/config"
-	"github.com/alipourhabibi/Hades/storage/db"
-	"github.com/alipourhabibi/Hades/utils/log"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
+
+	"github.com/alipourhabibi/Hades/api/gen/api/authentication/v1/authenticationv1connect"
+	"github.com/alipourhabibi/Hades/api/gen/api/registry/v1/registryv1connect"
+	"github.com/alipourhabibi/Hades/config"
+	authenticationservice "github.com/alipourhabibi/Hades/pkg/services/authentication"
+	"github.com/alipourhabibi/Hades/server/authentication"
+	"github.com/alipourhabibi/Hades/storage/db"
+	"github.com/alipourhabibi/Hades/utils/log"
 )
 
 // SchemaRegistryServer is the API server for SchemaRegistry
@@ -26,6 +31,7 @@ type SchemaRegistryServer struct {
 
 // SchemaRegistryServerSet holds all the server for schema registry
 type SchemaRegistryServerSet struct {
+	AuthenticationServer *authentication.Server
 }
 
 type SchemaRegistryConfiguration func(*SchemaRegistryServer) error
@@ -97,9 +103,18 @@ func (s *SchemaRegistryServer) Run(ctx context.Context, cancel context.CancelFun
 }
 
 // newSchemaRegistryServerSet creates the SchemaRegistryServerSet from the attributes in SchemaRegistryServer
-func newSchemaRegistryServerSet(_ *SchemaRegistryServer) (*SchemaRegistryServerSet, error) {
+func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerSet, error) {
 
 	serverSet := &SchemaRegistryServerSet{}
+
+	authenticationService, err := authenticationservice.New(s.db.UserStorage)
+	if err != nil {
+		return nil, err
+	}
+
+	authenticationServer := authentication.NewServer(s.logger, authenticationService)
+
+	serverSet.AuthenticationServer = authenticationServer
 
 	return serverSet, nil
 }
@@ -109,8 +124,14 @@ func (s *SchemaRegistryServer) newServerMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	reflector := grpcreflect.NewStaticReflector(
-	// Register all your services with the reflector
+		// Register all your services with the reflector
+		registryv1connect.UserServiceName,
+		authenticationv1connect.AuthenticationServiceName,
 	)
+
+	authenticationPath, authenticationHandler := authenticationv1connect.NewAuthenticationServiceHandler(s.serverSet.AuthenticationServer)
+	mux.Handle(authenticationPath, authenticationHandler)
+
 	mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector))
 
 	return mux
