@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
+
 	"github.com/alipourhabibi/Hades/config"
+	"github.com/alipourhabibi/Hades/server"
 	"github.com/alipourhabibi/Hades/storage/db"
 	"github.com/spf13/cobra"
 )
@@ -30,11 +33,23 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 
-			_ = db
+			ctx := context.Background()
+			server, err := server.NewServer(
+				ctx,
+				configs,
+				server.WithDB(db),
+				server.WithLogger(log),
+			)
+			if err != nil {
+				return err
+			}
 
-			log.Info("Server Running...")
-
-			return nil
+			ctx, cancel := context.WithCancel(ctx)
+			go server.Run(ctx, cancel)
+			select {
+			case <-ctx.Done():
+				return nil
+			}
 		},
 	}
 

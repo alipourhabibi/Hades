@@ -1,3 +1,6 @@
+server:
+  listen_port: 50051
+
 logger:
   engine: zap # slog, zap
 
