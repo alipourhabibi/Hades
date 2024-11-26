@@ -25,7 +25,7 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 
-			db, err := db.New(configs.DB)
+			db, err := db.New(configs.DB, log)
 			if err != nil {
 				return err
 			}

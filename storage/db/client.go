@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/alipourhabibi/Hades/config"
+	"github.com/alipourhabibi/Hades/utils/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -13,7 +14,7 @@ type DBs struct {
 }
 
 // New creates an instance of DBs
-func New(c config.DB) (*DBs, error) {
+func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
 
 	// Create the connection string based on the config values
 	sslMode := "disable"
