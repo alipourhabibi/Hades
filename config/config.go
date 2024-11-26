@@ -8,6 +8,7 @@ import (
 
 type Config struct {
 	Logger Logger `json:"logger" yaml:"logger"`
+	DB     DB     `json:"db" yaml:"db"`
 }
 
 func LoadFile(filename string) (*Config, error) {

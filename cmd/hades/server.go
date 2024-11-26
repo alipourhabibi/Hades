@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/alipourhabibi/Hades/config"
+	"github.com/alipourhabibi/Hades/storage/db"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +24,13 @@ func newServeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			db, err := db.New(configs.DB)
+			if err != nil {
+				return err
+			}
+
+			_ = db
 
 			log.Info("Server Running...")
 
