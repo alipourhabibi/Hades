@@ -14,7 +14,7 @@ func newServeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "serve the Hades server",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			configs, err := config.LoadFile(configFile)
 			if err != nil {
 				return err

@@ -38,6 +38,7 @@ const (
 	Short = "short"
 )
 
+// LoggerWrapper is a logger wrapper holding the logger and the file it opens
 type LoggerWrapper struct {
 	*slog.Logger
 	file *os.File
@@ -50,6 +51,7 @@ func (l *LoggerWrapper) Close() error {
 	return nil
 }
 
+// DefaultLogger return a logger wrapper with default logger
 func DefaultLogger() *LoggerWrapper {
 	return &LoggerWrapper{
 		Logger: slog.Default(),

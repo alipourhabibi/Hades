@@ -1,5 +1,6 @@
 package config
 
+// DB is the config model for our database
 type DB struct {
 	Host     string `json:"host" yaml:"host"`
 	Port     int    `json:"port" yaml:"port"`

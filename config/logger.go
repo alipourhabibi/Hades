@@ -1,5 +1,6 @@
 package config
 
+// Logger is the config struct for our logger
 type Logger struct {
 	Engine string `json:"engine" yaml:"engine"` // slog, zap
 
@@ -9,10 +10,10 @@ type Logger struct {
 	Output    string `json:"output" yaml:"output"`       // stdout, stderr, or file path
 	AddSource bool   `json:"addSource" yaml:"addSource"` // Include caller information
 
-	ZapLogger `yaml:",inline"`
+	zapLogger `yaml:",inline"`
 }
 
-type ZapLogger struct {
+type zapLogger struct {
 	// Encoder settings
 	TimeFormat     string `json:"timeFormat" yaml:"timeFormat"`         // ISO8601, RFC3339, RFC3339Nano, epoch, epoch_millis, epoch_nanos
 	LevelFormat    string `json:"levelFormat" yaml:"levelFormat"`       // lowercase, capital, capitalColor, color
@@ -28,10 +29,10 @@ type ZapLogger struct {
 	StacktraceKey string `json:"stacktraceKey" yaml:"stacktraceKey"`
 
 	// Sampling configuration
-	Sampling *SamplingConfig `json:"sampling" yaml:"sampling"`
+	Sampling *samplingConfig `json:"sampling" yaml:"sampling"`
 }
 
-type SamplingConfig struct {
+type samplingConfig struct {
 	Initial    int `json:"initial" yaml:"initial"`       // Sample the first N entries
 	Thereafter int `json:"thereafter" yaml:"thereafter"` // Sample every Nth entry after Initial
 }

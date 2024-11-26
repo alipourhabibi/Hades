@@ -14,7 +14,10 @@ func newRootCmd(args []string) (*cobra.Command, error) {
 	}
 
 	flags := cmd.PersistentFlags()
-	flags.Parse(args)
+	err := flags.Parse(args)
+	if err != nil {
+		return nil, err
+	}
 
 	cmd.AddCommand(
 		newServeCmd(),

@@ -98,6 +98,7 @@ func ConfigureEncoder(cfg *zapcore.EncoderConfig, c config.Logger) {
 	}
 }
 
+// NewZapWithConfig return a zap logger based on the configs it receives
 func NewZapWithConfig(c config.Logger) (*LoggerWrapper, error) {
 
 	var level zapcore.Level

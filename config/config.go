@@ -11,6 +11,7 @@ type Config struct {
 	DB     DB     `json:"db" yaml:"db"`
 }
 
+// LoadFile load the config from the filename and feed dta to Config
 func LoadFile(filename string) (*Config, error) {
 	content, err := os.ReadFile(filename)
 	if err != nil {
