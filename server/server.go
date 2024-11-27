@@ -11,10 +11,13 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/alipourhabibi/Hades/api/gen/api/authentication/v1/authenticationv1connect"
+	"github.com/alipourhabibi/Hades/api/gen/api/authorization/v1/authorizationv1connect"
 	"github.com/alipourhabibi/Hades/api/gen/api/registry/v1/registryv1connect"
 	"github.com/alipourhabibi/Hades/config"
 	authenticationservice "github.com/alipourhabibi/Hades/pkg/services/authentication"
+	authorizationservice "github.com/alipourhabibi/Hades/pkg/services/authorization"
 	"github.com/alipourhabibi/Hades/server/authentication"
+	"github.com/alipourhabibi/Hades/server/authorization"
 	"github.com/alipourhabibi/Hades/storage/db"
 	errorsutils "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
@@ -34,6 +37,7 @@ type SchemaRegistryServer struct {
 // SchemaRegistryServerSet holds all the server for schema registry
 type SchemaRegistryServerSet struct {
 	AuthenticationServer *authentication.Server
+	AuthorizationServer  *authorization.Server
 }
 
 type SchemaRegistryConfiguration func(*SchemaRegistryServer) error
@@ -114,9 +118,19 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 		return nil, err
 	}
 
+	authorizationService, err := authorizationservice.New(
+		authorizationservice.WithSessionStorage(s.db.SessionStorage),
+		authorizationservice.WithUserStorage(s.db.UserStorage),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	authenticationServer := authentication.NewServer(s.logger, authenticationService)
+	authorizationServer := authorization.NewServer(s.logger, authorizationService)
 
 	serverSet.AuthenticationServer = authenticationServer
+	serverSet.AuthorizationServer = authorizationServer
 
 	return serverSet, nil
 }
@@ -133,10 +147,14 @@ func (s *SchemaRegistryServer) newServerMux() *http.ServeMux {
 		// Register all your services with the reflector
 		registryv1connect.UserServiceName,
 		authenticationv1connect.AuthenticationServiceName,
+		authorizationv1connect.AuthorizationName,
 	)
 
 	authenticationPath, authenticationHandler := authenticationv1connect.NewAuthenticationServiceHandler(s.serverSet.AuthenticationServer, interceptors)
 	mux.Handle(authenticationPath, authenticationHandler)
+
+	authorizationPath, authorizationHandler := authorizationv1connect.NewAuthorizationHandler(s.serverSet.AuthorizationServer, interceptors)
+	mux.Handle(authorizationPath, authorizationHandler)
 
 	mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector))
 

@@ -5,6 +5,7 @@ go 1.23.3
 require (
 	connectrpc.com/connect v1.17.0
 	connectrpc.com/grpcreflect v1.2.0
+	github.com/casbin/casbin/v2 v2.101.0
 	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.8.1
 	go.uber.org/zap v1.27.0
@@ -19,6 +20,8 @@ require (
 )
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
+	github.com/casbin/govaluate v1.2.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect

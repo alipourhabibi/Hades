@@ -13,12 +13,7 @@ import (
 func (s *Service) Login(ctx context.Context, in *models.LoginRequest) (*models.LoginResponse, error) {
 	resp, err := s.userStorage.GetByUsername(ctx, in.Username)
 	if err != nil {
-		pkgErr := pkgerr.FromGorm(err).(pkgerr.PkgError)
-		if pkgErr.Code == pkgerr.NotFound {
-			pkgErr.Code = pkgerr.Unauthenticated
-			pkgErr.Message = "User not found"
-		}
-		return nil, pkgErr
+		return nil, pkgerr.FromGorm(err)
 	}
 
 	err = bcrypt.CheckPasswordHash(in.Password, resp.Password)

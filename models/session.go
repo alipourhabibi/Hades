@@ -3,6 +3,8 @@ package models
 import (
 	"time"
 
+	pkgerr "github.com/alipourhabibi/Hades/pkg/errors"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -17,11 +19,19 @@ type Session struct {
 	ExpiresAt  time.Time `grom:"not null" json:"expires_at"`
 }
 
-func (u *Session) BeforeCreate(tx *gorm.DB) (err error) {
-	if u.ID == uuid.Nil {
-		u.ID = uuid.New()
+func (s *Session) BeforeCreate(tx *gorm.DB) (err error) {
+	if s.ID == uuid.Nil {
+		s.ID = uuid.New()
 	}
 
-	u.CreateTime = time.Now()
+	s.CreateTime = time.Now()
 	return
+}
+
+func (s *Session) AfterFind(tx *gorm.DB) (err error) {
+	if s.ExpiresAt.Unix() < s.CreateTime.Unix() {
+		return pkgerr.ErrSessionExpired
+	}
+
+	return nil
 }

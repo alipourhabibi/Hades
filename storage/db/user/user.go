@@ -29,3 +29,16 @@ func (u *UserStorage) GetByUsername(ctx context.Context, username string) (*mode
 func (u *UserStorage) Create(ctx context.Context, in *models.User) error {
 	return u.db.Model(in).Create(in).Error
 }
+
+func (u *UserStorage) GetBySessionId(ctx context.Context, sessionId string) (*models.User, error) {
+	var session models.Session
+
+	if err := u.db.Preload("User", func(db *gorm.DB) *gorm.DB {
+		return db.Omit("password")
+	}).First(&session, "id = ?", sessionId).Error; err != nil {
+		return nil, err
+	}
+
+	// Return the associated user
+	return &session.User, nil
+}
