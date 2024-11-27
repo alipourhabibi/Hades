@@ -16,7 +16,7 @@ import (
 	authenticationservice "github.com/alipourhabibi/Hades/pkg/services/authentication"
 	"github.com/alipourhabibi/Hades/server/authentication"
 	"github.com/alipourhabibi/Hades/storage/db"
-	grpcutils "github.com/alipourhabibi/Hades/utils/grpc"
+	errorsutils "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
@@ -126,7 +126,7 @@ func (s *SchemaRegistryServer) newServerMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	interceptors := connect.WithInterceptors(
-		grpcutils.NewErrorInterceptor(),
+		errorsutils.NewErrorInterceptor(),
 	)
 
 	reflector := grpcreflect.NewStaticReflector(
