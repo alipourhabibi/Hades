@@ -5,6 +5,7 @@ import (
 
 	"github.com/alipourhabibi/Hades/config"
 	"github.com/alipourhabibi/Hades/models"
+	"github.com/alipourhabibi/Hades/storage/db/session"
 	"github.com/alipourhabibi/Hades/storage/db/user"
 	"github.com/alipourhabibi/Hades/utils/log"
 	"gorm.io/driver/postgres"
@@ -13,8 +14,9 @@ import (
 
 // DBs holds an instance of the storage/db packages that are needed by other packages
 type DBs struct {
-	gormDB      *gorm.DB
-	UserStorage *user.UserStorage
+	gormDB         *gorm.DB
+	UserStorage    *user.UserStorage
+	SessionStorage *session.SessionStorage
 }
 
 // New creates an instance of DBs
@@ -34,10 +36,12 @@ func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
 	}
 
 	userStorage := user.New(gormDB)
+	sessionStorage := session.New(gormDB)
 
 	return &DBs{
-		gormDB:      gormDB,
-		UserStorage: userStorage,
+		gormDB:         gormDB,
+		UserStorage:    userStorage,
+		SessionStorage: sessionStorage,
 	}, nil
 }
 
@@ -45,6 +49,11 @@ func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
 func (d *DBs) AutoMigrate() error {
 	var err error
 	err = d.gormDB.AutoMigrate(&models.User{})
+	if err != nil {
+		return err
+	}
+
+	err = d.gormDB.AutoMigrate(&models.Session{})
 	if err != nil {
 		return err
 	}

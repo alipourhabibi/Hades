@@ -109,7 +109,7 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 
 	serverSet := &SchemaRegistryServerSet{}
 
-	authenticationService, err := authenticationservice.New(s.db.UserStorage)
+	authenticationService, err := authenticationservice.New(s.db.UserStorage, s.db.SessionStorage)
 	if err != nil {
 		return nil, err
 	}

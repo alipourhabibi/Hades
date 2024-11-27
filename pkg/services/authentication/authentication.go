@@ -6,6 +6,8 @@ import (
 
 	"github.com/alipourhabibi/Hades/models"
 	pkgerr "github.com/alipourhabibi/Hades/pkg/errors"
+	"github.com/alipourhabibi/Hades/storage/db/session"
+	sessiondb "github.com/alipourhabibi/Hades/storage/db/session"
 	userdb "github.com/alipourhabibi/Hades/storage/db/user"
 	"github.com/alipourhabibi/Hades/utils/bcrypt"
 	"github.com/google/uuid"
@@ -14,12 +16,14 @@ import (
 
 // Service is the authentication service which holds the logic for authentication
 type Service struct {
-	userStorage *userdb.UserStorage
+	userStorage    *userdb.UserStorage
+	sessionStorage *sessiondb.SessionStorage
 }
 
-func New(u *userdb.UserStorage) (*Service, error) {
+func New(u *userdb.UserStorage, s *session.SessionStorage) (*Service, error) {
 	return &Service{
-		userStorage: u,
+		userStorage:    u,
+		sessionStorage: s,
 	}, nil
 }
 

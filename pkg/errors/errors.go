@@ -46,3 +46,18 @@ func (s PkgError) Error() string {
 func (p PkgError) Status() PkgError {
 	return p
 }
+
+func FromError(err error) PkgError {
+	if err == nil {
+		return PkgError{}
+	}
+
+	if pkgErr, ok := err.(PkgError); ok {
+		return pkgErr
+	}
+
+	return PkgError{
+		Code:    Unknown, // Default code for unknown errors
+		Message: err.Error(),
+	}
+}

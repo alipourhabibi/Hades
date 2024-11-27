@@ -47,3 +47,20 @@ func (s *Server) Signin(ctx context.Context, in *connect.Request[v1.SigninReques
 		},
 	}, nil
 }
+
+func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error) {
+	resp, err := s.authService.Login(ctx, &models.LoginRequest{
+		Username: in.Msg.Username,
+		Password: in.Msg.Password,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &connect.Response[v1.LoginResponse]{
+		Msg: &v1.LoginResponse{
+			Token: resp.Token,
+		},
+	}, nil
+}
