@@ -38,16 +38,16 @@ func (s *Service) Signin(ctx context.Context, in *models.SigninRequest) (*models
 	// TODO maybe better ways to handle it ?
 	exists, err := s.isUserExists(ctx, in.Username)
 	if err != nil {
-		return nil, err
+		return nil, pkgerr.FromGorm(err)
 	}
 
 	if exists {
-		return nil, pkgerr.UsernameExists
+		return nil, pkgerr.New("Username Exists", pkgerr.AlreadyExists)
 	}
 
 	hashedPassword, err := bcrypt.HashPassword(in.Password)
 	if err != nil {
-		return nil, err
+		return nil, pkgerr.FromBcrypt(err)
 	}
 
 	user := &models.User{
@@ -61,7 +61,7 @@ func (s *Service) Signin(ctx context.Context, in *models.SigninRequest) (*models
 
 	err = s.userStorage.Create(ctx, user)
 	if err != nil {
-		return nil, err
+		return nil, pkgerr.FromGorm(err)
 	}
 
 	return &models.SigninResponse{
