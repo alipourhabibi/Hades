@@ -5,9 +5,9 @@ import (
 	"errors"
 
 	"github.com/alipourhabibi/Hades/models"
+	apierr "github.com/alipourhabibi/Hades/pkg/apis/errors"
 	userdb "github.com/alipourhabibi/Hades/storage/db/user"
 	"github.com/alipourhabibi/Hades/utils/bcrypt"
-	utilerrors "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -42,7 +42,7 @@ func (s *Service) Signin(ctx context.Context, in *models.SigninRequest) (*models
 	}
 
 	if exists {
-		return nil, utilerrors.UsernameExists
+		return nil, apierr.UsernameExists
 	}
 
 	hashedPassword, err := bcrypt.HashPassword(in.Password)

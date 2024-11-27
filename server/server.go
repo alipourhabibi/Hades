@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -15,6 +16,7 @@ import (
 	authenticationservice "github.com/alipourhabibi/Hades/pkg/services/authentication"
 	"github.com/alipourhabibi/Hades/server/authentication"
 	"github.com/alipourhabibi/Hades/storage/db"
+	grpcutils "github.com/alipourhabibi/Hades/utils/grpc"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
@@ -123,13 +125,17 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 func (s *SchemaRegistryServer) newServerMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
+	interceptors := connect.WithInterceptors(
+		grpcutils.NewErrorInterceptor(),
+	)
+
 	reflector := grpcreflect.NewStaticReflector(
 		// Register all your services with the reflector
 		registryv1connect.UserServiceName,
 		authenticationv1connect.AuthenticationServiceName,
 	)
 
-	authenticationPath, authenticationHandler := authenticationv1connect.NewAuthenticationServiceHandler(s.serverSet.AuthenticationServer)
+	authenticationPath, authenticationHandler := authenticationv1connect.NewAuthenticationServiceHandler(s.serverSet.AuthenticationServer, interceptors)
 	mux.Handle(authenticationPath, authenticationHandler)
 
 	mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector))
