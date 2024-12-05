@@ -12,7 +12,7 @@ import (
 )
 
 // TODO add error wrapper here
-func toGRPCError(err error) error {
+func ToGRPCError(err error) error {
 	if err == nil {
 		return err
 	}
@@ -28,7 +28,7 @@ func toGRPCError(err error) error {
 }
 
 // TODO thing about returning the error as it may create security errors
-func toConnectError(err error) error {
+func ToConnectError(err error) error {
 	if err == nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func NewErrorInterceptor() connect.UnaryInterceptorFunc {
 			req connect.AnyRequest,
 		) (connect.AnyResponse, error) {
 			resp, err := next(ctx, req)
-			return resp, toConnectError(err)
+			return resp, ToConnectError(err)
 		})
 	}
 	return connect.UnaryInterceptorFunc(interceptor)

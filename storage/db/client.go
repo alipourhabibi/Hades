@@ -5,6 +5,8 @@ import (
 
 	"github.com/alipourhabibi/Hades/config"
 	"github.com/alipourhabibi/Hades/models"
+	"github.com/alipourhabibi/Hades/storage/db/casbin"
+	"github.com/alipourhabibi/Hades/storage/db/module"
 	"github.com/alipourhabibi/Hades/storage/db/session"
 	"github.com/alipourhabibi/Hades/storage/db/user"
 	"github.com/alipourhabibi/Hades/utils/log"
@@ -17,6 +19,8 @@ type DBs struct {
 	gormDB         *gorm.DB
 	UserStorage    *user.UserStorage
 	SessionStorage *session.SessionStorage
+	ModuleStorage  *module.ModuleStorage
+	CasbinStorage  *casbin.CasbinStorage
 }
 
 // New creates an instance of DBs
@@ -30,18 +34,24 @@ func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
 	connStr := fmt.Sprintf("user=%s password=%s dbname=%s host=%s port=%d sslmode=%s",
 		c.User, c.Password, c.DBName, c.Host, c.Port, sslMode)
 
-	gormDB, err := gorm.Open(postgres.Open(connStr), &gorm.Config{})
+	gormDB, err := gorm.Open(postgres.Open(connStr), &gorm.Config{
+		TranslateError: true,
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	userStorage := user.New(gormDB)
 	sessionStorage := session.New(gormDB)
+	casbinStorage := casbin.New(gormDB)
+	moduleStorage := module.New(gormDB)
 
 	return &DBs{
 		gormDB:         gormDB,
 		UserStorage:    userStorage,
 		SessionStorage: sessionStorage,
+		ModuleStorage:  moduleStorage,
+		CasbinStorage:  casbinStorage,
 	}, nil
 }
 
@@ -54,6 +64,16 @@ func (d *DBs) AutoMigrate() error {
 	}
 
 	err = d.gormDB.AutoMigrate(&models.Session{})
+	if err != nil {
+		return err
+	}
+
+	err = d.gormDB.AutoMigrate(&models.Commit{})
+	if err != nil {
+		return err
+	}
+
+	err = d.gormDB.AutoMigrate(&models.Module{})
 	if err != nil {
 		return err
 	}

@@ -1,0 +1,10 @@
+p, owner, alice/*, *, *
+p, owner, bob/*, *, *
+p, owner, hades/*, *, *
+p, admin, alice/test, cicd, read
+p, admin, alice/test, cicd, write
+
+g, bob, owner, bob/*
+g, alice, owner, alice/*
+g, hades, owner, hades/*
+g, bob, admin, alice/test

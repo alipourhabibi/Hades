@@ -27,16 +27,12 @@ func NewServer(l *log.LoggerWrapper, authService *authorization.Service) *Server
 }
 
 func (s *Server) UserBySession(ctx context.Context, in *connect.Request[v1.UserBySessionRequest]) (*connect.Response[v1.UserBySessionResponse], error) {
-	sessinId := in.Header().Get("User-Session")
-	if sessinId == "" {
-		return nil, pkgerr.New("SessionId required", pkgerr.Unauthenticated)
-	}
-	user, err := s.authService.UserBySession(ctx, sessinId)
-	if err != nil {
-		return nil, err
+	user, ok := ctx.Value("user").(*models.User)
+	if !ok {
+		return nil, pkgerr.New("Internal", pkgerr.Internal)
 	}
 
-	pbUser, err := models.ToRegistryPbV1(user)
+	pbUser, err := models.ToUserRegistryPbV1(user)
 	if err != nil {
 		return nil, err
 	}

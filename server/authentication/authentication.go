@@ -36,7 +36,7 @@ func (s *Server) Signin(ctx context.Context, in *connect.Request[v1.SigninReques
 		return nil, err
 	}
 
-	userResponse, err := models.ToRegistryPbV1(user.User)
+	userResponse, err := models.ToUserRegistryPbV1(user.User)
 	if err != nil {
 		return nil, err
 	}

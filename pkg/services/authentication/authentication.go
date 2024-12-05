@@ -6,6 +6,7 @@ import (
 
 	"github.com/alipourhabibi/Hades/models"
 	pkgerr "github.com/alipourhabibi/Hades/pkg/errors"
+	"github.com/alipourhabibi/Hades/pkg/services/authorization"
 	"github.com/alipourhabibi/Hades/storage/db/session"
 	sessiondb "github.com/alipourhabibi/Hades/storage/db/session"
 	userdb "github.com/alipourhabibi/Hades/storage/db/user"
@@ -16,14 +17,16 @@ import (
 
 // Service is the authentication service which holds the logic for authentication
 type Service struct {
-	userStorage    *userdb.UserStorage
-	sessionStorage *sessiondb.SessionStorage
+	userStorage          *userdb.UserStorage
+	sessionStorage       *sessiondb.SessionStorage
+	authorizationService *authorization.Service
 }
 
-func New(u *userdb.UserStorage, s *session.SessionStorage) (*Service, error) {
+func New(u *userdb.UserStorage, s *session.SessionStorage, authorizationService *authorization.Service) (*Service, error) {
 	return &Service{
-		userStorage:    u,
-		sessionStorage: s,
+		userStorage:          u,
+		sessionStorage:       s,
+		authorizationService: authorizationService,
 	}, nil
 }
 
@@ -68,7 +71,36 @@ func (s *Service) Signin(ctx context.Context, in *models.SigninRequest) (*models
 		return nil, pkgerr.FromGorm(err)
 	}
 
+	err = s.AddBasicRoles(ctx, user)
+	if err != nil {
+		// TODO
+		return nil, err
+	}
+
 	return &models.SigninResponse{
 		User: user,
 	}, nil
+}
+
+func (s *Service) AddBasicRoles(ctx context.Context, user *models.User) error {
+	roles := []*models.Role{
+		{
+			User:   user.Username,
+			Role:   string(models.OWNER),
+			Domain: user.Username + "/*",
+		},
+	}
+	policies := []*models.Policy{
+		{
+			Subject: string(models.OWNER),
+			Domain:  user.Username + "/*",
+			Object:  string(models.REPOSITORY),
+			Action:  string(models.CREATE),
+		},
+	}
+	err := s.authorizationService.AddPoliciesRolse(ctx, policies, roles)
+	if err != nil {
+		return err
+	}
+	return nil
 }

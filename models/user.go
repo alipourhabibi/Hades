@@ -38,7 +38,7 @@ type User struct {
 	URL         string    `gorm:"column:url" json:"url"`
 }
 
-func FromRegistryPbV1(in *v1.User) (*User, error) {
+func FromUserRegistryPbV1(in *v1.User) (*User, error) {
 	id, err := uuid.FromBytes([]byte(in.Id))
 	if err != nil {
 		return nil, err
@@ -52,7 +52,7 @@ func FromRegistryPbV1(in *v1.User) (*User, error) {
 	}, nil
 }
 
-func ToRegistryPbV1(in *User) (*v1.User, error) {
+func ToUserRegistryPbV1(in *User) (*v1.User, error) {
 	return &v1.User{
 		Id:          in.ID.String(),
 		CreateTime:  timestamppb.New(in.CreateTime),

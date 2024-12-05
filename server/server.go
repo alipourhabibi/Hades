@@ -7,6 +7,7 @@ import (
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
+	gormadapter "github.com/casbin/gorm-adapter/v3"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
@@ -16,11 +17,15 @@ import (
 	"github.com/alipourhabibi/Hades/config"
 	authenticationservice "github.com/alipourhabibi/Hades/pkg/services/authentication"
 	authorizationservice "github.com/alipourhabibi/Hades/pkg/services/authorization"
+	moduleservice "github.com/alipourhabibi/Hades/pkg/services/module"
 	"github.com/alipourhabibi/Hades/server/authentication"
 	"github.com/alipourhabibi/Hades/server/authorization"
+	"github.com/alipourhabibi/Hades/server/module"
 	"github.com/alipourhabibi/Hades/storage/db"
 	errorsutils "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
+	"github.com/casbin/casbin/v2"
+	"github.com/casbin/casbin/v2/util"
 )
 
 // SchemaRegistryServer is the API server for SchemaRegistry
@@ -38,6 +43,7 @@ type SchemaRegistryServer struct {
 type SchemaRegistryServerSet struct {
 	AuthenticationServer *authentication.Server
 	AuthorizationServer  *authorization.Server
+	ModuleServer         *module.Server
 }
 
 type SchemaRegistryConfiguration func(*SchemaRegistryServer) error
@@ -113,24 +119,42 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 
 	serverSet := &SchemaRegistryServerSet{}
 
-	authenticationService, err := authenticationservice.New(s.db.UserStorage, s.db.SessionStorage)
+	casbinAdapter, err := gormadapter.NewAdapterByDB(s.db.CasbinStorage.GetDB())
 	if err != nil {
 		return nil, err
 	}
+	casbinEnforcer, err := casbin.NewEnforcer("config/rbac_model.conf", casbinAdapter)
+	if err != nil {
+		return nil, err
+	}
+	casbinEnforcer.AddNamedDomainMatchingFunc("g", "keyMatch2", util.KeyMatch2)
 
 	authorizationService, err := authorizationservice.New(
 		authorizationservice.WithSessionStorage(s.db.SessionStorage),
 		authorizationservice.WithUserStorage(s.db.UserStorage),
+		authorizationservice.WithCasbinEnforcer(casbinEnforcer),
 	)
 	if err != nil {
 		return nil, err
 	}
 
+	authenticationService, err := authenticationservice.New(s.db.UserStorage, s.db.SessionStorage, authorizationService)
+	if err != nil {
+		return nil, err
+	}
+
+	moduleService, err := moduleservice.New(
+		s.db.ModuleStorage,
+		authorizationService,
+	)
+
 	authenticationServer := authentication.NewServer(s.logger, authenticationService)
 	authorizationServer := authorization.NewServer(s.logger, authorizationService)
+	moduleServer := module.NewServer(s.logger, moduleService)
 
 	serverSet.AuthenticationServer = authenticationServer
 	serverSet.AuthorizationServer = authorizationServer
+	serverSet.ModuleServer = moduleServer
 
 	return serverSet, nil
 }
@@ -139,22 +163,34 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 func (s *SchemaRegistryServer) newServerMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	interceptors := connect.WithInterceptors(
+	interceptorsList := []connect.Interceptor{
+		s.serverSet.AuthorizationServer.NewAuthorizationInterceptor(),
 		errorsutils.NewErrorInterceptor(),
+	}
+
+	interceptors := connect.WithInterceptors(
+		interceptorsList...,
+	)
+
+	noAuthInterceptors := connect.WithInterceptors(
+		interceptorsList[1:]...,
 	)
 
 	reflector := grpcreflect.NewStaticReflector(
 		// Register all your services with the reflector
-		registryv1connect.UserServiceName,
 		authenticationv1connect.AuthenticationServiceName,
 		authorizationv1connect.AuthorizationName,
+		registryv1connect.ModuleServiceName,
 	)
 
-	authenticationPath, authenticationHandler := authenticationv1connect.NewAuthenticationServiceHandler(s.serverSet.AuthenticationServer, interceptors)
+	authenticationPath, authenticationHandler := authenticationv1connect.NewAuthenticationServiceHandler(s.serverSet.AuthenticationServer, noAuthInterceptors)
 	mux.Handle(authenticationPath, authenticationHandler)
 
 	authorizationPath, authorizationHandler := authorizationv1connect.NewAuthorizationHandler(s.serverSet.AuthorizationServer, interceptors)
 	mux.Handle(authorizationPath, authorizationHandler)
+
+	modulePath, moduleHandler := registryv1connect.NewModuleServiceHandler(s.serverSet.ModuleServer, interceptors)
+	mux.Handle(modulePath, moduleHandler)
 
 	mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector))
 
