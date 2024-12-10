@@ -37,6 +37,7 @@ type Module struct {
 	Description      string           `gorm:"type:text" json:"description"`
 	URL              string           `gorm:"index:url_unique,unique column:url" json:"url"`
 	DefaultLabelName string           `gorm:"default:'main'" json:"default_label_name"`
+	DefaultBranch    string           `gorm:"default:'main'" json:"default_branch"`
 
 	Commits []Commit `gorm:"foreignKey:ModuleID" json:"commits,omitempty"`
 }

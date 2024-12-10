@@ -6,6 +6,7 @@ import (
 	"github.com/alipourhabibi/Hades/config"
 	"github.com/alipourhabibi/Hades/models"
 	"github.com/alipourhabibi/Hades/storage/db/casbin"
+	"github.com/alipourhabibi/Hades/storage/db/commit"
 	"github.com/alipourhabibi/Hades/storage/db/module"
 	"github.com/alipourhabibi/Hades/storage/db/session"
 	"github.com/alipourhabibi/Hades/storage/db/user"
@@ -21,6 +22,7 @@ type DBs struct {
 	SessionStorage *session.SessionStorage
 	ModuleStorage  *module.ModuleStorage
 	CasbinStorage  *casbin.CasbinStorage
+	CommitStorage  *commit.CommitStorage
 }
 
 // New creates an instance of DBs
@@ -41,10 +43,15 @@ func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
 		return nil, err
 	}
 
+	if c.Debug {
+		gormDB = gormDB.Debug()
+	}
+
 	userStorage := user.New(gormDB)
 	sessionStorage := session.New(gormDB)
 	casbinStorage := casbin.New(gormDB)
 	moduleStorage := module.New(gormDB)
+	commitStorage := commit.New(gormDB)
 
 	return &DBs{
 		gormDB:         gormDB,
@@ -52,6 +59,7 @@ func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
 		SessionStorage: sessionStorage,
 		ModuleStorage:  moduleStorage,
 		CasbinStorage:  casbinStorage,
+		CommitStorage:  commitStorage,
 	}, nil
 }
 

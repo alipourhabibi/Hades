@@ -8,4 +8,5 @@ type DB struct {
 	Password string `json:"password" yaml:"password"`
 	DBName   string `json:"dbName" yaml:"dbName"`
 	SslMode  bool   `json:"sslMode" yaml:"sslMode"`
+	Debug    bool   `json:"debug" yaml:"debug"`
 }

@@ -31,6 +31,7 @@ type User struct {
 	CreateTime  time.Time `gorm:"not null" json:"create_time"`
 	UpdateTime  time.Time `gorm:"not null" json:"update_time"`
 	Username    string    `gorm:"uniqueIndex;not null" json:"username"`
+	Email       string    `gorm:"uniqueIndex;not null" json:"email"`
 	Password    string    `gorm:"column:password;type:varchar(255);not null" json:"password" binding:"required"`
 	Type        UserType  `gorm:"not null;default:0" json:"type"`
 	State       UserState `gorm:"not null;default:1" json:"state"`

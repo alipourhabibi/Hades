@@ -73,7 +73,7 @@ func (s *Service) Signin(ctx context.Context, in *models.SigninRequest) (*models
 
 	err = s.AddBasicRoles(ctx, user)
 	if err != nil {
-		// TODO
+		pkgerr.FromCasbin(err)
 		return nil, err
 	}
 

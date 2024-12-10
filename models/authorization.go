@@ -16,6 +16,8 @@ type Action string
 
 const (
 	CREATE Action = "create"
+	PUSH   Action = "push"
+	READ   Action = "read"
 )
 
 type CanResponse struct {

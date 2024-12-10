@@ -11,17 +11,23 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"buf.build/gen/go/bufbuild/registry/connectrpc/go/buf/registry/module/v1/modulev1connect"
 	"github.com/alipourhabibi/Hades/api/gen/api/authentication/v1/authenticationv1connect"
 	"github.com/alipourhabibi/Hades/api/gen/api/authorization/v1/authorizationv1connect"
 	"github.com/alipourhabibi/Hades/api/gen/api/registry/v1/registryv1connect"
 	"github.com/alipourhabibi/Hades/config"
 	authenticationservice "github.com/alipourhabibi/Hades/pkg/services/authentication"
 	authorizationservice "github.com/alipourhabibi/Hades/pkg/services/authorization"
+	bufmodulesservice "github.com/alipourhabibi/Hades/pkg/services/bufmodules"
 	moduleservice "github.com/alipourhabibi/Hades/pkg/services/module"
+	uploadsservice "github.com/alipourhabibi/Hades/pkg/services/upload"
 	"github.com/alipourhabibi/Hades/server/authentication"
 	"github.com/alipourhabibi/Hades/server/authorization"
+	bufmodules "github.com/alipourhabibi/Hades/server/bufmodules"
 	"github.com/alipourhabibi/Hades/server/module"
+	"github.com/alipourhabibi/Hades/server/upload"
 	"github.com/alipourhabibi/Hades/storage/db"
+	"github.com/alipourhabibi/Hades/storage/gitaly"
 	errorsutils "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
 	"github.com/casbin/casbin/v2"
@@ -32,7 +38,8 @@ import (
 type SchemaRegistryServer struct {
 	logger *log.LoggerWrapper
 
-	db *db.DBs
+	db     *db.DBs
+	gitaly *gitaly.StorageService
 
 	listenPort int
 
@@ -44,6 +51,8 @@ type SchemaRegistryServerSet struct {
 	AuthenticationServer *authentication.Server
 	AuthorizationServer  *authorization.Server
 	ModuleServer         *module.Server
+	BufModuleServer      *bufmodules.Server
+	BufUploadServer      *upload.Server
 }
 
 type SchemaRegistryConfiguration func(*SchemaRegistryServer) error
@@ -67,6 +76,13 @@ func defaultSchmeaRegistryServer() *SchemaRegistryServer {
 func WithDB(db *db.DBs) SchemaRegistryConfiguration {
 	return func(ss *SchemaRegistryServer) error {
 		ss.db = db
+		return nil
+	}
+}
+
+func WithGitaly(g *gitaly.StorageService) SchemaRegistryConfiguration {
+	return func(ss *SchemaRegistryServer) error {
+		ss.gitaly = g
 		return nil
 	}
 }
@@ -145,16 +161,35 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 
 	moduleService, err := moduleservice.New(
 		s.db.ModuleStorage,
+		s.db.CommitStorage,
+		s.gitaly.RepositoryService,
 		authorizationService,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	bufmoduleService, err := bufmodulesservice.New(s.db.ModuleStorage, s.db.CommitStorage, authorizationService)
+	if err != nil {
+		return nil, err
+	}
+
+	uploadService, err := uploadsservice.NewService(s.logger, s.gitaly.CommitService, s.gitaly.OperattionService, s.db.ModuleStorage, s.db.CommitStorage, authorizationService)
+	if err != nil {
+		return nil, err
+	}
 
 	authenticationServer := authentication.NewServer(s.logger, authenticationService)
 	authorizationServer := authorization.NewServer(s.logger, authorizationService)
 	moduleServer := module.NewServer(s.logger, moduleService)
+	bufModuleServer := bufmodules.NewServer(s.logger, bufmoduleService)
+	uploadServer := upload.NewServer(s.logger, uploadService)
 
 	serverSet.AuthenticationServer = authenticationServer
 	serverSet.AuthorizationServer = authorizationServer
 	serverSet.ModuleServer = moduleServer
+	serverSet.BufModuleServer = bufModuleServer
+	serverSet.BufUploadServer = uploadServer
 
 	return serverSet, nil
 }
@@ -191,6 +226,12 @@ func (s *SchemaRegistryServer) newServerMux() *http.ServeMux {
 
 	modulePath, moduleHandler := registryv1connect.NewModuleServiceHandler(s.serverSet.ModuleServer, interceptors)
 	mux.Handle(modulePath, moduleHandler)
+
+	bufmodulePath, bufmoduleHandler := modulev1connect.NewModuleServiceHandler(s.serverSet.BufModuleServer, interceptors)
+	mux.Handle(bufmodulePath, bufmoduleHandler)
+
+	bufuploadPath, bufuploadHandler := modulev1connect.NewUploadServiceHandler(s.serverSet.BufUploadServer, interceptors)
+	mux.Handle(bufuploadPath, bufuploadHandler)
 
 	mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector))
 

@@ -10,6 +10,7 @@ type Config struct {
 	Logger Logger `json:"logger" yaml:"logger"`
 	DB     DB     `json:"db" yaml:"db"`
 	Server Server `json:"server" yaml:"server"`
+	Gitaly Gitaly `json:"gitaly" yaml:"gitaly"`
 }
 
 // LoadFile load the config from the filename and feed dta to Config

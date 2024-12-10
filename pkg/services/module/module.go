@@ -7,18 +7,25 @@ import (
 	"github.com/alipourhabibi/Hades/models"
 	pkgerr "github.com/alipourhabibi/Hades/pkg/errors"
 	"github.com/alipourhabibi/Hades/pkg/services/authorization"
+	commitdb "github.com/alipourhabibi/Hades/storage/db/commit"
 	moduledb "github.com/alipourhabibi/Hades/storage/db/module"
+	"github.com/alipourhabibi/Hades/storage/gitaly/repository"
+	"github.com/google/uuid"
 )
 
 type Service struct {
-	moduleStorage        *moduledb.ModuleStorage
-	authorizationService authorization.Service
+	moduleStorage           *moduledb.ModuleStorage
+	commitStorage           *commitdb.CommitStorage
+	gitalyRepositoryService *repository.RepositoryService
+	authorizationService    *authorization.Service
 }
 
-func New(r *moduledb.ModuleStorage, authorizationService *authorization.Service) (*Service, error) {
+func New(r *moduledb.ModuleStorage, c *commitdb.CommitStorage, gitalyRepositoryService *repository.RepositoryService, authorizationService *authorization.Service) (*Service, error) {
 	return &Service{
-		moduleStorage:        r,
-		authorizationService: *authorizationService,
+		moduleStorage:           r,
+		authorizationService:    authorizationService,
+		commitStorage:           c,
+		gitalyRepositoryService: gitalyRepositoryService,
 	}, nil
 }
 
@@ -33,7 +40,6 @@ func (s *Service) CreateByNameModule(ctx context.Context, in *models.Module) (*m
 
 	moduleFullName := user.Username + "/" + in.Name
 
-	// TODO make it a middleware
 	can, err := s.authorizationService.Can(ctx, &models.Policy{
 		Subject: user.Username,
 		Object:  string(models.REPOSITORY),
@@ -50,20 +56,57 @@ func (s *Service) CreateByNameModule(ctx context.Context, in *models.Module) (*m
 
 	in.OwnerID = user.ID
 	in.Name = moduleFullName
-	err = s.moduleStorage.Create(ctx, in)
+	module, err := s.moduleStorage.Create(ctx, in)
 	if err != nil {
 		return nil, pkgerr.FromGorm(err)
 	}
 
 	// TODO
 	// It can be ommited because we have username/* owner role
-	_, err = s.authorizationService.AddRoles(ctx, []*models.Role{
+	roles := []*models.Role{
 		{
 			User:   user.Username,
 			Role:   string(models.OWNER),
 			Domain: moduleFullName,
 		},
-	})
+	}
+	policies := []*models.Policy{
+		{
+			Subject: user.Username,
+			Domain:  moduleFullName,
+			Object:  string(models.REPOSITORY),
+			Action:  string(models.PUSH),
+		},
+		{
+			Subject: user.Username,
+			Domain:  moduleFullName,
+			Object:  string(models.REPOSITORY),
+			Action:  string(models.READ),
+		},
+	}
+	err = s.authorizationService.AddPoliciesRolse(ctx, policies, roles)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO should create a commit in gitaly as well
+	// Init commit
+	err = s.gitalyRepositoryService.CreateRepository(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+
+	commit := &models.Commit{
+		ID:         uuid.New(),
+		CommitHash: "",
+		OwnerID:    user.ID,
+		ModuleID:   module.ID,
+		DigestType: models.DigestType_B5,
+	}
+	err = s.commitStorage.Create(ctx, commit)
+	if err != nil {
+		return nil, err
+	}
 
 	return in, err
 }

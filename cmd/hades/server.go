@@ -6,6 +6,7 @@ import (
 	"github.com/alipourhabibi/Hades/config"
 	"github.com/alipourhabibi/Hades/server"
 	"github.com/alipourhabibi/Hades/storage/db"
+	"github.com/alipourhabibi/Hades/storage/gitaly"
 	"github.com/spf13/cobra"
 )
 
@@ -33,12 +34,18 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 
+			gitalyStorage, err := gitaly.NewStorage(configs.Gitaly)
+			if err != nil {
+				return err
+			}
+
 			ctx := context.Background()
 			server, err := server.NewServer(
 				ctx,
 				configs,
 				server.WithDB(db),
 				server.WithLogger(log),
+				server.WithGitaly(gitalyStorage),
 			)
 			if err != nil {
 				return err

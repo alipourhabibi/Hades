@@ -17,6 +17,29 @@ func New(db *gorm.DB) *ModuleStorage {
 	}
 }
 
-func (m *ModuleStorage) Create(ctx context.Context, in *models.Module) error {
-	return m.db.Model(in).Create(in).Error
+func (m *ModuleStorage) Create(ctx context.Context, in *models.Module) (*models.Module, error) {
+	err := m.db.Model(in).Create(in).Error
+	return in, err
+}
+
+func (m *ModuleStorage) GetModulesByRefs(ctx context.Context, refs ...*models.ModuleRef) ([]*models.Module, error) {
+	query := m.db.
+		Model(&models.Module{})
+
+	for _, req := range refs {
+		if req.Id != "" {
+			query.Or("id = ?", req.Id)
+		} else {
+			query.Or("modules.name", req.Owner+"/"+req.Module)
+		}
+	}
+
+	modules := []*models.Module{}
+
+	err := query.Find(&modules).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return modules, nil
 }

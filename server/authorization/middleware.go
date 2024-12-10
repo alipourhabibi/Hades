@@ -3,6 +3,7 @@ package authorization
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"connectrpc.com/connect"
 	utilserr "github.com/alipourhabibi/Hades/utils/errors"
@@ -15,19 +16,25 @@ func (s *Server) NewAuthorizationInterceptor() connect.UnaryInterceptorFunc {
 			req connect.AnyRequest,
 		) (connect.AnyResponse, error) {
 
-			userSession := req.Header().Get("User-Session")
-			if userSession == "" {
-				return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("User-Session required"))
+			authHeader := req.Header().Get("Authorization")
+			if authHeader == "" {
+				return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("Authorization header is required"))
 			}
 
-			user, err := s.authService.UserBySession(ctx, userSession)
+			// Split the header into parts
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+				return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("Authorization header is invalid"))
+			}
+
+			user, err := s.authService.UserBySession(ctx, parts[1])
 			if err != nil {
 				err = utilserr.ToConnectError(err)
 				return nil, err
 			}
 
 			ctx = context.WithValue(ctx, "user", user)
-			ctx = context.WithValue(ctx, "User-Session", userSession)
+			ctx = context.WithValue(ctx, "Authorization", parts[1])
 
 			return next(ctx, req)
 		})
