@@ -20,7 +20,7 @@ const (
 
 type Commit struct {
 	ID               uuid.UUID  `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	CommitHash       string     `gorm:"uniqueIndex;not null;type:varchar(40)"`
+	CommitHash       string     `gorm:"not null;type:varchar(40)"` // TODO should be uniq?
 	CreateTime       time.Time  `gorm:"not null" json:"create_time"`
 	UpdateTime       time.Time  `gorm:"not null" json:"update_time"`
 	OwnerID          uuid.UUID  `gorm:"type:uuid;not null;index"`
@@ -28,7 +28,7 @@ type Commit struct {
 	ModuleID         uuid.UUID  `gorm:"type:uuid;not null;index"`
 	Module           Module     `gorm:"foreignKey:ModuleID"`
 	DigestType       DigestType `gorm:"type:smallint;not null"`
-	DigestValue      string     `gorm:"uniqueIndex;type:varchar(128);not null"`
+	DigestValue      string     `gorm:"type:varchar(128);not null"` // TODO should be uniq?
 	CreatedByUserID  uuid.UUID  `gorm:"type:uuid;index"`
 	CreatedByUser    *User      `gorm:"foreignKey:CreatedByUserID"`
 	SourceControlURL string     `gorm:"type:text"`

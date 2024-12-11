@@ -38,6 +38,7 @@ func (c *RepositoryService) CreateRepository(ctx context.Context, in *models.Mod
 		Repository: &pb.Repository{
 			RelativePath: in.Name,
 			StorageName:  c.defaultStorageName,
+			GlRepository: in.Name,
 		},
 	})
 	if err != nil {

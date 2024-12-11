@@ -22,6 +22,7 @@ func DigestFiles(datas []*models.File) (*digest, error) {
 			return 0
 		}
 	})
+
 	for _, v := range datas {
 		ioContent := bytes.NewReader(v.Content)
 		d, err := NewDigestForContent(ioContent)
@@ -30,6 +31,8 @@ func DigestFiles(datas []*models.File) (*digest, error) {
 		}
 		digests += fmt.Sprintf("%s  %s\n", d.String(), v.Path)
 	}
+
+	// HERE TODO should look it up
 	digestOfDigests, err := NewDigestForContent(strings.NewReader(digests))
 	if err != nil {
 		panic(err)

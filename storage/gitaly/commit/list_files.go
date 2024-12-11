@@ -11,9 +11,11 @@ import (
 
 func (c *CommitService) ListFiles(ctx context.Context, content *models.UploadRequest_Content) ([]string, error) {
 
+	moduleName := fmt.Sprintf("%s/%s", content.ModuleRef.Owner, content.ModuleRef.Module)
 	repo := &pb.Repository{
 		StorageName:  c.defaultStorageName,
-		RelativePath: fmt.Sprintf("%s/%s", content.ModuleRef.Owner, content.ModuleRef.Module),
+		RelativePath: moduleName,
+		GlRepository: moduleName,
 	}
 
 	getFilesStream, err := c.client.ListFiles(ctx, &pb.ListFilesRequest{

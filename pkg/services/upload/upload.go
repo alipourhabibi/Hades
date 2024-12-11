@@ -10,6 +10,7 @@ import (
 	"github.com/alipourhabibi/Hades/pkg/services/authorization"
 	dbcommit "github.com/alipourhabibi/Hades/storage/db/commit"
 	"github.com/alipourhabibi/Hades/storage/db/module"
+	"github.com/alipourhabibi/Hades/storage/gitaly/blob"
 	"github.com/alipourhabibi/Hades/storage/gitaly/commit"
 	"github.com/alipourhabibi/Hades/storage/gitaly/operation"
 	"github.com/alipourhabibi/Hades/utils/log"
@@ -23,11 +24,12 @@ type Service struct {
 	operationService     *operation.OperationService
 	dbmodule             *module.ModuleStorage
 	authorizationService *authorization.Service
+	blobStorage          *blob.BlobService
 
 	logger *log.LoggerWrapper
 }
 
-func NewService(l *log.LoggerWrapper, commitService *commit.CommitService, operationService *operation.OperationService, m *module.ModuleStorage, dbcommit *dbcommit.CommitStorage, authorizationService *authorization.Service) (*Service, error) {
+func NewService(l *log.LoggerWrapper, commitService *commit.CommitService, operationService *operation.OperationService, m *module.ModuleStorage, dbcommit *dbcommit.CommitStorage, b *blob.BlobService, authorizationService *authorization.Service) (*Service, error) {
 	return &Service{
 		logger:               l,
 		commitService:        commitService,
@@ -35,10 +37,14 @@ func NewService(l *log.LoggerWrapper, commitService *commit.CommitService, opera
 		dbmodule:             m,
 		dbcommitService:      dbcommit,
 		authorizationService: authorizationService,
+		blobStorage:          b,
 	}, nil
 }
 
+// TODO refactor it
 func (s *Service) Upload(ctx context.Context, req *models.UploadRequest) ([]*models.Commit, error) {
+	// TODO check req.DepCommitIds
+
 	user, ok := ctx.Value("user").(*models.User)
 	if !ok {
 		return nil, pkgerr.New("Internal", pkgerr.Internal)
@@ -63,23 +69,53 @@ func (s *Service) Upload(ctx context.Context, req *models.UploadRequest) ([]*mod
 			return nil, pkgerr.New("Permission Denied getting module "+moduleFullName, pkgerr.PermissionDenied)
 		}
 
-		p, err := s.commitService.ListFiles(ctx, content)
-		if err != nil {
-			return nil, err
-		}
-
 		module, err := s.dbmodule.GetModulesByRefs(ctx, content.ModuleRef)
 		if err != nil {
 			return nil, err
 		}
 
-		digest, err := shake256.DigestFiles(content.Files)
+		// get the last commit for this module
+		moduleCommit, err := s.dbcommitService.GetCommitByOwnerModule(ctx, []*models.ModuleRef{content.ModuleRef})
+		if err != nil {
+			return nil, pkgerr.FromGorm(err)
+		}
+
+		// get the blobs of the last commits
+		blobs, err := s.blobStorage.ListBlobs(ctx, moduleCommit[0])
+		if err != nil {
+			return nil, err
+		}
+
+		uploadFiles := map[string]*models.File{}
+
+		for _, f := range blobs[0].Files {
+			uploadFiles[f.Path] = &models.File{
+				Path:    f.Path,
+				Content: f.Content,
+			}
+		}
+		for _, f := range content.Files {
+			uploadFiles[f.Path] = &models.File{
+				Path:    f.Path,
+				Content: f.Content,
+			}
+		}
+		files := make([]*models.File, 0, len(uploadFiles))
+		for _, f := range uploadFiles {
+			files = append(files, f)
+		}
+
+		listFiles := make([]string, 0, len(files))
+		for _, f := range files {
+			listFiles = append(listFiles, f.Path)
+		}
+
+		digest, err := shake256.DigestFiles(files)
 		if err != nil {
 			return nil, err
 		}
 
 		dig, _ := strings.CutPrefix(digest.String(), "shake256:")
-
 		commit, err := s.dbcommitService.GetCommitByQuery(ctx, map[string]any{
 			"digest_value": dig,
 		})
@@ -101,7 +137,7 @@ func (s *Service) Upload(ctx context.Context, req *models.UploadRequest) ([]*mod
 			continue
 		}
 
-		commitId, err := s.operationService.UserCommitFiles(ctx, module[0], content, user, p, dig)
+		commitId, err := s.operationService.UserCommitFiles(ctx, module[0], content, user, listFiles, dig)
 		if err != nil {
 			return nil, err
 		}

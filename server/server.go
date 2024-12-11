@@ -18,11 +18,17 @@ import (
 	"github.com/alipourhabibi/Hades/config"
 	authenticationservice "github.com/alipourhabibi/Hades/pkg/services/authentication"
 	authorizationservice "github.com/alipourhabibi/Hades/pkg/services/authorization"
+	bufcommitsservice "github.com/alipourhabibi/Hades/pkg/services/bufcommits"
+	bufdownloadservice "github.com/alipourhabibi/Hades/pkg/services/bufdownload"
+	bufgraphservice "github.com/alipourhabibi/Hades/pkg/services/bufgraph"
 	bufmodulesservice "github.com/alipourhabibi/Hades/pkg/services/bufmodules"
 	moduleservice "github.com/alipourhabibi/Hades/pkg/services/module"
 	uploadsservice "github.com/alipourhabibi/Hades/pkg/services/upload"
 	"github.com/alipourhabibi/Hades/server/authentication"
 	"github.com/alipourhabibi/Hades/server/authorization"
+	bufcommits "github.com/alipourhabibi/Hades/server/bufcommits"
+	"github.com/alipourhabibi/Hades/server/bufdownload"
+	"github.com/alipourhabibi/Hades/server/bufgraph"
 	bufmodules "github.com/alipourhabibi/Hades/server/bufmodules"
 	"github.com/alipourhabibi/Hades/server/module"
 	"github.com/alipourhabibi/Hades/server/upload"
@@ -52,7 +58,10 @@ type SchemaRegistryServerSet struct {
 	AuthorizationServer  *authorization.Server
 	ModuleServer         *module.Server
 	BufModuleServer      *bufmodules.Server
+	BufCommitServer      *bufcommits.Server
 	BufUploadServer      *upload.Server
+	BufGraphServer       *bufgraph.Server
+	BufDownloadServer    *bufdownload.Server
 }
 
 type SchemaRegistryConfiguration func(*SchemaRegistryServer) error
@@ -174,7 +183,22 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 		return nil, err
 	}
 
-	uploadService, err := uploadsservice.NewService(s.logger, s.gitaly.CommitService, s.gitaly.OperattionService, s.db.ModuleStorage, s.db.CommitStorage, authorizationService)
+	bufcommitService, err := bufcommitsservice.New(s.logger, s.db.CommitStorage, s.db.ModuleStorage, authorizationService)
+	if err != nil {
+		return nil, err
+	}
+
+	uploadService, err := uploadsservice.NewService(s.logger, s.gitaly.CommitService, s.gitaly.OperattionService, s.db.ModuleStorage, s.db.CommitStorage, s.gitaly.BlobService, authorizationService)
+	if err != nil {
+		return nil, err
+	}
+
+	graphService, err := bufgraphservice.New(s.logger, s.db.CommitStorage, s.db.ModuleStorage, authorizationService)
+	if err != nil {
+		return nil, err
+	}
+
+	downloadService, err := bufdownloadservice.New(s.logger, s.db.ModuleStorage, s.db.CommitStorage, s.gitaly.BlobService, authorizationService)
 	if err != nil {
 		return nil, err
 	}
@@ -183,13 +207,19 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 	authorizationServer := authorization.NewServer(s.logger, authorizationService)
 	moduleServer := module.NewServer(s.logger, moduleService)
 	bufModuleServer := bufmodules.NewServer(s.logger, bufmoduleService)
+	bufCommitServer := bufcommits.NewServer(s.logger, bufcommitService)
 	uploadServer := upload.NewServer(s.logger, uploadService)
+	bufGraphServer := bufgraph.NewServer(s.logger, graphService)
+	bufDownloadServer := bufdownload.NewServer(s.logger, downloadService)
 
 	serverSet.AuthenticationServer = authenticationServer
 	serverSet.AuthorizationServer = authorizationServer
 	serverSet.ModuleServer = moduleServer
 	serverSet.BufModuleServer = bufModuleServer
 	serverSet.BufUploadServer = uploadServer
+	serverSet.BufCommitServer = bufCommitServer
+	serverSet.BufGraphServer = bufGraphServer
+	serverSet.BufDownloadServer = bufDownloadServer
 
 	return serverSet, nil
 }
@@ -230,8 +260,17 @@ func (s *SchemaRegistryServer) newServerMux() *http.ServeMux {
 	bufmodulePath, bufmoduleHandler := modulev1connect.NewModuleServiceHandler(s.serverSet.BufModuleServer, interceptors)
 	mux.Handle(bufmodulePath, bufmoduleHandler)
 
+	bufcommitPath, bufcommitHandler := modulev1connect.NewCommitServiceHandler(s.serverSet.BufCommitServer, interceptors)
+	mux.Handle(bufcommitPath, bufcommitHandler)
+
 	bufuploadPath, bufuploadHandler := modulev1connect.NewUploadServiceHandler(s.serverSet.BufUploadServer, interceptors)
 	mux.Handle(bufuploadPath, bufuploadHandler)
+
+	bufgraphPath, bufgraphHandler := modulev1connect.NewGraphServiceHandler(s.serverSet.BufGraphServer, interceptors)
+	mux.Handle(bufgraphPath, bufgraphHandler)
+
+	bufdownloadPath, bufdownloadHandler := modulev1connect.NewDownloadServiceHandler(s.serverSet.BufDownloadServer, interceptors)
+	mux.Handle(bufdownloadPath, bufdownloadHandler)
 
 	mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector))
 

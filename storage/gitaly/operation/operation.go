@@ -39,6 +39,7 @@ func (o *OperationService) UserCommitFiles(ctx context.Context, module *models.M
 	}
 
 	userPb := &pb.User{
+		GlId:  user.ID.String(),
 		Name:  []byte(user.Username),
 		Email: []byte(user.Email),
 	}
@@ -46,6 +47,7 @@ func (o *OperationService) UserCommitFiles(ctx context.Context, module *models.M
 	repo := &pb.Repository{
 		StorageName:  o.defaultStorageName,
 		RelativePath: module.Name,
+		GlRepository: module.Name,
 	}
 
 	// TODO think about it

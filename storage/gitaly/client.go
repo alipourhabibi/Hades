@@ -2,6 +2,7 @@ package gitaly
 
 import (
 	"github.com/alipourhabibi/Hades/config"
+	"github.com/alipourhabibi/Hades/storage/gitaly/blob"
 	"github.com/alipourhabibi/Hades/storage/gitaly/commit"
 	"github.com/alipourhabibi/Hades/storage/gitaly/operation"
 	"github.com/alipourhabibi/Hades/storage/gitaly/repository"
@@ -9,6 +10,7 @@ import (
 
 type StorageService struct {
 	CommitService     *commit.CommitService
+	BlobService       *blob.BlobService
 	OperattionService *operation.OperationService
 	RepositoryService *repository.RepositoryService
 }
@@ -24,6 +26,11 @@ func NewStorage(c config.Gitaly) (*StorageService, error) {
 		return nil, err
 	}
 
+	blobService, err := blob.NewDefault(c)
+	if err != nil {
+		return nil, err
+	}
+
 	repositoryService, err := repository.NewDefault(c)
 	if err != nil {
 		return nil, err
@@ -33,5 +40,6 @@ func NewStorage(c config.Gitaly) (*StorageService, error) {
 		CommitService:     commitService,
 		OperattionService: operationService,
 		RepositoryService: repositoryService,
+		BlobService:       blobService,
 	}, nil
 }

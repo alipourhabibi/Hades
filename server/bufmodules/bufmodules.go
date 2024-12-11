@@ -15,8 +15,7 @@ type Server struct {
 	moduleConnV1.ModuleServiceHandler
 
 	service *bufmodules.Service
-
-	logger *log.LoggerWrapper
+	logger  *log.LoggerWrapper
 }
 
 func NewServer(l *log.LoggerWrapper, service *bufmodules.Service) *Server {
@@ -35,8 +34,8 @@ func (m *Server) GetModules(ctx context.Context, req *connect.Request[modulev1.G
 			})
 		} else {
 			in = append(in, &models.ModuleRef{
-				Owner:  v.GetName().Owner,
-				Module: v.GetName().Module,
+				Owner:  v.GetName().GetOwner(),
+				Module: v.GetName().GetModule(),
 			})
 		}
 	}

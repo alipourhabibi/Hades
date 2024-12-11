@@ -1,37 +1,41 @@
-package bufmodules
+package bufgraph
 
 import (
 	"context"
 
 	"github.com/alipourhabibi/Hades/models"
-	pkgerr "github.com/alipourhabibi/Hades/pkg/errors"
 	"github.com/alipourhabibi/Hades/pkg/services/authorization"
+	"github.com/alipourhabibi/Hades/utils/log"
+
+	pkgerr "github.com/alipourhabibi/Hades/pkg/errors"
 	dbcommit "github.com/alipourhabibi/Hades/storage/db/commit"
-	moduledb "github.com/alipourhabibi/Hades/storage/db/module"
+	dbmodule "github.com/alipourhabibi/Hades/storage/db/module"
 )
 
 type Service struct {
-	moduleStorage        *moduledb.ModuleStorage
+	log                  *log.LoggerWrapper
 	commitStorage        *dbcommit.CommitStorage
-	authorizationService authorization.Service
+	moduleStorage        *dbmodule.ModuleStorage
+	authorizationService *authorization.Service
 }
 
-func New(r *moduledb.ModuleStorage, c *dbcommit.CommitStorage, authorizationService *authorization.Service) (*Service, error) {
+func New(l *log.LoggerWrapper, c *dbcommit.CommitStorage, m *dbmodule.ModuleStorage, authorizationService *authorization.Service) (*Service, error) {
 	return &Service{
-		moduleStorage:        r,
-		authorizationService: *authorizationService,
+		log:                  l,
 		commitStorage:        c,
+		moduleStorage:        m,
+		authorizationService: authorizationService,
 	}, nil
 }
 
-func (s *Service) GetModules(ctx context.Context, in []*models.ModuleRef) ([]*models.Module, error) {
+func (s *Service) GetGraph(ctx context.Context, req []*models.ModuleRef) ([]*models.Commit, error) {
 
 	user, ok := ctx.Value("user").(*models.User)
 	if !ok {
 		return nil, pkgerr.New("Internal", pkgerr.Internal)
 	}
 
-	modules, err := s.moduleStorage.GetModulesByRefs(ctx, in...)
+	modules, err := s.moduleStorage.GetModulesByRefs(ctx, req...)
 	if err != nil {
 		return nil, err
 	}
@@ -57,5 +61,6 @@ func (s *Service) GetModules(ctx context.Context, in []*models.ModuleRef) ([]*mo
 		}
 	}
 
-	return modules, nil
+	// TODO this should be changed and get the graph
+	return s.commitStorage.GetCommitByOwnerModule(ctx, req)
 }

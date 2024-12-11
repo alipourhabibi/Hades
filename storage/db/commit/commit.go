@@ -40,22 +40,29 @@ func (c *CommitStorage) GetCommitByQuery(ctx context.Context, query map[string]a
 	return commit, err
 }
 
+// TODO think about it
 func (c *CommitStorage) GetCommitByOwnerModule(ctx context.Context, moduleRefs []*models.ModuleRef) ([]*models.Commit, error) {
 
-	query := c.db.
+	commits := []*models.Commit{}
+
+	query := c.db.Order("create_time DESC").
 		Joins("JOIN modules ON commits.module_id = modules.id").
 		Preload("Module").
 		Model(&models.Commit{})
 
 	for _, req := range moduleRefs {
+		commit := &models.Commit{}
+		var err error
 		if req.Id != "" {
-			query.Or("id = ?", req.Id)
+			err = query.Where("commits.id = ?", req.Id).First(commit).Error
 		} else {
-			query.Or("modules.name", req.Owner+"/"+req.Module)
+			err = query.Where("modules.name", req.Owner+"/"+req.Module).First(commit).Error
 		}
+		if err != nil {
+			return nil, err
+		}
+		commits = append(commits, commit)
 	}
-
-	commits := []*models.Commit{}
 
 	return commits, nil
 }
