@@ -24,6 +24,19 @@ services:
     depends_on:
       - postgres
 
+  gitaly:
+    image: alpinelinux/gitaly:17.6.2
+    container_name: gitaly
+    environment:
+      - GITALY_TESTING_NO_GIT_HOOKS=true
+    volumes:
+      - /var/lib/gitlab:/var/lib/gitlab
+      - ./config.toml:/etc/gitlab-gitaly/config.toml
+    entrypoint: ["gitaly"]
+    command: ["serve", "/etc/gitlab-gitaly/config.toml"]
+    ports:
+      - "9999:9999"
+
 volumes:
   postgres_data:
   pgadmin:
