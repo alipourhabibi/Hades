@@ -66,13 +66,20 @@ func (b *BlobService) ListBlobs(ctx context.Context, commit *models.Commit) ([]*
 			}
 			mapFiles := map[string]*models.File{}
 			for _, blob := range msg.Blobs {
+				// TODO
 				if blob.Size != 0 {
 					mapFiles[string(blob.GetPath())] = &models.File{
 						Path:    string(blob.GetPath()),
 						Content: blob.Data,
 					}
 				} else {
-					mapFiles[string(blob.GetPath())].Content = append(mapFiles[string(blob.GetPath())].Content, blob.Data...)
+					if len(blob.Data) != 0 {
+						mapFiles[string(blob.GetPath())].Content = append(mapFiles[string(blob.GetPath())].Content, blob.Data...)
+					} else {
+						mapFiles[string(blob.GetPath())] = &models.File{
+							Path: string(blob.GetPath()),
+						}
+					}
 				}
 			}
 			files := []*models.File{}

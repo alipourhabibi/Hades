@@ -9,7 +9,9 @@ import (
 	"github.com/alipourhabibi/Hades/pkg/services/authorization"
 	commitdb "github.com/alipourhabibi/Hades/storage/db/commit"
 	moduledb "github.com/alipourhabibi/Hades/storage/db/module"
+	"github.com/alipourhabibi/Hades/storage/gitaly/operation"
 	"github.com/alipourhabibi/Hades/storage/gitaly/repository"
+	"github.com/alipourhabibi/Hades/utils/shake256"
 	"github.com/google/uuid"
 )
 
@@ -17,15 +19,17 @@ type Service struct {
 	moduleStorage           *moduledb.ModuleStorage
 	commitStorage           *commitdb.CommitStorage
 	gitalyRepositoryService *repository.RepositoryService
+	gitalyOperationService  *operation.OperationService
 	authorizationService    *authorization.Service
 }
 
-func New(r *moduledb.ModuleStorage, c *commitdb.CommitStorage, gitalyRepositoryService *repository.RepositoryService, authorizationService *authorization.Service) (*Service, error) {
+func New(r *moduledb.ModuleStorage, c *commitdb.CommitStorage, gitalyRepositoryService *repository.RepositoryService, o *operation.OperationService, authorizationService *authorization.Service) (*Service, error) {
 	return &Service{
 		moduleStorage:           r,
 		authorizationService:    authorizationService,
 		commitStorage:           c,
 		gitalyRepositoryService: gitalyRepositoryService,
+		gitalyOperationService:  o,
 	}, nil
 }
 
@@ -96,12 +100,34 @@ func (s *Service) CreateByNameModule(ctx context.Context, in *models.Module) (*m
 		return nil, err
 	}
 
+	content := &models.UploadRequest_Content{
+		// ModuleRef: &models.ModuleRef{
+		// 	Owner:  module.Owner.Username,
+		// 	Module: module.Name,
+		// },
+		Files: []*models.File{
+			{
+				Path:    "README.md",
+				Content: []byte(""),
+			},
+		},
+	}
+
+	paths := []string{}
+	digestValue, err := shake256.DigestFiles(content.Files)
+
+	hash, err := s.gitalyOperationService.UserCommitFiles(ctx, module, content.Files, user, paths, digestValue.String())
+	if err != nil {
+		return nil, err
+	}
+
 	commit := &models.Commit{
-		ID:         uuid.New(),
-		CommitHash: "",
-		OwnerID:    user.ID,
-		ModuleID:   module.ID,
-		DigestType: models.DigestType_B5,
+		ID:              uuid.New(),
+		CommitHash:      hash,
+		OwnerID:         user.ID,
+		ModuleID:        module.ID,
+		DigestType:      models.DigestType_B5,
+		CreatedByUserID: user.ID,
 	}
 	err = s.commitStorage.Create(ctx, commit)
 	if err != nil {

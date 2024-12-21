@@ -14,6 +14,7 @@ import (
 	"github.com/alipourhabibi/Hades/storage/gitaly/commit"
 	"github.com/alipourhabibi/Hades/storage/gitaly/operation"
 	"github.com/alipourhabibi/Hades/utils/log"
+	"github.com/alipourhabibi/Hades/utils/paths"
 	"github.com/alipourhabibi/Hades/utils/shake256"
 	"github.com/google/uuid"
 )
@@ -74,40 +75,61 @@ func (s *Service) Upload(ctx context.Context, req *models.UploadRequest) ([]*mod
 			return nil, err
 		}
 
+		if len(module) == 0 {
+			return nil, pkgerr.New("Module Not Found", pkgerr.NotFound)
+		}
+
 		// get the last commit for this module
+		var emptyCommit bool
 		moduleCommit, err := s.dbcommitService.GetCommitByOwnerModule(ctx, []*models.ModuleRef{content.ModuleRef})
 		if err != nil {
-			return nil, pkgerr.FromGorm(err)
-		}
-
-		// get the blobs of the last commits
-		blobs, err := s.blobStorage.ListBlobs(ctx, moduleCommit[0])
-		if err != nil {
-			return nil, err
-		}
-
-		uploadFiles := map[string]*models.File{}
-
-		for _, f := range blobs[0].Files {
-			uploadFiles[f.Path] = &models.File{
-				Path:    f.Path,
-				Content: f.Content,
+			pkgErr := pkgerr.FromGorm(err).(pkgerr.PkgError)
+			if pkgErr.Code != pkgerr.NotFound {
+				return nil, pkgErr
+			} else {
+				emptyCommit = true
 			}
 		}
-		for _, f := range content.Files {
-			uploadFiles[f.Path] = &models.File{
-				Path:    f.Path,
-				Content: f.Content,
-			}
-		}
-		files := make([]*models.File, 0, len(uploadFiles))
-		for _, f := range uploadFiles {
-			files = append(files, f)
-		}
 
-		listFiles := make([]string, 0, len(files))
-		for _, f := range files {
-			listFiles = append(listFiles, f.Path)
+		var files []*models.File
+		var listFiles []string
+		if !emptyCommit {
+
+			// get the blobs of the last commits
+			blobs, err := s.blobStorage.ListBlobs(ctx, moduleCommit[0])
+			if err != nil {
+				return nil, err
+			}
+
+			uploadFiles := map[string]*models.File{}
+
+			for _, f := range blobs[0].Files {
+				uploadFiles[f.Path] = &models.File{
+					Path:    f.Path,
+					Content: f.Content,
+				}
+			}
+
+			for _, f := range content.Files {
+				uploadFiles[f.Path] = &models.File{
+					Path:    f.Path,
+					Content: f.Content,
+				}
+			}
+
+			files = make([]*models.File, 0, len(uploadFiles))
+			for _, f := range uploadFiles {
+				files = append(files, f)
+			}
+
+			// paths are only ones that exists in blob
+			listFiles = make([]string, 0, len(files))
+			for _, f := range blobs[0].Files {
+				listFiles = append(listFiles, f.Path)
+			}
+		} else {
+			listFiles = []string{}
+			files = []*models.File{}
 		}
 
 		digest, err := shake256.DigestFiles(files)
@@ -137,7 +159,8 @@ func (s *Service) Upload(ctx context.Context, req *models.UploadRequest) ([]*mod
 			continue
 		}
 
-		commitId, err := s.operationService.UserCommitFiles(ctx, module[0], content, user, listFiles, dig)
+		files = paths.GetPath(files)
+		commitId, err := s.operationService.UserCommitFiles(ctx, module[0], files, user, listFiles, dig)
 		if err != nil {
 			return nil, err
 		}

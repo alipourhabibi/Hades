@@ -32,7 +32,7 @@ func NewDefault(c config.Gitaly) (*OperationService, error) {
 	}, nil
 }
 
-func (o *OperationService) UserCommitFiles(ctx context.Context, module *models.Module, content *models.UploadRequest_Content, user *models.User, paths []string, digestValue string) (string, error) {
+func (o *OperationService) UserCommitFiles(ctx context.Context, module *models.Module, files []*models.File, user *models.User, paths []string, digestValue string) (string, error) {
 	stream, err := o.client.UserCommitFiles(ctx)
 	if err != nil {
 		return "", err
@@ -47,7 +47,7 @@ func (o *OperationService) UserCommitFiles(ctx context.Context, module *models.M
 	repo := &pb.Repository{
 		StorageName:  o.defaultStorageName,
 		RelativePath: module.Name,
-		GlRepository: module.Name,
+		GlRepository: module.Name, // TODO check
 	}
 
 	// TODO think about it
@@ -69,7 +69,7 @@ func (o *OperationService) UserCommitFiles(ctx context.Context, module *models.M
 		return "", err
 	}
 
-	for _, file := range content.Files {
+	for _, file := range files {
 		var op pb.UserCommitFilesActionHeader_ActionType
 		if slices.Contains(paths, file.Path) {
 			op = pb.UserCommitFilesActionHeader_UPDATE

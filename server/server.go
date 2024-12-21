@@ -172,6 +172,7 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 		s.db.ModuleStorage,
 		s.db.CommitStorage,
 		s.gitaly.RepositoryService,
+		s.gitaly.OperattionService,
 		authorizationService,
 	)
 	if err != nil {
