@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+option go_package = "./test";
+
+import "google/type/date.proto";
+
+ message PaintCan {
+  string id = 1;
+  google.type.Date createdAt = 2;
+}

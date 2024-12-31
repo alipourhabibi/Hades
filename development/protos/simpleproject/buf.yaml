@@ -1,0 +1,9 @@
+version: v2
+deps:
+  - example.com/googleapis/googleapis
+lint:
+  use:
+    - DEFAULT
+breaking:
+  use:
+    - FILE
