@@ -40,3 +40,9 @@ Enjoy developing
 
 #### Licensing
 This project includes files from Google APIs for development purposes, which are licensed under the Apache License 2.0. See the `LICENSE` file in `development/protos/googleapis` for details.
+
+### Docker
+```bash
+docker run -v ./config/config.yaml:/app/config/config.yaml DOCKER_IMAGE:TAG
+```
+Add the tls volume files the port and other configs based on your config file in config/config.yaml file
