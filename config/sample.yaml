@@ -1,5 +1,7 @@
 server:
-  listen_port: 50051
+  listenPort: 50051
+  certKey: "config/example.com-key.pem"
+  certFile: "config/example.com.pem"
 
 logger:
   engine: zap # slog, zap
@@ -31,11 +33,12 @@ logger:
 
 gitaly:
   port: 9999
+  defaultStorageName: default
 
 db:
   host: localhost
   port: 5432
   user: hades
   password: hades
-  dbName: hsr_db
+  dbName: hades
   sslMode: false

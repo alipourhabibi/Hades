@@ -1,0 +1,10 @@
+version: v2
+name: example.com/googleapis/googleapis
+# modules:
+#   - path: proto
+lint:
+  use:
+    - DEFAULT
+breaking:
+  use:
+    - FILE

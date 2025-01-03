@@ -26,3 +26,6 @@ go.work.sum
 
 # dev config
 /config/dev.yaml
+/config/example.com-key.pem
+/config/example.com.pem
+buf.lock

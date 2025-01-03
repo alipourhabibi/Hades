@@ -48,6 +48,8 @@ type SchemaRegistryServer struct {
 	gitaly *gitaly.StorageService
 
 	listenPort int
+	certFile   string
+	keyFile    string
 
 	serverSet *SchemaRegistryServerSet
 }
@@ -105,6 +107,9 @@ func NewServer(ctx context.Context, c *config.Config, cfgs ...SchemaRegistryConf
 		ss.listenPort = c.Server.ListenPort
 	}
 
+	ss.certFile = c.Server.CertFile
+	ss.keyFile = c.Server.CertKey
+
 	// replace configs with the given configs
 	for _, cfg := range cfgs {
 		err := cfg(ss)
@@ -130,8 +135,10 @@ func (s *SchemaRegistryServer) Run(ctx context.Context, cancel context.CancelFun
 
 	mux := s.newServerMux()
 
+	fmt.Println(s.certFile, s.keyFile)
+
 	s.logger.Info("StartingServer...", "port", s.listenPort)
-	err = http.ListenAndServe(fmt.Sprintf(":%d", s.listenPort), h2c.NewHandler(mux, &http2.Server{}))
+	err = http.ListenAndServeTLS(fmt.Sprintf(":%d", 443), s.certFile, s.keyFile, h2c.NewHandler(mux, &http2.Server{}))
 	if err != nil {
 		s.logger.Error("Failed to start server", "port", s.listenPort, "error", err)
 		cancel()
