@@ -49,4 +49,5 @@ message Date {
   // to specify a year by itself or a year and month where the day isn't
   // significant.
   int32 day = 3;
+  int32 ali = 9;
 }

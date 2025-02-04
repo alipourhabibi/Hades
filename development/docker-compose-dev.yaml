@@ -27,16 +27,27 @@ services:
   gitaly:
     image: alpinelinux/gitaly:17.6.2
     container_name: gitaly
-    environment:
-      - GITALY_TESTING_NO_GIT_HOOKS=true
+    # environment:
+      # - GITALY_TESTING_NO_GIT_HOOKS=true
     volumes:
       - /var/lib/gitlab:/var/lib/gitlab
       - ./config.toml:/etc/gitlab-gitaly/config.toml
     entrypoint: ["gitaly"]
     command: ["serve", "/etc/gitlab-gitaly/config.toml"]
+    network_mode: host
     ports:
       - "9999:9999"
+
+  cache:
+     image: redis:latest
+     restart: always
+     ports:
+       - '6379:6379'
+     command: redis-server
+     volumes: 
+       - cache:/data
 
 volumes:
   postgres_data:
   pgadmin:
+  cache:

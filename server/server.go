@@ -30,6 +30,7 @@ import (
 	"github.com/alipourhabibi/Hades/server/bufdownload"
 	"github.com/alipourhabibi/Hades/server/bufgraph"
 	bufmodules "github.com/alipourhabibi/Hades/server/bufmodules"
+	"github.com/alipourhabibi/Hades/server/hook"
 	"github.com/alipourhabibi/Hades/server/module"
 	"github.com/alipourhabibi/Hades/server/upload"
 	"github.com/alipourhabibi/Hades/storage/db"
@@ -64,6 +65,7 @@ type SchemaRegistryServerSet struct {
 	BufUploadServer      *upload.Server
 	BufGraphServer       *bufgraph.Server
 	BufDownloadServer    *bufdownload.Server
+	InternalServer       *hook.Server
 }
 
 type SchemaRegistryConfiguration func(*SchemaRegistryServer) error
@@ -145,8 +147,6 @@ func (s *SchemaRegistryServer) Run(ctx context.Context, cancel context.CancelFun
 		return
 	}
 }
-
-// newSchemaRegistryServerSet creates the SchemaRegistryServerSet from the attributes in SchemaRegistryServer
 func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerSet, error) {
 
 	serverSet := &SchemaRegistryServerSet{}
@@ -219,6 +219,7 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 	uploadServer := upload.NewServer(s.logger, uploadService)
 	bufGraphServer := bufgraph.NewServer(s.logger, graphService)
 	bufDownloadServer := bufdownload.NewServer(s.logger, downloadService)
+	internalServer := hook.NewServer(s.logger)
 
 	serverSet.AuthenticationServer = authenticationServer
 	serverSet.AuthorizationServer = authorizationServer
@@ -228,6 +229,7 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 	serverSet.BufCommitServer = bufCommitServer
 	serverSet.BufGraphServer = bufGraphServer
 	serverSet.BufDownloadServer = bufDownloadServer
+	serverSet.InternalServer = internalServer
 
 	return serverSet, nil
 }
@@ -279,6 +281,8 @@ func (s *SchemaRegistryServer) newServerMux() *http.ServeMux {
 
 	bufdownloadPath, bufdownloadHandler := modulev1connect.NewDownloadServiceHandler(s.serverSet.BufDownloadServer, interceptors)
 	mux.Handle(bufdownloadPath, bufdownloadHandler)
+
+	mux.Handle("/api/v4/internal/", http.Handler(s.serverSet.InternalServer))
 
 	mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector))
 

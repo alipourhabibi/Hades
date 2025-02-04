@@ -38,8 +38,9 @@ func (o *OperationService) UserCommitFiles(ctx context.Context, module *models.M
 		return "", err
 	}
 
+	// glID := genutils.ToDashless(user.ID)
 	userPb := &pb.User{
-		GlId:  user.ID.String(),
+		GlId:  fmt.Sprintf("user-%s", "123"),
 		Name:  []byte(user.Username),
 		Email: []byte(user.Email),
 	}

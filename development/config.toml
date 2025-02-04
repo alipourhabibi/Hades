@@ -15,5 +15,6 @@ path = "/var/lib/gitlab/repositories"
 [hooks]
 
 [gitlab]
-url = "http+unix://%2Frun%2Fgitlab%2Fgitlab-workhorse.socket"
-secret = ""
+url = "https://example.com"
+# url = "http://0.0.0.0:9090"
+secret = "secret"
