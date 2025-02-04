@@ -3,6 +3,7 @@
 ## Overview
 This document planned features for the project.
 
+- [ ] Use pgx instead of gorm
 - [X] Development Bootstrap environment
 - [ ] E2E Tests
 - [X] Dockerize the project

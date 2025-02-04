@@ -36,15 +36,21 @@ Now you have a user called `googleapis` with password `googleapis` \
 And a module with `googleapis` name that has some protos in it alongside a project 
 that uses this as its dependency in `protos/simpleproject`
 
-Enjoy developing
+I coded this fast, focusing on getting things working first rather than following the best practices from day one. So there’s room for improvement, refactoring, and optimizations.
+
+If you spot something that could be improved, better architecture, cleaner code, or best practices, feel free to open an issue or a PR. Your contributions are highly appreciated!
+
+Enjoy hacking on Hades!  
 
 ### Features ready to tests:
 1. buf dep update
 2. buf push
+Navigate to `development/protos/simpleproject` and run:  
 
-go to `development/protos/simpleproject` \
-    use `buf dep update` to update your googleapis dependency \
-now use `buf genereate` to generate the codes. \
+```bash
+buf dep update  # Updates the googleapis dependency
+buf generate    # Generates codes
+```
 NOTE: the SKD module is not yet developed.
 
 You can also change the protos in `development/protos/googleapis` and then push them using `buf push`
