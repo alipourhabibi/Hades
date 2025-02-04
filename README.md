@@ -38,6 +38,17 @@ that uses this as its dependency in `protos/simpleproject`
 
 Enjoy developing
 
+### Features ready to tests:
+1. buf dep update
+2. buf push
+
+go to `development/protos/simpleproject` \
+    use `buf dep update` to update your googleapis dependency \
+now use `buf genereate` to generate the codes. \
+NOTE: the SKD module is not yet developed.
+
+You can also change the protos in `development/protos/googleapis` and then push them using `buf push`
+
 #### Licensing
 This project includes files from Google APIs for development purposes, which are licensed under the Apache License 2.0. See the `LICENSE` file in `development/protos/googleapis` for details.
 
