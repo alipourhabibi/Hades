@@ -137,8 +137,6 @@ func (s *SchemaRegistryServer) Run(ctx context.Context, cancel context.CancelFun
 
 	mux := s.newServerMux()
 
-	fmt.Println(s.certFile, s.keyFile)
-
 	s.logger.Info("StartingServer...", "port", s.listenPort)
 	err = http.ListenAndServeTLS(fmt.Sprintf(":%d", 443), s.certFile, s.keyFile, h2c.NewHandler(mux, &http2.Server{}))
 	if err != nil {

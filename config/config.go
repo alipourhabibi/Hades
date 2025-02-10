@@ -11,6 +11,7 @@ type Config struct {
 	DB     DB     `json:"db" yaml:"db"`
 	Server Server `json:"server" yaml:"server"`
 	Gitaly Gitaly `json:"gitaly" yaml:"gitaly"`
+	Events Events `json:"events" yaml:"events"`
 }
 
 // LoadFile load the config from the filename and feed dta to Config

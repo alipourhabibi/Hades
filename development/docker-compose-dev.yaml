@@ -1,4 +1,14 @@
 services:
+
+  rabbitmq:
+    image: rabbitmq:management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    tty: true
+    restart: unless-stopped
+
   postgres:
     image: postgres:15.4
     container_name: postgres_db
@@ -37,15 +47,6 @@ services:
     network_mode: host
     ports:
       - "9999:9999"
-
-  cache:
-     image: redis:latest
-     restart: always
-     ports:
-       - '6379:6379'
-     command: redis-server
-     volumes: 
-       - cache:/data
 
 volumes:
   postgres_data:

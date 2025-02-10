@@ -42,3 +42,6 @@ db:
   password: hades
   dbName: hades
   sslMode: false
+
+events:
+  host: "amqp://guest:guest@localhost:5672"

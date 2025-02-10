@@ -2,23 +2,26 @@ package main
 
 import (
 	"context"
+	"os/exec"
 
 	"github.com/alipourhabibi/Hades/config"
-	"github.com/alipourhabibi/Hades/server"
-	"github.com/alipourhabibi/Hades/storage/db"
-	"github.com/alipourhabibi/Hades/storage/gitaly"
+	"github.com/alipourhabibi/Hades/events"
 	"github.com/spf13/cobra"
 )
 
-func newServeCmd() *cobra.Command {
+func newSdkCmd() *cobra.Command {
 	var (
 		configFile string
 	)
-
 	cmd := &cobra.Command{
-		Use:   "serve",
-		Short: "serve the Hades server",
+		Use:   "sdk",
+		Short: "run sdk service",
 		RunE: func(_ *cobra.Command, _ []string) error {
+			err := exec.Command("buf", "--version").Run()
+			if err != nil {
+				return err
+			}
+
 			configs, err := config.LoadFile(configFile)
 			if err != nil {
 				return err
@@ -29,30 +32,14 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 
-			db, err := db.New(configs.DB, log)
-			if err != nil {
-				return err
-			}
-
-			gitalyStorage, err := gitaly.NewStorage(configs.Gitaly)
+			events, err := events.NewEventServer(configs.Events, log)
 			if err != nil {
 				return err
 			}
 
 			ctx := context.Background()
-			server, err := server.NewServer(
-				ctx,
-				configs,
-				server.WithDB(db),
-				server.WithLogger(log),
-				server.WithGitaly(gitalyStorage),
-			)
-			if err != nil {
-				return err
-			}
-
 			ctx, cancel := context.WithCancel(ctx)
-			go server.Run(ctx, cancel)
+			go events.Run(ctx, cancel)
 			select {
 			case <-ctx.Done():
 				if ctx.Err() != nil {
@@ -60,6 +47,7 @@ func newServeCmd() *cobra.Command {
 				}
 				return nil
 			}
+
 		},
 	}
 

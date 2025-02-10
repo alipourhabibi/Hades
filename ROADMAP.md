@@ -12,4 +12,6 @@ This document planned features for the project.
 - [ ] Fix linter errors
 - [ ] Add milestone for the project
 - [ ] Create SDK generators
+    - [ ] rabbitmq to get the protos and build it
+    - [ ] a microservice that has buf cli in it will consume it and send it to the gitaly
 - [ ] UI
