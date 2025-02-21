@@ -23,6 +23,7 @@ import (
 	bufgraphservice "github.com/alipourhabibi/Hades/pkg/services/bufgraph"
 	bufmodulesservice "github.com/alipourhabibi/Hades/pkg/services/bufmodules"
 	moduleservice "github.com/alipourhabibi/Hades/pkg/services/module"
+	"github.com/alipourhabibi/Hades/pkg/services/sdk"
 	uploadsservice "github.com/alipourhabibi/Hades/pkg/services/upload"
 	"github.com/alipourhabibi/Hades/server/authentication"
 	"github.com/alipourhabibi/Hades/server/authorization"
@@ -184,6 +185,8 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 		return nil, err
 	}
 
+	generatorService := &sdk.Generator{}
+
 	bufmoduleService, err := bufmodulesservice.New(s.db.ModuleStorage, s.db.CommitStorage, authorizationService)
 	if err != nil {
 		return nil, err
@@ -194,7 +197,7 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 		return nil, err
 	}
 
-	uploadService, err := uploadsservice.NewService(s.logger, s.gitaly.CommitService, s.gitaly.OperattionService, s.db.ModuleStorage, s.db.CommitStorage, s.gitaly.BlobService, authorizationService)
+	uploadService, err := uploadsservice.NewService(s.logger, s.gitaly.CommitService, s.gitaly.OperattionService, s.db.ModuleStorage, s.db.CommitStorage, s.gitaly.BlobService, authorizationService, generatorService)
 	if err != nil {
 		return nil, err
 	}

@@ -1,13 +1,13 @@
 services:
 
-  rabbitmq:
-    image: rabbitmq:management
-    container_name: rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    tty: true
-    restart: unless-stopped
+  # rabbitmq:
+  #   image: rabbitmq:management
+  #   container_name: rabbitmq
+  #   ports:
+  #     - "5672:5672"
+  #     - "15672:15672"
+  #   tty: true
+  #   restart: unless-stopped
 
   postgres:
     image: postgres:15.4
@@ -37,8 +37,8 @@ services:
   gitaly:
     image: alpinelinux/gitaly:17.6.2
     container_name: gitaly
-    # environment:
-      # - GITALY_TESTING_NO_GIT_HOOKS=true
+    environment:
+      - GITALY_TESTING_NO_GIT_HOOKS=true
     volumes:
       - /var/lib/gitlab:/var/lib/gitlab
       - ./config.toml:/etc/gitlab-gitaly/config.toml

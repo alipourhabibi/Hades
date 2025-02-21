@@ -8,6 +8,7 @@ import (
 	"github.com/alipourhabibi/Hades/models"
 	pkgerr "github.com/alipourhabibi/Hades/pkg/errors"
 	"github.com/alipourhabibi/Hades/pkg/services/authorization"
+	"github.com/alipourhabibi/Hades/pkg/services/sdk"
 	dbcommit "github.com/alipourhabibi/Hades/storage/db/commit"
 	"github.com/alipourhabibi/Hades/storage/db/module"
 	"github.com/alipourhabibi/Hades/storage/gitaly/blob"
@@ -26,12 +27,14 @@ type Service struct {
 	dbmodule             *module.ModuleStorage
 	authorizationService *authorization.Service
 	blobStorage          *blob.BlobService
+	generator            *sdk.Generator
 
 	logger *log.LoggerWrapper
 }
 
-func NewService(l *log.LoggerWrapper, commitService *commit.CommitService, operationService *operation.OperationService, m *module.ModuleStorage, dbcommit *dbcommit.CommitStorage, b *blob.BlobService, authorizationService *authorization.Service) (*Service, error) {
+func NewService(l *log.LoggerWrapper, commitService *commit.CommitService, operationService *operation.OperationService, m *module.ModuleStorage, dbcommit *dbcommit.CommitStorage, b *blob.BlobService, authorizationService *authorization.Service, generator *sdk.Generator) (*Service, error) {
 	return &Service{
+		generator:            generator,
 		logger:               l,
 		commitService:        commitService,
 		operationService:     operationService,
@@ -164,6 +167,20 @@ func (s *Service) Upload(ctx context.Context, req *models.UploadRequest) ([]*mod
 		if err != nil {
 			return nil, err
 		}
+
+		// SDK
+		generateFiles := map[string]string{}
+		for _, v := range files {
+			if strings.HasSuffix(v.Path, ".proto") {
+				generateFiles[v.Path] = string(v.Content)
+			}
+		}
+		gens, err := s.generator.Generate(ctx, generateFiles)
+		if err != nil {
+			return nil, err
+		}
+		// TODO send this gens to gitaly
+		s.logger.Debug("Generated", "files", gens)
 
 		commitUUID := ""
 		if len(commitId) < 32 {

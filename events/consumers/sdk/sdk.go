@@ -97,7 +97,7 @@ func (s *SDKConsumer) worker() {
 				defer cancel()
 				err := handler(ctx, msg.Body)
 				if err != nil {
-					if err := msg.Nack(false, true); err != nil {
+					if err := msg.Nack(false, false); err != nil {
 						lg.Error("failed to nack message", slog.Any("error", err))
 						return
 					}
