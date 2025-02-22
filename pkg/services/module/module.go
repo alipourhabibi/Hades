@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/alipourhabibi/Hades/models"
@@ -117,6 +118,8 @@ func (s *Service) CreateByNameModule(ctx context.Context, in *models.Module) (*m
 	digestValue, err := shake256.DigestFiles(content.Files)
 
 	hash, err := s.gitalyOperationService.UserCommitFiles(ctx, module, content.Files, user, paths, digestValue.String())
+	// TODO HERE NOTE
+	fmt.Println("ALI", err, in.Name)
 	if err != nil {
 		return nil, err
 	}

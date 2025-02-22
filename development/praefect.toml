@@ -1,0 +1,15 @@
+listen_addr = "0.0.0.0:8075"
+
+[[virtual_storage]]
+name = "default"
+
+[[virtual_storage.node]]
+  storage = "default"
+  address = "tcp://gitaly:9999"
+
+[database]
+host = "postgres"
+port = 5432
+user = "hades"
+password = "hades"
+dbname = "hades"

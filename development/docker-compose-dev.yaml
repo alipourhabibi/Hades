@@ -1,14 +1,5 @@
 services:
 
-  # rabbitmq:
-  #   image: rabbitmq:management
-  #   container_name: rabbitmq
-  #   ports:
-  #     - "5672:5672"
-  #     - "15672:15672"
-  #   tty: true
-  #   restart: unless-stopped
-
   postgres:
     image: postgres:15.4
     container_name: postgres_db
@@ -36,7 +27,6 @@ services:
 
   gitaly:
     image: alpinelinux/gitaly:17.6.2
-    container_name: gitaly
     environment:
       - GITALY_TESTING_NO_GIT_HOOKS=true
     volumes:
@@ -44,9 +34,31 @@ services:
       - ./config.toml:/etc/gitlab-gitaly/config.toml
     entrypoint: ["gitaly"]
     command: ["serve", "/etc/gitlab-gitaly/config.toml"]
-    network_mode: host
     ports:
       - "9999:9999"
+
+  # gitaly2:
+  #   image: alpinelinux/gitaly:17.6.2
+  #   environment:
+  #     - GITALY_TESTING_NO_GIT_HOOKS=true
+  #   volumes:
+  #     - /var/lib/gitlab2:/var/lib/gitlab
+  #     - ./config.toml:/etc/gitlab-gitaly/config.toml
+  #   entrypoint: ["gitaly"]
+  #   command: ["serve", "/etc/gitlab-gitaly/config.toml"]
+  #   ports:
+  #     - "9998:9999"
+
+  praefect:
+    image: alpinelinux/gitaly:17.6.2
+    command: ["/bin/sh", "-c", "/usr/local/bin/praefect -config /etc/gitaly/praefect.toml sql-migrate && /usr/local/bin/praefect -config /etc/gitaly/praefect.toml"]
+    ports:
+      - "8075:8075"
+    volumes:
+      - ./praefect.toml:/etc/gitaly/praefect.toml
+    depends_on:
+      - postgres
+      - gitaly
 
 volumes:
   postgres_data:
