@@ -3,12 +3,14 @@ package operation
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/alipourhabibi/Hades/config"
 	"github.com/alipourhabibi/Hades/models"
@@ -32,7 +34,55 @@ func NewDefault(c config.Gitaly) (*OperationService, error) {
 	}, nil
 }
 
+type ServerInfo struct {
+	Address string `json:"address"`
+	Token   string `json:"token"`
+}
+
+// GitalyServers represents a map of storage names to Gitaly server info.
+type GitalyServers map[string]ServerInfo
+
+// InjectGitalyServers injects gitaly-servers metadata into an outgoing context.
+func InjectGitalyServers(ctx context.Context, name, address, token string) (context.Context, error) {
+	gitalyServers := GitalyServers{
+		name: {
+			Address: address,
+			Token:   token,
+		},
+	}
+
+	gitalyServersJSON, err := json.Marshal(gitalyServers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal Gitaly servers: %w", err)
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(gitalyServersJSON)
+
+	return metadata.AppendToOutgoingContext(ctx, "gitaly-servers", encoded), nil
+}
+
 func (o *OperationService) UserCommitFiles(ctx context.Context, module *models.Module, files []*models.File, user *models.User, paths []string, digestValue string) (string, error) {
+	var err error
+	ctx, err = InjectGitalyServers(ctx, "default", "tcp://praefect:8075", "token")
+	if err != nil {
+		fmt.Println("Error injecting Gitaly servers:", err)
+		return "", err
+	}
+	// s1 := map[string]ServerInfo{
+	// 	"gitaly1": {
+	// 		Address: "tcp://gitaly1:9999",
+	// 		Token:   "",
+	// 	},
+	// }
+	// bs1, _ := json.Marshal(s1)
+	// fmt.Println(string(bs1))
+	// b64 := base64.StdEncoding.EncodeToString([]byte(bs1))
+	//
+	// ctx = metadata.NewOutgoingContext(ctx, map[string][]string{
+	// 	"gitaly-servers": {
+	// 		b64,
+	// 	},
+	// })
 	stream, err := o.client.UserCommitFiles(ctx)
 	if err != nil {
 		return "", err
@@ -56,11 +106,13 @@ func (o *OperationService) UserCommitFiles(ctx context.Context, module *models.M
 	err = stream.Send(&pb.UserCommitFilesRequest{
 		UserCommitFilesRequestPayload: &pb.UserCommitFilesRequest_Header{
 			Header: &pb.UserCommitFilesRequestHeader{
-				Repository:    repo,
-				User:          userPb,
-				CommitMessage: []byte(commitMessage),
-				BranchName:    []byte(module.DefaultBranch),
-				Force:         true,
+				CommitAuthorName:  []byte("TODO TODO TODO"),
+				CommitAuthorEmail: []byte("TODO@TODO.TODO"),
+				Repository:        repo,
+				User:              userPb,
+				CommitMessage:     []byte(commitMessage),
+				BranchName:        []byte(module.DefaultBranch),
+				Force:             true,
 
 				StartRepository: repo,
 			},
@@ -110,6 +162,7 @@ func (o *OperationService) UserCommitFiles(ctx context.Context, module *models.M
 	}
 
 	r, err := stream.CloseAndRecv()
+	fmt.Println("><", err)
 	if err != nil {
 		return "", err
 	}

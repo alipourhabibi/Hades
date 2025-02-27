@@ -196,8 +196,7 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 	if err != nil {
 		return nil, err
 	}
-
-	uploadService, err := uploadsservice.NewService(s.logger, s.gitaly.CommitService, s.gitaly.OperattionService, s.db.ModuleStorage, s.db.CommitStorage, s.gitaly.BlobService, authorizationService, generatorService)
+	uploadService, err := uploadsservice.NewService(s.logger, s.gitaly.CommitService, s.gitaly.OperattionService, s.db.ModuleStorage, s.db.CommitStorage, s.gitaly.BlobService, generatorService)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +216,7 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 	moduleServer := module.NewServer(s.logger, moduleService)
 	bufModuleServer := bufmodules.NewServer(s.logger, bufmoduleService)
 	bufCommitServer := bufcommits.NewServer(s.logger, bufcommitService)
-	uploadServer := upload.NewServer(s.logger, uploadService)
+	uploadServer := upload.NewServer(s.logger, uploadService, authorizationService)
 	bufGraphServer := bufgraph.NewServer(s.logger, graphService)
 	bufDownloadServer := bufdownload.NewServer(s.logger, downloadService)
 	internalServer := hook.NewServer(s.logger)

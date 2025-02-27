@@ -17,6 +17,21 @@ type Generator struct {
 
 func (g *Generator) Generate(ctx context.Context, protoFiles map[string]string) (map[string]string, error) {
 
+	// // SDK
+	// generateFiles := map[string]string{}
+	// for _, v := range files {
+	// 	if strings.HasSuffix(v.Path, ".proto") {
+	// 		generateFiles[v.Path] = string(v.Content)
+	// 	}
+	// }
+	// gens, err := s.generator.Generate(ctx, generateFiles)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// // TODO send this gens to gitaly
+	// _ = gens
+	// //s.logger.Debug("Generated", "files", gens)
+
 	resolver := &protocompile.SourceResolver{
 		Accessor: protocompile.SourceAccessorFromMap(protoFiles),
 	}

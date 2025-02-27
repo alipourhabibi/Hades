@@ -4,8 +4,11 @@ listen_addr = "0.0.0.0:8075"
 name = "default"
 
 [[virtual_storage.node]]
-  storage = "default"
-  address = "tcp://gitaly:9999"
+  storage = "gitaly1"
+  address = "tcp://gitaly1:9999"
+[[virtual_storage.node]]
+  storage = "gitaly2"
+  address = "tcp://gitaly2:9999"
 
 [database]
 host = "postgres"

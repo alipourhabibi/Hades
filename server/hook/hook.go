@@ -2,6 +2,8 @@ package hook
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/alipourhabibi/Hades/utils/log"
@@ -79,9 +81,18 @@ func (s *Server) allowed(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-func (s *Server) pre(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) pre(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close() // Always close the body
+
+	fmt.Println("Received Body:", string(body)) // Print or process the data
+	fmt.Println(r.Header)
 	w.Header().Set("Content-Type", "application/json")
-	_, err := w.Write([]byte(`{"reference_counter_increased": true}`))
+	_, err = w.Write([]byte(`{"reference_counter_increased": true}`))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		s.logger.Error("PreReceive", "error", err)
@@ -89,7 +100,16 @@ func (s *Server) pre(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-func (s *Server) post(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) post(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close() // Always close the body
+
+	fmt.Println("Received Body:", string(body)) // Print or process the data
+	fmt.Println(r.Header)
 	response := postReceiveResponse{
 		ReferenceCounterDecreased: true,
 		Messages: []PostReceiveMessage{

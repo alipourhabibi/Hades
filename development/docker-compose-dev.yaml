@@ -25,40 +25,47 @@ services:
     depends_on:
       - postgres
 
-  gitaly:
+  gitaly1:
     image: alpinelinux/gitaly:17.6.2
     environment:
       - GITALY_TESTING_NO_GIT_HOOKS=true
     volumes:
-      - /var/lib/gitlab:/var/lib/gitlab
-      - ./config.toml:/etc/gitlab-gitaly/config.toml
+      - /var/lib/gitlab1:/var/lib/gitlab
+      - ./config1.toml:/etc/gitlab-gitaly/config.toml
     entrypoint: ["gitaly"]
+    extra_hosts:
+      - "example.com:192.168.102.130"
     command: ["serve", "/etc/gitlab-gitaly/config.toml"]
     ports:
       - "9999:9999"
 
-  # gitaly2:
-  #   image: alpinelinux/gitaly:17.6.2
-  #   environment:
-  #     - GITALY_TESTING_NO_GIT_HOOKS=true
-  #   volumes:
-  #     - /var/lib/gitlab2:/var/lib/gitlab
-  #     - ./config.toml:/etc/gitlab-gitaly/config.toml
-  #   entrypoint: ["gitaly"]
-  #   command: ["serve", "/etc/gitlab-gitaly/config.toml"]
-  #   ports:
-  #     - "9998:9999"
+  gitaly2:
+    extra_hosts:
+      - "example.com:192.168.102.130"
+    image: alpinelinux/gitaly:17.6.2
+    environment:
+      - GITALY_TESTING_NO_GIT_HOOKS=true
+    volumes:
+      - /var/lib/gitlab2:/var/lib/gitlab
+      - ./config2.toml:/etc/gitlab-gitaly/config.toml
+    entrypoint: ["gitaly"]
+    command: ["serve", "/etc/gitlab-gitaly/config.toml"]
+    ports:
+      - "9998:9999"
 
   praefect:
     image: alpinelinux/gitaly:17.6.2
     command: ["/bin/sh", "-c", "/usr/local/bin/praefect -config /etc/gitaly/praefect.toml sql-migrate && /usr/local/bin/praefect -config /etc/gitaly/praefect.toml"]
+    extra_hosts:
+      - "example.com:192.168.102.130"
     ports:
       - "8075:8075"
     volumes:
       - ./praefect.toml:/etc/gitaly/praefect.toml
     depends_on:
       - postgres
-      - gitaly
+      - gitaly1
+      - gitaly2
 
 volumes:
   postgres_data:
