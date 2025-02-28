@@ -39,7 +39,7 @@ func (s *Service) Upload(ctx context.Context, req *models.UploadRequest) ([]*mod
 			return nil, pkgerr.New("Permission Denied getting module "+moduleFullName, pkgerr.PermissionDenied)
 		}
 
-		module, err := s.dbmodule.GetModulesByRefs(ctx, content.ModuleRef)
+		module, err := s.moduleDBStorage.GetModulesByRefs(ctx, content.ModuleRef)
 		if err != nil {
 			return nil, err
 		}
@@ -50,7 +50,7 @@ func (s *Service) Upload(ctx context.Context, req *models.UploadRequest) ([]*mod
 
 		// get the last commit for this module
 		var emptyCommit bool
-		moduleCommit, err := s.dbcommitService.GetCommitByOwnerModule(ctx, []*models.ModuleRef{content.ModuleRef})
+		moduleCommit, err := s.commitDBStorage.GetCommitByOwnerModule(ctx, []*models.ModuleRef{content.ModuleRef})
 		if err != nil {
 			pkgErr := pkgerr.FromGorm(err).(pkgerr.PkgError)
 			if pkgErr.Code != pkgerr.NotFound {
@@ -107,7 +107,7 @@ func (s *Service) Upload(ctx context.Context, req *models.UploadRequest) ([]*mod
 		}
 
 		dig, _ := strings.CutPrefix(digest.String(), "shake256:")
-		commit, err := s.dbcommitService.GetCommitByQuery(ctx, map[string]any{
+		commit, err := s.commitDBStorage.GetCommitByQuery(ctx, map[string]any{
 			"digest_value": dig,
 		})
 		if err != nil {
@@ -129,7 +129,7 @@ func (s *Service) Upload(ctx context.Context, req *models.UploadRequest) ([]*mod
 		}
 
 		files = paths.GetPath(files)
-		commitId, err := s.operationService.UserCommitFiles(ctx, module[0], files, user, listFiles, dig)
+		commitId, err := s.gitalyOperationService.UserCommitFiles(ctx, module[0], files, user, listFiles, dig)
 		if err != nil {
 			return nil, err
 		}
@@ -159,7 +159,7 @@ func (s *Service) Upload(ctx context.Context, req *models.UploadRequest) ([]*mod
 			ModuleID:        module[0].ID,
 			CreatedByUserID: user.ID,
 		}
-		err = s.dbcommitService.Create(ctx, commit)
+		err = s.commitDBStorage.Create(ctx, commit)
 		if err != nil {
 			return nil, pkgerr.FromGorm(err)
 		}

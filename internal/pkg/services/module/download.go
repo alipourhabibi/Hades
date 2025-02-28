@@ -14,7 +14,7 @@ func (s *Service) Downalod(ctx context.Context, refs []*models.ModuleRef) ([]*mo
 		return nil, pkgerr.New("Internal", pkgerr.Internal)
 	}
 
-	modules, err := s.moduleStorage.GetModulesByRefs(ctx, refs...)
+	modules, err := s.moduleDBStorage.GetModulesByRefs(ctx, refs...)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func (s *Service) Downalod(ctx context.Context, refs []*models.ModuleRef) ([]*mo
 		}
 	}
 
-	commits, err := s.commitStorage.GetCommitByOwnerModule(ctx, refs)
+	commits, err := s.commitDBStorage.GetCommitByOwnerModule(ctx, refs)
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,7 @@ func (s *Service) GetGraph(ctx context.Context, req []*models.ModuleRef) ([]*mod
 		return nil, pkgerr.New("Internal", pkgerr.Internal)
 	}
 
-	modules, err := s.moduleStorage.GetModulesByRefs(ctx, req...)
+	modules, err := s.moduleDBStorage.GetModulesByRefs(ctx, req...)
 	if err != nil {
 		return nil, err
 	}
@@ -41,5 +41,5 @@ func (s *Service) GetGraph(ctx context.Context, req []*models.ModuleRef) ([]*mod
 	}
 
 	// TODO this should be changed and get the graph
-	return s.commitStorage.GetCommitByOwnerModule(ctx, req)
+	return s.commitDBStorage.GetCommitByOwnerModule(ctx, req)
 }

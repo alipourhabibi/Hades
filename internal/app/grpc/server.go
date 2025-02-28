@@ -7,7 +7,6 @@ import (
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
-	gormadapter "github.com/casbin/gorm-adapter/v3"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
@@ -147,11 +146,7 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 
 	serverSet := &SchemaRegistryServerSet{}
 
-	casbinAdapter, err := gormadapter.NewAdapterByDB(s.db.CasbinStorage.GetDB())
-	if err != nil {
-		return nil, err
-	}
-	casbinEnforcer, err := casbin.NewEnforcer("config/rbac_model.conf", casbinAdapter)
+	casbinEnforcer, err := casbin.NewEnforcer("config/rbac_model.conf", s.db.CasbinStorage)
 	if err != nil {
 		return nil, err
 	}
@@ -177,6 +172,7 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 		s.gitaly.RepositoryService,
 		s.gitaly.OperattionService,
 		authorizationService,
+		s.gitaly.BlobService,
 	)
 	if err != nil {
 		return nil, err

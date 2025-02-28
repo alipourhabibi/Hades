@@ -1,16 +1,18 @@
 package db
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/alipourhabibi/Hades/config"
-	"github.com/alipourhabibi/Hades/models"
 	"github.com/alipourhabibi/Hades/internal/storage/db/casbin"
 	"github.com/alipourhabibi/Hades/internal/storage/db/commit"
 	"github.com/alipourhabibi/Hades/internal/storage/db/module"
 	"github.com/alipourhabibi/Hades/internal/storage/db/session"
 	"github.com/alipourhabibi/Hades/internal/storage/db/user"
+	"github.com/alipourhabibi/Hades/models"
 	"github.com/alipourhabibi/Hades/utils/log"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -27,6 +29,7 @@ type DBs struct {
 
 // New creates an instance of DBs
 func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
+	ctx := context.Background()
 
 	// Create the connection string based on the config values
 	sslMode := "disable"
@@ -47,11 +50,23 @@ func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
 		gormDB = gormDB.Debug()
 	}
 
+	// Create a new connection pool with pgx
+	config, err := pgxpool.ParseConfig(connStr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Establish a connection to the database using the pool
+	pgxDB, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+
 	userStorage := user.New(gormDB)
 	sessionStorage := session.New(gormDB)
-	casbinStorage := casbin.New(gormDB)
+	casbinStorage := casbin.New(pgxDB)
 	moduleStorage := module.New(gormDB)
-	commitStorage := commit.New(gormDB)
+	commitStorage := commit.New(pgxDB)
 
 	return &DBs{
 		gormDB:         gormDB,

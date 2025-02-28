@@ -7,8 +7,6 @@ import (
 	pkgerr "github.com/alipourhabibi/Hades/internal/pkg/errors"
 	"github.com/alipourhabibi/Hades/internal/pkg/services/authorization"
 	commitdb "github.com/alipourhabibi/Hades/internal/storage/db/commit"
-	dbcommit "github.com/alipourhabibi/Hades/internal/storage/db/commit"
-	"github.com/alipourhabibi/Hades/internal/storage/db/module"
 	moduledb "github.com/alipourhabibi/Hades/internal/storage/db/module"
 	"github.com/alipourhabibi/Hades/internal/storage/gitaly/blob"
 	"github.com/alipourhabibi/Hades/internal/storage/gitaly/operation"
@@ -19,24 +17,29 @@ import (
 )
 
 type Service struct {
-	moduleStorage           *moduledb.ModuleStorage
-	commitStorage           *commitdb.CommitStorage
+	moduleDBStorage         *moduledb.ModuleStorage
+	commitDBStorage         *commitdb.CommitStorage
 	gitalyRepositoryService *repository.RepositoryService
 	gitalyOperationService  *operation.OperationService
 	authorizationService    *authorization.Service
-	dbmodule                *module.ModuleStorage
-	dbcommitService         *dbcommit.CommitStorage
 	blobStorage             *blob.BlobService
-	operationService        *operation.OperationService
 }
 
-func New(r *moduledb.ModuleStorage, c *commitdb.CommitStorage, gitalyRepositoryService *repository.RepositoryService, o *operation.OperationService, authorizationService *authorization.Service) (*Service, error) {
+func New(
+	moduleDBStorage *moduledb.ModuleStorage,
+	commitDBStorage *commitdb.CommitStorage,
+	gitalyRepositoryService *repository.RepositoryService,
+	gitalyOperationService *operation.OperationService,
+	authorizationService *authorization.Service,
+	blobStorage *blob.BlobService,
+) (*Service, error) {
 	return &Service{
-		moduleStorage:           r,
-		authorizationService:    authorizationService,
-		commitStorage:           c,
+		moduleDBStorage:         moduleDBStorage,
+		commitDBStorage:         commitDBStorage,
 		gitalyRepositoryService: gitalyRepositoryService,
-		gitalyOperationService:  o,
+		gitalyOperationService:  gitalyOperationService,
+		blobStorage:             blobStorage,
+		authorizationService:    authorizationService,
 	}, nil
 }
 
@@ -67,7 +70,7 @@ func (s *Service) CreateByNameModule(ctx context.Context, in *models.Module) (*m
 
 	in.OwnerID = user.ID
 	in.Name = moduleFullName
-	module, err := s.moduleStorage.Create(ctx, in)
+	module, err := s.moduleDBStorage.Create(ctx, in)
 	if err != nil {
 		return nil, pkgerr.FromGorm(err)
 	}
@@ -136,7 +139,7 @@ func (s *Service) CreateByNameModule(ctx context.Context, in *models.Module) (*m
 		DigestType:      models.DigestType_B5,
 		CreatedByUserID: user.ID,
 	}
-	err = s.commitStorage.Create(ctx, commit)
+	err = s.commitDBStorage.Create(ctx, commit)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +154,7 @@ func (s *Service) GetModules(ctx context.Context, in []*models.ModuleRef) ([]*mo
 		return nil, pkgerr.New("Internal", pkgerr.Internal)
 	}
 
-	modules, err := s.moduleStorage.GetModulesByRefs(ctx, in...)
+	modules, err := s.moduleDBStorage.GetModulesByRefs(ctx, in...)
 	if err != nil {
 		return nil, err
 	}
