@@ -6,20 +6,20 @@ import (
 	modulev1connect "buf.build/gen/go/bufbuild/registry/connectrpc/go/buf/registry/module/v1/modulev1connect"
 	modulev1 "buf.build/gen/go/bufbuild/registry/protocolbuffers/go/buf/registry/module/v1"
 	"connectrpc.com/connect"
+	"github.com/alipourhabibi/Hades/internal/pkg/services/module"
 	"github.com/alipourhabibi/Hades/models"
-	"github.com/alipourhabibi/Hades/internal/pkg/services/upload"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
 type Server struct {
 	modulev1connect.UploadServiceHandler
 
-	service *upload.Service
+	service *module.Service
 
 	logger *log.LoggerWrapper
 }
 
-func NewServer(l *log.LoggerWrapper, service *upload.Service) *Server {
+func NewServer(l *log.LoggerWrapper, service *module.Service) *Server {
 	return &Server{
 		logger:  l,
 		service: service,

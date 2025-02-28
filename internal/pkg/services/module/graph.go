@@ -1,32 +1,11 @@
-package bufgraph
+package module
 
 import (
 	"context"
 
-	"github.com/alipourhabibi/Hades/models"
-	"github.com/alipourhabibi/Hades/internal/pkg/services/authorization"
-	"github.com/alipourhabibi/Hades/utils/log"
-
 	pkgerr "github.com/alipourhabibi/Hades/internal/pkg/errors"
-	dbcommit "github.com/alipourhabibi/Hades/internal/storage/db/commit"
-	dbmodule "github.com/alipourhabibi/Hades/internal/storage/db/module"
+	"github.com/alipourhabibi/Hades/models"
 )
-
-type Service struct {
-	log                  *log.LoggerWrapper
-	commitStorage        *dbcommit.CommitStorage
-	moduleStorage        *dbmodule.ModuleStorage
-	authorizationService *authorization.Service
-}
-
-func New(l *log.LoggerWrapper, c *dbcommit.CommitStorage, m *dbmodule.ModuleStorage, authorizationService *authorization.Service) (*Service, error) {
-	return &Service{
-		log:                  l,
-		commitStorage:        c,
-		moduleStorage:        m,
-		authorizationService: authorizationService,
-	}, nil
-}
 
 func (s *Service) GetGraph(ctx context.Context, req []*models.ModuleRef) ([]*models.Commit, error) {
 

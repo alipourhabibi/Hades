@@ -4,13 +4,16 @@ import (
 	"context"
 	"strings"
 
-	"github.com/alipourhabibi/Hades/models"
 	pkgerr "github.com/alipourhabibi/Hades/internal/pkg/errors"
 	"github.com/alipourhabibi/Hades/internal/pkg/services/authorization"
 	commitdb "github.com/alipourhabibi/Hades/internal/storage/db/commit"
+	dbcommit "github.com/alipourhabibi/Hades/internal/storage/db/commit"
+	"github.com/alipourhabibi/Hades/internal/storage/db/module"
 	moduledb "github.com/alipourhabibi/Hades/internal/storage/db/module"
+	"github.com/alipourhabibi/Hades/internal/storage/gitaly/blob"
 	"github.com/alipourhabibi/Hades/internal/storage/gitaly/operation"
 	"github.com/alipourhabibi/Hades/internal/storage/gitaly/repository"
+	"github.com/alipourhabibi/Hades/models"
 	"github.com/alipourhabibi/Hades/utils/shake256"
 	"github.com/google/uuid"
 )
@@ -21,6 +24,10 @@ type Service struct {
 	gitalyRepositoryService *repository.RepositoryService
 	gitalyOperationService  *operation.OperationService
 	authorizationService    *authorization.Service
+	dbmodule                *module.ModuleStorage
+	dbcommitService         *dbcommit.CommitStorage
+	blobStorage             *blob.BlobService
+	operationService        *operation.OperationService
 }
 
 func New(r *moduledb.ModuleStorage, c *commitdb.CommitStorage, gitalyRepositoryService *repository.RepositoryService, o *operation.OperationService, authorizationService *authorization.Service) (*Service, error) {
@@ -135,4 +142,40 @@ func (s *Service) CreateByNameModule(ctx context.Context, in *models.Module) (*m
 	}
 
 	return in, err
+}
+
+func (s *Service) GetModules(ctx context.Context, in []*models.ModuleRef) ([]*models.Module, error) {
+
+	user, ok := ctx.Value("user").(*models.User)
+	if !ok {
+		return nil, pkgerr.New("Internal", pkgerr.Internal)
+	}
+
+	modules, err := s.moduleStorage.GetModulesByRefs(ctx, in...)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, module := range modules {
+		// TODO check the state of the module
+		if module.Visibility != models.ModuleVisibility_MODULE_VISIBILITY_PRIVATE {
+			continue
+		}
+		moduleFullName := module.Name
+		pol := &models.Policy{
+			Subject: user.Username,
+			Object:  string(models.REPOSITORY),
+			Action:  string(models.READ),
+			Domain:  moduleFullName,
+		}
+		can, err := s.authorizationService.Can(ctx, pol)
+		if err != nil {
+			return nil, pkgerr.FromCasbin(err)
+		}
+		if !can.Allowed {
+			return nil, pkgerr.New("Permission Denied getting module "+moduleFullName, pkgerr.PermissionDenied)
+		}
+	}
+
+	return modules, nil
 }

@@ -1,37 +1,40 @@
-package bufmodules
+package commits
 
 import (
 	"context"
 
-	"github.com/alipourhabibi/Hades/models"
 	pkgerr "github.com/alipourhabibi/Hades/internal/pkg/errors"
 	"github.com/alipourhabibi/Hades/internal/pkg/services/authorization"
 	dbcommit "github.com/alipourhabibi/Hades/internal/storage/db/commit"
-	moduledb "github.com/alipourhabibi/Hades/internal/storage/db/module"
+	dbmodule "github.com/alipourhabibi/Hades/internal/storage/db/module"
+	"github.com/alipourhabibi/Hades/models"
+	"github.com/alipourhabibi/Hades/utils/log"
 )
 
 type Service struct {
-	moduleStorage        *moduledb.ModuleStorage
+	log                  *log.LoggerWrapper
 	commitStorage        *dbcommit.CommitStorage
-	authorizationService authorization.Service
+	moduleStorage        *dbmodule.ModuleStorage
+	authorizationService *authorization.Service
 }
 
-func New(r *moduledb.ModuleStorage, c *dbcommit.CommitStorage, authorizationService *authorization.Service) (*Service, error) {
+func New(l *log.LoggerWrapper, c *dbcommit.CommitStorage, m *dbmodule.ModuleStorage, authorizationService *authorization.Service) (*Service, error) {
 	return &Service{
-		moduleStorage:        r,
-		authorizationService: *authorizationService,
+		log:                  l,
 		commitStorage:        c,
+		authorizationService: authorizationService,
+		moduleStorage:        m,
 	}, nil
 }
 
-func (s *Service) GetModules(ctx context.Context, in []*models.ModuleRef) ([]*models.Module, error) {
+func (s *Service) GetLastCommitForRefs(ctx context.Context, req []*models.ModuleRef) ([]*models.Commit, error) {
 
 	user, ok := ctx.Value("user").(*models.User)
 	if !ok {
 		return nil, pkgerr.New("Internal", pkgerr.Internal)
 	}
 
-	modules, err := s.moduleStorage.GetModulesByRefs(ctx, in...)
+	modules, err := s.moduleStorage.GetModulesByRefs(ctx, req...)
 	if err != nil {
 		return nil, err
 	}
@@ -57,5 +60,5 @@ func (s *Service) GetModules(ctx context.Context, in []*models.ModuleRef) ([]*mo
 		}
 	}
 
-	return modules, nil
+	return s.commitStorage.GetCommitByOwnerModule(ctx, req)
 }

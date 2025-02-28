@@ -1,35 +1,11 @@
-package bufdownload
+package module
 
 import (
 	"context"
 
-	"github.com/alipourhabibi/Hades/models"
 	pkgerr "github.com/alipourhabibi/Hades/internal/pkg/errors"
-	"github.com/alipourhabibi/Hades/internal/pkg/services/authorization"
-	dbcommit "github.com/alipourhabibi/Hades/internal/storage/db/commit"
-	moduledb "github.com/alipourhabibi/Hades/internal/storage/db/module"
-	"github.com/alipourhabibi/Hades/internal/storage/gitaly/blob"
-	"github.com/alipourhabibi/Hades/utils/log"
+	"github.com/alipourhabibi/Hades/models"
 )
-
-type Service struct {
-	log *log.LoggerWrapper
-
-	commitStorage        *dbcommit.CommitStorage
-	moduleStorage        *moduledb.ModuleStorage
-	blobStorage          *blob.BlobService
-	authorizationService *authorization.Service
-}
-
-func New(l *log.LoggerWrapper, m *moduledb.ModuleStorage, c *dbcommit.CommitStorage, b *blob.BlobService, authorizationService *authorization.Service) (*Service, error) {
-	return &Service{
-		log:                  l,
-		authorizationService: authorizationService,
-		commitStorage:        c,
-		blobStorage:          b,
-		moduleStorage:        m,
-	}, nil
-}
 
 func (s *Service) Downalod(ctx context.Context, refs []*models.ModuleRef) ([]*models.DownloadResponseContent, error) {
 

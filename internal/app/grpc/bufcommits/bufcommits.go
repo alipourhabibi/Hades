@@ -7,19 +7,19 @@ import (
 	"buf.build/gen/go/bufbuild/registry/connectrpc/go/buf/registry/module/v1/modulev1connect"
 	modulev1 "buf.build/gen/go/bufbuild/registry/protocolbuffers/go/buf/registry/module/v1"
 	"connectrpc.com/connect"
+	commits "github.com/alipourhabibi/Hades/internal/pkg/services/commits"
 	"github.com/alipourhabibi/Hades/models"
-	"github.com/alipourhabibi/Hades/internal/pkg/services/bufcommits"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
 type Server struct {
 	modulev1connect.CommitServiceHandler
 
-	service *bufcommits.Service
+	service *commits.Service
 	logger  *log.LoggerWrapper
 }
 
-func NewServer(l *log.LoggerWrapper, service *bufcommits.Service) *Server {
+func NewServer(l *log.LoggerWrapper, service *commits.Service) *Server {
 	return &Server{
 		logger:  l,
 		service: service,
