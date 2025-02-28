@@ -16,14 +16,6 @@ import (
 	"github.com/alipourhabibi/Hades/api/gen/api/authorization/v1/authorizationv1connect"
 	"github.com/alipourhabibi/Hades/api/gen/api/registry/v1/registryv1connect"
 	"github.com/alipourhabibi/Hades/config"
-	authenticationservice "github.com/alipourhabibi/Hades/internal/pkg/services/authentication"
-	authorizationservice "github.com/alipourhabibi/Hades/internal/pkg/services/authorization"
-	bufcommitsservice "github.com/alipourhabibi/Hades/internal/pkg/services/bufcommits"
-	bufdownloadservice "github.com/alipourhabibi/Hades/internal/pkg/services/bufdownload"
-	bufgraphservice "github.com/alipourhabibi/Hades/internal/pkg/services/bufgraph"
-	bufmodulesservice "github.com/alipourhabibi/Hades/internal/pkg/services/bufmodules"
-	moduleservice "github.com/alipourhabibi/Hades/internal/pkg/services/module"
-	uploadsservice "github.com/alipourhabibi/Hades/internal/pkg/services/upload"
 	"github.com/alipourhabibi/Hades/internal/app/grpc/authentication"
 	"github.com/alipourhabibi/Hades/internal/app/grpc/authorization"
 	bufcommits "github.com/alipourhabibi/Hades/internal/app/grpc/bufcommits"
@@ -32,6 +24,10 @@ import (
 	bufmodules "github.com/alipourhabibi/Hades/internal/app/grpc/bufmodules"
 	"github.com/alipourhabibi/Hades/internal/app/grpc/module"
 	"github.com/alipourhabibi/Hades/internal/app/grpc/upload"
+	authenticationservice "github.com/alipourhabibi/Hades/internal/pkg/services/authentication"
+	authorizationservice "github.com/alipourhabibi/Hades/internal/pkg/services/authorization"
+	bufcommitsservice "github.com/alipourhabibi/Hades/internal/pkg/services/commits"
+	moduleservice "github.com/alipourhabibi/Hades/internal/pkg/services/module"
 	"github.com/alipourhabibi/Hades/internal/storage/db"
 	"github.com/alipourhabibi/Hades/internal/storage/gitaly"
 	errorsutils "github.com/alipourhabibi/Hades/utils/errors"
@@ -186,27 +182,7 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 		return nil, err
 	}
 
-	bufmoduleService, err := bufmodulesservice.New(s.db.ModuleStorage, s.db.CommitStorage, authorizationService)
-	if err != nil {
-		return nil, err
-	}
-
 	bufcommitService, err := bufcommitsservice.New(s.logger, s.db.CommitStorage, s.db.ModuleStorage, authorizationService)
-	if err != nil {
-		return nil, err
-	}
-
-	uploadService, err := uploadsservice.NewService(s.logger, s.gitaly.CommitService, s.gitaly.OperattionService, s.db.ModuleStorage, s.db.CommitStorage, s.gitaly.BlobService, authorizationService)
-	if err != nil {
-		return nil, err
-	}
-
-	graphService, err := bufgraphservice.New(s.logger, s.db.CommitStorage, s.db.ModuleStorage, authorizationService)
-	if err != nil {
-		return nil, err
-	}
-
-	downloadService, err := bufdownloadservice.New(s.logger, s.db.ModuleStorage, s.db.CommitStorage, s.gitaly.BlobService, authorizationService)
 	if err != nil {
 		return nil, err
 	}
@@ -214,11 +190,11 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 	authenticationServer := authentication.NewServer(s.logger, authenticationService)
 	authorizationServer := authorization.NewServer(s.logger, authorizationService)
 	moduleServer := module.NewServer(s.logger, moduleService)
-	bufModuleServer := bufmodules.NewServer(s.logger, bufmoduleService)
+	bufModuleServer := bufmodules.NewServer(s.logger, moduleService)
 	bufCommitServer := bufcommits.NewServer(s.logger, bufcommitService)
-	uploadServer := upload.NewServer(s.logger, uploadService)
-	bufGraphServer := bufgraph.NewServer(s.logger, graphService)
-	bufDownloadServer := bufdownload.NewServer(s.logger, downloadService)
+	uploadServer := upload.NewServer(s.logger, moduleService)
+	bufGraphServer := bufgraph.NewServer(s.logger, moduleService)
+	bufDownloadServer := bufdownload.NewServer(s.logger, moduleService)
 
 	serverSet.AuthenticationServer = authenticationServer
 	serverSet.AuthorizationServer = authorizationServer

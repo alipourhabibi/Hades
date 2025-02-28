@@ -1,48 +1,17 @@
-package upload
+package module
 
 import (
 	"context"
 	"encoding/hex"
 	"strings"
 
-	"github.com/alipourhabibi/Hades/models"
 	pkgerr "github.com/alipourhabibi/Hades/internal/pkg/errors"
-	"github.com/alipourhabibi/Hades/internal/pkg/services/authorization"
-	dbcommit "github.com/alipourhabibi/Hades/internal/storage/db/commit"
-	"github.com/alipourhabibi/Hades/internal/storage/db/module"
-	"github.com/alipourhabibi/Hades/internal/storage/gitaly/blob"
-	"github.com/alipourhabibi/Hades/internal/storage/gitaly/commit"
-	"github.com/alipourhabibi/Hades/internal/storage/gitaly/operation"
-	"github.com/alipourhabibi/Hades/utils/log"
+	"github.com/alipourhabibi/Hades/models"
 	"github.com/alipourhabibi/Hades/utils/paths"
 	"github.com/alipourhabibi/Hades/utils/shake256"
 	"github.com/google/uuid"
 )
 
-type Service struct {
-	commitService        *commit.CommitService
-	dbcommitService      *dbcommit.CommitStorage
-	operationService     *operation.OperationService
-	dbmodule             *module.ModuleStorage
-	authorizationService *authorization.Service
-	blobStorage          *blob.BlobService
-
-	logger *log.LoggerWrapper
-}
-
-func NewService(l *log.LoggerWrapper, commitService *commit.CommitService, operationService *operation.OperationService, m *module.ModuleStorage, dbcommit *dbcommit.CommitStorage, b *blob.BlobService, authorizationService *authorization.Service) (*Service, error) {
-	return &Service{
-		logger:               l,
-		commitService:        commitService,
-		operationService:     operationService,
-		dbmodule:             m,
-		dbcommitService:      dbcommit,
-		authorizationService: authorizationService,
-		blobStorage:          b,
-	}, nil
-}
-
-// TODO refactor it
 func (s *Service) Upload(ctx context.Context, req *models.UploadRequest) ([]*models.Commit, error) {
 	// TODO check req.DepCommitIds
 
