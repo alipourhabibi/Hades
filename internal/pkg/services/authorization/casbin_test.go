@@ -8,7 +8,8 @@ import (
 )
 
 func TestMain(t *testing.T) {
-	c, err := casbin.NewEnforcer("../../../config/rbac_model.conf", "../../../config/rbac_model_policy_test.csv")
+	// TODO fix the paths
+	c, err := casbin.NewEnforcer("../../../../config/rbac_model.conf", "../../../../config/rbac_model_policy_test.csv")
 	if err != nil {
 		t.Fatal(err)
 	}
