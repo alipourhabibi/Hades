@@ -5,6 +5,7 @@ import (
 )
 
 func main() {
+
 	cmd, err := newRootCmd(os.Args[1:])
 	if err != nil {
 		os.Exit(1)

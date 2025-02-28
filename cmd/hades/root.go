@@ -15,7 +15,6 @@ func newRootCmd(_ []string) (*cobra.Command, error) {
 
 	cmd.AddCommand(
 		newServeCmd(),
-		newMigrateCmd(),
 	)
 
 	return cmd, nil

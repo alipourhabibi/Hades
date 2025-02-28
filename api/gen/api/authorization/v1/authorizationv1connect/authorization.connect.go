@@ -38,12 +38,6 @@ const (
 	AuthorizationUserBySessionProcedure = "/hades.api.authorization.v1.Authorization/UserBySession"
 )
 
-// These variables are the protoreflect.Descriptor objects for the RPCs defined in this package.
-var (
-	authorizationServiceDescriptor             = v1.File_api_authorization_v1_authorization_proto.Services().ByName("Authorization")
-	authorizationUserBySessionMethodDescriptor = authorizationServiceDescriptor.Methods().ByName("UserBySession")
-)
-
 // AuthorizationClient is a client for the hades.api.authorization.v1.Authorization service.
 type AuthorizationClient interface {
 	UserBySession(context.Context, *connect.Request[v1.UserBySessionRequest]) (*connect.Response[v1.UserBySessionResponse], error)
@@ -58,11 +52,12 @@ type AuthorizationClient interface {
 // http://api.acme.com or https://acme.com/grpc).
 func NewAuthorizationClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) AuthorizationClient {
 	baseURL = strings.TrimRight(baseURL, "/")
+	authorizationMethods := v1.File_api_authorization_v1_authorization_proto.Services().ByName("Authorization").Methods()
 	return &authorizationClient{
 		userBySession: connect.NewClient[v1.UserBySessionRequest, v1.UserBySessionResponse](
 			httpClient,
 			baseURL+AuthorizationUserBySessionProcedure,
-			connect.WithSchema(authorizationUserBySessionMethodDescriptor),
+			connect.WithSchema(authorizationMethods.ByName("UserBySession")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -90,10 +85,11 @@ type AuthorizationHandler interface {
 // By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
 // and JSON codecs. They also support gzip compression.
 func NewAuthorizationHandler(svc AuthorizationHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	authorizationMethods := v1.File_api_authorization_v1_authorization_proto.Services().ByName("Authorization").Methods()
 	authorizationUserBySessionHandler := connect.NewUnaryHandler(
 		AuthorizationUserBySessionProcedure,
 		svc.UserBySession,
-		connect.WithSchema(authorizationUserBySessionMethodDescriptor),
+		connect.WithSchema(authorizationMethods.ByName("UserBySession")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/hades.api.authorization.v1.Authorization/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

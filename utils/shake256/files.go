@@ -6,14 +6,14 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/alipourhabibi/Hades/models"
+	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 )
 
-func DigestFiles(datas []*models.File) (*digest, error) {
+func DigestFiles(datas []*registryv1.File) (*digest, error) {
 	digests := ""
 
 	// Sort slice to be consistent with every order
-	slices.SortFunc(datas, func(a, b *models.File) int {
+	slices.SortFunc(datas, func(a, b *registryv1.File) int {
 		if a.Path > b.Path {
 			return 1
 		} else if a.Path < b.Path {

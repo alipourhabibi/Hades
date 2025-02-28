@@ -38,12 +38,6 @@ const (
 	ModuleServiceCreateModuleByNameProcedure = "/hades.api.registry.v1.ModuleService/CreateModuleByName"
 )
 
-// These variables are the protoreflect.Descriptor objects for the RPCs defined in this package.
-var (
-	moduleServiceServiceDescriptor                  = v1.File_api_registry_v1_module_proto.Services().ByName("ModuleService")
-	moduleServiceCreateModuleByNameMethodDescriptor = moduleServiceServiceDescriptor.Methods().ByName("CreateModuleByName")
-)
-
 // ModuleServiceClient is a client for the hades.api.registry.v1.ModuleService service.
 type ModuleServiceClient interface {
 	CreateModuleByName(context.Context, *connect.Request[v1.CreateModuleByNameRequest]) (*connect.Response[v1.CreateModuleByNameResponse], error)
@@ -58,11 +52,12 @@ type ModuleServiceClient interface {
 // http://api.acme.com or https://acme.com/grpc).
 func NewModuleServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) ModuleServiceClient {
 	baseURL = strings.TrimRight(baseURL, "/")
+	moduleServiceMethods := v1.File_api_registry_v1_module_proto.Services().ByName("ModuleService").Methods()
 	return &moduleServiceClient{
 		createModuleByName: connect.NewClient[v1.CreateModuleByNameRequest, v1.CreateModuleByNameResponse](
 			httpClient,
 			baseURL+ModuleServiceCreateModuleByNameProcedure,
-			connect.WithSchema(moduleServiceCreateModuleByNameMethodDescriptor),
+			connect.WithSchema(moduleServiceMethods.ByName("CreateModuleByName")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -89,10 +84,11 @@ type ModuleServiceHandler interface {
 // By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
 // and JSON codecs. They also support gzip compression.
 func NewModuleServiceHandler(svc ModuleServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	moduleServiceMethods := v1.File_api_registry_v1_module_proto.Services().ByName("ModuleService").Methods()
 	moduleServiceCreateModuleByNameHandler := connect.NewUnaryHandler(
 		ModuleServiceCreateModuleByNameProcedure,
 		svc.CreateModuleByName,
-		connect.WithSchema(moduleServiceCreateModuleByNameMethodDescriptor),
+		connect.WithSchema(moduleServiceMethods.ByName("CreateModuleByName")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/hades.api.registry.v1.ModuleService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

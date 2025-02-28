@@ -12,6 +12,12 @@ enum EVisibility {
   E_VISIBILITY_PRIVATE = 2;
 }
 
+enum EState {
+  E_STATE_UNSPECIFIED = 0;
+  E_STATE_ACTIVE = 1;
+  E_STATE_DEPRECATED = 2;
+}
+
 message Module {
   string id = 1;
 
@@ -33,6 +39,18 @@ message Module {
 
   // module default branch
   string default_branch = 8;
+
+  EState state = 9;
+
+  string url = 10;
+
+  string default_label_name = 11;
+}
+
+message ModuleRef {
+  string id = 1;
+  string owner = 2;
+  string module = 3;
 }
 
 message CreateModuleByNameRequest {

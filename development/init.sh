@@ -23,6 +23,7 @@ signin_request() {
 {
   "username": "googleapis",
   "password": "googleapis",
+  "email": "googleapis@example.com",
   "description": "googleapis"
 }
 EOF

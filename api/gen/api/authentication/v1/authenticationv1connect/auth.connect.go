@@ -41,13 +41,6 @@ const (
 	AuthenticationServiceSigninProcedure = "/hades.api.authentication.v1.AuthenticationService/Signin"
 )
 
-// These variables are the protoreflect.Descriptor objects for the RPCs defined in this package.
-var (
-	authenticationServiceServiceDescriptor      = v1.File_api_authentication_v1_auth_proto.Services().ByName("AuthenticationService")
-	authenticationServiceLoginMethodDescriptor  = authenticationServiceServiceDescriptor.Methods().ByName("Login")
-	authenticationServiceSigninMethodDescriptor = authenticationServiceServiceDescriptor.Methods().ByName("Signin")
-)
-
 // AuthenticationServiceClient is a client for the hades.api.authentication.v1.AuthenticationService
 // service.
 type AuthenticationServiceClient interface {
@@ -65,17 +58,18 @@ type AuthenticationServiceClient interface {
 // http://api.acme.com or https://acme.com/grpc).
 func NewAuthenticationServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) AuthenticationServiceClient {
 	baseURL = strings.TrimRight(baseURL, "/")
+	authenticationServiceMethods := v1.File_api_authentication_v1_auth_proto.Services().ByName("AuthenticationService").Methods()
 	return &authenticationServiceClient{
 		login: connect.NewClient[v1.LoginRequest, v1.LoginResponse](
 			httpClient,
 			baseURL+AuthenticationServiceLoginProcedure,
-			connect.WithSchema(authenticationServiceLoginMethodDescriptor),
+			connect.WithSchema(authenticationServiceMethods.ByName("Login")),
 			connect.WithClientOptions(opts...),
 		),
 		signin: connect.NewClient[v1.SigninRequest, v1.SigninResponse](
 			httpClient,
 			baseURL+AuthenticationServiceSigninProcedure,
-			connect.WithSchema(authenticationServiceSigninMethodDescriptor),
+			connect.WithSchema(authenticationServiceMethods.ByName("Signin")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -110,16 +104,17 @@ type AuthenticationServiceHandler interface {
 // By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
 // and JSON codecs. They also support gzip compression.
 func NewAuthenticationServiceHandler(svc AuthenticationServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	authenticationServiceMethods := v1.File_api_authentication_v1_auth_proto.Services().ByName("AuthenticationService").Methods()
 	authenticationServiceLoginHandler := connect.NewUnaryHandler(
 		AuthenticationServiceLoginProcedure,
 		svc.Login,
-		connect.WithSchema(authenticationServiceLoginMethodDescriptor),
+		connect.WithSchema(authenticationServiceMethods.ByName("Login")),
 		connect.WithHandlerOptions(opts...),
 	)
 	authenticationServiceSigninHandler := connect.NewUnaryHandler(
 		AuthenticationServiceSigninProcedure,
 		svc.Signin,
-		connect.WithSchema(authenticationServiceSigninMethodDescriptor),
+		connect.WithSchema(authenticationServiceMethods.ByName("Signin")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/hades.api.authentication.v1.AuthenticationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

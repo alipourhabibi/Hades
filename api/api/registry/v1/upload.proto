@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+import "api/registry/v1/download.proto";
+import "api/registry/v1/module.proto";
+
+package hades.api.registry.v1;
+
+message UploadRequestContent {
+  hades.api.registry.v1.ModuleRef module_ref = 1;
+  repeated hades.api.registry.v1.File files = 2;
+  string source_control_url = 3;
+}
+
+message UploadRequest {
+  repeated UploadRequestContent contents = 1;
+  repeated string dep_commit_ids = 2;
+}
