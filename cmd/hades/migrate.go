@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/alipourhabibi/Hades/config"
-	"github.com/alipourhabibi/Hades/storage/db"
+	"github.com/alipourhabibi/Hades/internal/storage/db"
 	"github.com/spf13/cobra"
 )
 

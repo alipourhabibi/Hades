@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	pkgerr "github.com/alipourhabibi/Hades/pkg/errors"
+	pkgerr "github.com/alipourhabibi/Hades/internal/pkg/errors"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"

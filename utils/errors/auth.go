@@ -1,7 +1,7 @@
 package grpc
 
 import (
-	pkgerr "github.com/alipourhabibi/Hades/pkg/errors"
+	pkgerr "github.com/alipourhabibi/Hades/internal/pkg/errors"
 )
 
 func MapUserAuthError(err error) error {
