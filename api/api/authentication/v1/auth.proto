@@ -19,10 +19,11 @@ message SigninRequest {
   string username = 1;
   string password = 2;
   string description = 3;
+  string email = 4;
 }
 
 message SigninResponse {
-  hades.api.registry.v1.User user = 1;
+  bool status = 1;
 }
 
 

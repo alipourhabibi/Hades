@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package hades.api.registry.v1;
+
+import "api/registry/v1/commit.proto";
+
+message File {
+  string path = 1;
+  bytes content = 2;
+}
+
+message DownloadResponseContent {
+  hades.api.registry.v1.Commit commit = 1;
+  repeated File files = 2;
+}
+
+message DownloadResponse {
+  repeated DownloadResponseContent contents = 1;
+}

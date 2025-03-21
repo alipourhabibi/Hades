@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package hades.api.registry.v1;
+
+import "google/protobuf/timestamp.proto";
+import "api/registry/v1/user.proto";
+import "api/registry/v1/module.proto";
+
+option go_package = "gen/api/registry/v1";
+
+enum DigestType {
+  DIGEST_TYPE_UNSPECIFIED = 0;
+  DIGEST_TYPE_B5 = 1;
+}
+
+message Digest {
+  DigestType type = 1;
+  bytes value = 2;
+}
+
+// Commit represents a module commit.
+message Commit {
+  string id = 1;
+  string commit_hash = 2;
+  google.protobuf.Timestamp create_time = 3;
+  google.protobuf.Timestamp update_time = 4;
+  string owner_id = 5;
+  hades.api.registry.v1.User owner = 6;
+  string module_id = 7;
+  hades.api.registry.v1.Module module = 8;
+  Digest digest = 9;
+  string created_by_user_id = 10;
+  string source_control_url = 11;
+}

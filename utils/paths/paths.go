@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/alipourhabibi/Hades/models"
+	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 )
 
 var validPathes = []string{
@@ -14,8 +14,8 @@ var validPathes = []string{
 	"LICENSE",
 }
 
-func GetPath(files []*models.File) []*models.File {
-	retFiles := []*models.File{}
+func GetPath(files []*registryv1.File) []*registryv1.File {
+	retFiles := []*registryv1.File{}
 	for _, f := range files {
 		if strings.HasSuffix(f.Path, ".proto") || slices.Contains(validPathes, f.Path) {
 			retFiles = append(retFiles, f)

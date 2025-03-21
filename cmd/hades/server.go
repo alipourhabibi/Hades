@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/alipourhabibi/Hades/config"
-	server "github.com/alipourhabibi/Hades/internal/app/grpc"
-	"github.com/alipourhabibi/Hades/internal/storage/db"
-	"github.com/alipourhabibi/Hades/internal/storage/gitaly"
+	server "github.com/alipourhabibi/Hades/internal/hades"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly"
 	"github.com/spf13/cobra"
 )
 

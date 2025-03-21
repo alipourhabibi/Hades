@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pkgerr "github.com/alipourhabibi/Hades/internal/pkg/errors"
+	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
 )
 
 // TODO add error wrapper here

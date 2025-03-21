@@ -36,9 +36,4 @@ gitaly:
   defaultStorageName: default
 
 db:
-  host: localhost
-  port: 5432
-  user: hades
-  password: hades
-  dbName: hades
-  sslMode: false
+  connectionString: "postgres://hades:hades@0.0.0.0:5432/hades?sslmode=disable"
