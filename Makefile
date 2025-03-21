@@ -17,6 +17,12 @@ migrate-up:
 	@echo "Running migrations using connection string: $(DATABASE_HOST)..."
 	@$(MIGRATE) up
 
+# Down migrations
+.PHONY: migrate
+migrate-down:
+	@echo "Down migrations using connection string: $(DATABASE_HOST)..."
+	@$(MIGRATE) down
+
 # Clean build artifacts
 .PHONY: clean
 clean:
