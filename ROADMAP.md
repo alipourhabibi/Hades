@@ -3,14 +3,17 @@
 ## Overview
 This document planned features for the project.
 
-- [ ] Use pgx instead of gorm
-- [X] Development Bootstrap environment
+- [x] Use pgx instead of gorm
+- [x] Development Bootstrap environment
 - [ ] E2E Tests
-- [X] Dockerize the project
-- [ ] Add CIs
+- [x] Dockerize the project
+- [x] Add CIs
 - [ ] Add code of conduct
 - [ ] Fix TODOs
 - [ ] Fix linter errors
 - [ ] Add milestone for the project
 - [ ] Create SDK generators
 - [ ] UI
+- [ ] Use OPA instead of Casbin
+- [ ] Open Telemetry for logs, metrics and traces
+- [ ] Unit of work for operations
