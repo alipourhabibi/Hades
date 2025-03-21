@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package hades.api.registry.v1;
+
+message ResourceRef {
+  message Name {
+    string owner = 1;
+    string module = 2;
+  }
+  oneof value {
+    string id = 1;
+    Name name = 2;
+  }
+}
