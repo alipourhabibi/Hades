@@ -39,7 +39,7 @@ func (o *OperationService) UserCommitFiles(ctx context.Context, module *registry
 	}
 
 	userPb := &pb.User{
-		GlId:  user.Id,
+		GlId:  fmt.Sprintf("user-%s", "1233"), // TODO
 		Name:  []byte(user.Username),
 		Email: []byte(user.Email),
 	}

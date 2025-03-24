@@ -22,6 +22,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/server/bufdownload"
 	"github.com/alipourhabibi/Hades/internal/hades/server/bufgraph"
 	bufmodules "github.com/alipourhabibi/Hades/internal/hades/server/bufmodules"
+	"github.com/alipourhabibi/Hades/internal/hades/server/hook"
 	"github.com/alipourhabibi/Hades/internal/hades/server/module"
 	"github.com/alipourhabibi/Hades/internal/hades/server/upload"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db"
@@ -56,6 +57,7 @@ type SchemaRegistryServerSet struct {
 	BufUploadServer      *upload.Server
 	BufGraphServer       *bufgraph.Server
 	BufDownloadServer    *bufdownload.Server
+	HookServer           *hook.Server
 }
 
 type SchemaRegistryConfiguration func(*SchemaRegistryServer) error
@@ -163,6 +165,7 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 		SessionDB:               s.db.SessionStorage,
 	}
 
+	hookServer := hook.NewServer(s.logger, s.gitaly.CommitService)
 	authenticationServer := authentication.NewServer(dependencies)
 	moduleServer := module.NewServer(dependencies)
 	bufModuleServer := bufmodules.NewServer(dependencies)
@@ -178,6 +181,7 @@ func newSchemaRegistryServerSet(s *SchemaRegistryServer) (*SchemaRegistryServerS
 	serverSet.BufCommitServer = bufCommitServer
 	serverSet.BufGraphServer = bufGraphServer
 	serverSet.BufDownloadServer = bufDownloadServer
+	serverSet.HookServer = hookServer
 
 	return serverSet, nil
 }
@@ -229,6 +233,8 @@ func (s *SchemaRegistryServer) newServerMux() *http.ServeMux {
 
 	bufdownloadPath, bufdownloadHandler := modulev1connect.NewDownloadServiceHandler(s.serverSet.BufDownloadServer, interceptors)
 	mux.Handle(bufdownloadPath, bufdownloadHandler)
+
+	mux.Handle("/api/v4/internal/", http.Handler(s.serverSet.HookServer))
 
 	mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector))
 
