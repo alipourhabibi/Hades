@@ -3,27 +3,48 @@
 Hades is an open source [Buf](https://github.com/bufbuild/buf) compatible schema registry.
 
 ## Getting started
-```sh
+```bash
 docker compose -f development/docker-compose-dev.yaml up -d
 go run ./cmd/hades/. serve --config config/dev.yaml
 ```
 
 ## Development env
-Add `127.0.0.1 example.com` to /etc/hosts
-Run the following command to let you run app on port 443
+For development purposes you need to follow these steps:
+
+Add `example.com` to hosts
+```bash
+sudo sh -c 'echo "127.0.0.1 example.com" >> /etc/hosts'
+```
+
+Allow the app to run on port 443
 ```bash
 echo "net.ipv4.ip_unprivileged_port_start=0" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 ```
-Let self-signed ssl be accepted
-Install [mkcert](https://github.com/FiloSottile/mkcert)
-and run the following
+
+The Buf CLI expects the app to run on port 443 with TLS enabled.
+Set up TLS certificates:
+Install [mkcert](https://github.com/FiloSottile/mkcert) for self-signed certificates
+Generate certificates by running:
 ```bash
 mkcert -install
 cd config && mkcert example.com && cd ..
 ```
 
+You also need to do the migrations:
+```bash
+make migrate-up
+```
+
+Copy the sample config file and fill it with proper configs.
+```bash
+cp config/config.sample.yaml config/dev.yaml
+```
+
 And run the application
+```bash
+go run ./cmd/hades/. serve --config config/dev.yaml
+```
 
 ### Initialize development environment
 cd into development folder
@@ -32,9 +53,9 @@ cd into development folder
 ./init.sh
 ```
 
-Now you have a user called `googleapis` with password `googleapis` \
-And a module with `googleapis` name that has some protos in it alongside a project 
-that uses this as its dependency in `protos/simpleproject`
+- Creates a user: googleapis / googleapis
+- Creates a module: googleapis with sample protos
+- Sets up a project in protos/simpleproject that depends on the googleapis module
 
 I coded this fast, focusing on getting things working first rather than following the best practices from day one. So there’s room for improvement, refactoring, and optimizations.
 
@@ -49,7 +70,7 @@ Navigate to `development/protos/simpleproject` and run:
 
 ```bash
 buf dep update  # Updates the googleapis dependency
-buf generate    # Generates codes
+buf generate    # Generates code
 ```
 NOTE: the SKD module is not yet developed.
 
@@ -62,4 +83,4 @@ This project includes files from Google APIs for development purposes, which are
 ```bash
 docker run -v ./config/config.yaml:/app/config/config.yaml DOCKER_IMAGE:TAG
 ```
-Add the tls volume files the port and other configs based on your config file in config/config.yaml file
+Mount TLS certificates and adjust ports/configs according to config/config.yaml.
