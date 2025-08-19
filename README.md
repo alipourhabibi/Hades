@@ -31,14 +31,14 @@ mkcert -install
 cd config && mkcert example.com && cd ..
 ```
 
-You also need to do the migrations:
-```bash
-make migrate-up
-```
-
 Copy the sample config file and fill it with proper configs.
 ```bash
 cp config/config.sample.yaml config/dev.yaml
+```
+
+You also need to do the migrations:
+```bash
+make migrate-up
 ```
 
 And run the application
