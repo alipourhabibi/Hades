@@ -9,8 +9,9 @@ import (
 	pb "gitlab.com/gitlab-org/gitaly/v16/proto/go/gitalypb"
 )
 
+// ListFiles returns the paths of all files at HEAD of the module referenced
+// by the upload request.
 func (c *CommitService) ListFiles(ctx context.Context, content *registryv1.UploadRequestContent) ([]string, error) {
-
 	moduleName := fmt.Sprintf("%s/%s", content.ModuleRef.Owner, content.ModuleRef.Module)
 	repo := &pb.Repository{
 		StorageName:  c.defaultStorageName,

@@ -1,3 +1,6 @@
+// Package commit provides PostgreSQL storage for proto module commits,
+// tracking content digests and ownership so the registry can resolve
+// references without hitting Gitaly.
 package commit
 
 import (
@@ -7,6 +10,9 @@ import (
 	"github.com/google/uuid"
 )
 
+// Create inserts a commit row linking a Gitaly commit hash to its module,
+// owner, and content digest. The caller is responsible for ensuring the
+// Gitaly commit already exists before calling this.
 func (c *CommitStorage) Create(
 	ctx context.Context,
 	id uuid.UUID,
@@ -40,7 +46,7 @@ VALUES (
   $8
 )`
 
-	_, err := c.pool.Exec(ctx, query,
+	_, err := c.db.Exec(ctx, query,
 		id,
 		commitHash,
 		ownerId,

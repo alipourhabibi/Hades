@@ -1,4 +1,7 @@
-package bufmodule
+// Package bufmodules implements the buf.build ModuleService protocol adapter.
+// It translates buf.build wire types to internal types and delegates all
+// business logic to the module.Server.
+package bufmodules
 
 import (
 	"context"
@@ -8,98 +11,50 @@ import (
 	"connectrpc.com/connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/buf/dto"
-	"github.com/alipourhabibi/Hades/internal/hades/constants"
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
-	"github.com/alipourhabibi/Hades/internal/hades/server/authorization"
-	commitdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
-	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/blob"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/operation"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/repository"
+	"github.com/alipourhabibi/Hades/internal/hades/server/module"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
+// modulesProvider is the interface the Server delegates to.
+// module.Server satisfies it; tests can provide a fake.
+type modulesProvider interface {
+	GetModules(ctx context.Context, refs []*registryv1.ModuleRef) ([]*registryv1.Module, error)
+}
+
+// Server is the buf.build protocol adapter for module queries.
+// All business logic lives in module.Server (own handler).
 type Server struct {
 	moduleConnV1.ModuleServiceHandler
 
-	moduleDBStorage         *moduledb.ModuleStorage
-	commitDBStorage         *commitdb.CommitStorage
-	gitalyRepositoryService *repository.RepositoryService
-	gitalyOperationService  *operation.OperationService
-	authorization           *authorization.Server
-	blobStorage             *blob.BlobService
-	logger                  *log.LoggerWrapper
+	handler modulesProvider
+	logger  *log.LoggerWrapper
 }
 
 func NewServer(deps *server.Dependencies) *Server {
 	return &Server{
-		logger:                  deps.Logger,
-		commitDBStorage:         deps.CommitDB,
-		moduleDBStorage:         deps.ModuleDB,
-		gitalyRepositoryService: deps.GitalyRepositoryStorage,
-		gitalyOperationService:  deps.GitalyOperationStorage,
-		authorization:           deps.Authorization,
-		blobStorage:             deps.GitalyBlobStorage,
+		logger:  deps.Logger,
+		handler: module.NewServer(deps),
 	}
 }
 
-func (m *Server) GetModules(ctx context.Context, req *connect.Request[modulev1.GetModulesRequest]) (*connect.Response[modulev1.GetModulesResponse], error) {
-
-	user, ok := ctx.Value("user").(*registryv1.User)
-	if !ok {
-		return nil, pkgerr.New("Internal", pkgerr.Internal)
-	}
-
-	in := []*registryv1.ModuleRef{}
+func (s *Server) GetModules(ctx context.Context, req *connect.Request[modulev1.GetModulesRequest]) (*connect.Response[modulev1.GetModulesResponse], error) {
+	refs := make([]*registryv1.ModuleRef, 0, len(req.Msg.ModuleRefs))
 	for _, v := range req.Msg.ModuleRefs {
-		if v.GetId() != "" {
-			in = append(in, &registryv1.ModuleRef{
-				Id: v.GetId(),
-			})
-		} else {
-			in = append(in, &registryv1.ModuleRef{
-				Owner:  v.GetName().GetOwner(),
-				Module: v.GetName().GetModule(),
-			})
-		}
+		refs = append(refs, dto.FromModuleRefPB(v))
 	}
 
-	modules, err := m.moduleDBStorage.GetModulesByRefs(ctx, in...)
+	modules, err := s.handler.GetModules(ctx, refs)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, module := range modules {
-		// TODO check the state of the module
-		// if module.Visibility != models.ModuleVisibility_MODULE_VISIBILITY_PRIVATE {
-		// 	continue
-		// }
-		moduleFullName := module.Name
-		pol := &constants.Policy{
-			Subject: user.Username,
-			Object:  string(constants.REPOSITORY),
-			Action:  string(constants.READ),
-			Domain:  moduleFullName,
-		}
-		can, err := m.authorization.Can(ctx, pol)
-		if err != nil {
-			return nil, pkgerr.FromCasbin(err)
-		}
-		if !can.Allowed {
-			return nil, pkgerr.New("Permission Denied getting module "+moduleFullName, pkgerr.PermissionDenied)
-		}
-	}
-
-	responseModules := []*modulev1.Module{}
-	for _, m := range modules {
-		responseModules = append(responseModules, dto.ToBufModulePB(m))
+	responseModules := make([]*modulev1.Module, 0, len(modules))
+	for _, mod := range modules {
+		responseModules = append(responseModules, dto.ToBufModulePB(mod))
 	}
 
 	return &connect.Response[modulev1.GetModulesResponse]{
-		Msg: &modulev1.GetModulesResponse{
-			Modules: responseModules,
-		},
+		Msg: &modulev1.GetModulesResponse{Modules: responseModules},
 	}, nil
-
 }

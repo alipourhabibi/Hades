@@ -5,6 +5,7 @@ import (
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 )
 
+// ToContentPB converts internal download content to the buf.build wire type.
 func ToContentPB(in *registryv1.DownloadResponseContent) *modulev1.DownloadResponse_Content {
 	files := []*modulev1.File{}
 	for _, f := range in.Files {

@@ -1,0 +1,129 @@
+// TOTP (Time-based One-Time Password) API for the Hades schema registry.
+//
+// TOTP enrollment is a two-step process:
+//  1. BeginEnrollTOTP  - server generates and returns the TOTP secret and
+//     backup codes. The secret is stored encrypted (AES-256-GCM) but the
+//     enrollment is not yet active.
+//  2. ConfirmEnrollTOTP - caller proves possession by submitting the first
+//     valid code from their authenticator app. Only then is TOTP enabled.
+//
+// Once enabled, login returns pending_totp=true and the caller must call
+// VerifyTOTP to obtain a fully authenticated session token.
+
+syntax = "proto3";
+
+package hades.api.authentication.v1;
+
+import "api/authentication/v1/auth.proto";
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/authentication/v1";
+
+// BackupCode records a single TOTP backup code. Each code is one-time-use;
+// used_at is set when the code has been consumed.
+message BackupCode {
+  // Unique backup code identifier (UUID).
+  string id = 1;
+  // When this backup code was used. Null if it has not yet been consumed.
+  google.protobuf.Timestamp used_at = 2;
+}
+
+// BeginEnrollTOTPRequest initiates TOTP enrollment for the authenticated user.
+message BeginEnrollTOTPRequest {}
+
+// BeginEnrollTOTPResponse carries the TOTP secret and one-time backup codes.
+message BeginEnrollTOTPResponse {
+  // Base32-encoded TOTP secret to import into an authenticator app.
+  // The caller must call ConfirmEnrollTOTP with a valid code before TOTP
+  // is activated; this secret is not yet in use.
+  string secret = 1;
+  // otpauth:// URL encoding the secret, suitable for QR code generation.
+  string totp_url = 2;
+  // One-time backup codes to store securely. Each can be used once in place
+  // of a TOTP code if the authenticator is unavailable.
+  repeated string backup_codes = 3;
+}
+
+// ConfirmEnrollTOTPRequest completes TOTP enrollment by verifying the first code.
+message ConfirmEnrollTOTPRequest {
+  // Current 6-digit TOTP code from the authenticator app, used to confirm
+  // that the secret was imported correctly.
+  string code = 1 [(buf.validate.field).required = true];
+}
+
+// ConfirmEnrollTOTPResponse is empty; success enables TOTP for the account.
+message ConfirmEnrollTOTPResponse {}
+
+// VerifyTOTPRequest provides the TOTP code for a pending login session.
+message VerifyTOTPRequest {
+  // Current 6-digit TOTP code (or a backup code) for the authenticated user.
+  string code = 1 [(buf.validate.field).required = true];
+}
+
+// VerifyTOTPResponse carries the fully authenticated session token.
+message VerifyTOTPResponse {
+  // Standard login response with a now-fully-authenticated session token.
+  LoginResponse login = 1;
+}
+
+// DisableTOTPRequest disables TOTP for the authenticated user.
+message DisableTOTPRequest {
+  // Current account password, required to authorise disabling TOTP.
+  string password = 1 [(buf.validate.field).required = true];
+}
+
+// DisableTOTPResponse is empty.
+message DisableTOTPResponse {}
+
+// ListBackupCodesRequest returns the backup codes for the authenticated user.
+message ListBackupCodesRequest {}
+
+// ListBackupCodesResponse carries the caller's backup code records.
+message ListBackupCodesResponse {
+  // All backup codes for the caller, including used ones.
+  repeated BackupCode backup_codes = 1;
+}
+
+// RegenerateBackupCodesRequest replaces all backup codes with a new set.
+message RegenerateBackupCodesRequest {
+  // Current account password, required to authorise regeneration.
+  string password = 1 [(buf.validate.field).required = true];
+}
+
+// RegenerateBackupCodesResponse carries the newly generated backup codes.
+message RegenerateBackupCodesResponse {
+  // New plaintext backup codes. Store these securely; they cannot be
+  // retrieved again.
+  repeated string backup_codes = 1;
+}
+
+// TOTPService manages TOTP second-factor authentication for Hades accounts.
+//
+// Enrollment requires two calls: BeginEnrollTOTP followed by ConfirmEnrollTOTP.
+// The two-step design ensures the user has successfully imported the secret
+// before TOTP is activated on the account.
+service TOTPService {
+  // BeginEnrollTOTP generates a new TOTP secret and backup codes.
+  // TOTP is not active until ConfirmEnrollTOTP succeeds.
+  rpc BeginEnrollTOTP(BeginEnrollTOTPRequest) returns (BeginEnrollTOTPResponse);
+
+  // ConfirmEnrollTOTP activates TOTP by verifying the first code from the
+  // newly imported secret. Returns UNAUTHENTICATED if the code is invalid.
+  rpc ConfirmEnrollTOTP(ConfirmEnrollTOTPRequest) returns (ConfirmEnrollTOTPResponse);
+
+  // VerifyTOTP completes a pending TOTP login and returns a fully authenticated
+  // session token. Can be called with a backup code when the authenticator is
+  // unavailable.
+  rpc VerifyTOTP(VerifyTOTPRequest) returns (VerifyTOTPResponse);
+
+  // DisableTOTP disables TOTP for the caller's account after password verification.
+  rpc DisableTOTP(DisableTOTPRequest) returns (DisableTOTPResponse);
+
+  // ListBackupCodes returns all backup codes for the caller, including consumed ones.
+  rpc ListBackupCodes(ListBackupCodesRequest) returns (ListBackupCodesResponse);
+
+  // RegenerateBackupCodes replaces all backup codes with a fresh set.
+  // All previous backup codes are immediately invalidated.
+  rpc RegenerateBackupCodes(RegenerateBackupCodesRequest) returns (RegenerateBackupCodesResponse);
+}

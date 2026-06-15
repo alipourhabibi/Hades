@@ -1,0 +1,67 @@
+// In-app notification API for the Hades schema registry.
+//
+// Notifications are user-facing alerts about events on resources the user
+// cares about (e.g. a new commit on a watched module, an SDK job finishing,
+// a CI failure). They are created server-side and delivered via polling.
+
+syntax = "proto3";
+
+package hades.api.registry.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/registry/v1";
+
+// Notification is a single in-app alert for a user.
+message Notification {
+  // Unique notification identifier (UUID).
+  string id = 1;
+  // Machine-readable event type (e.g. "commit.pushed", "sdk.succeeded").
+  string type = 2;
+  // Short human-readable title shown in notification lists.
+  string title = 3;
+  // Optional longer description with additional context.
+  string body = 4;
+  // Optional ID of the resource that triggered this notification
+  // (e.g. a commit ID or SDK job ID).
+  string resource_id = 5;
+  // True when the user has acknowledged this notification.
+  bool read = 6;
+  // When the notification was created.
+  google.protobuf.Timestamp create_time = 7;
+}
+
+// ListNotificationsRequest is the input for NotificationService.ListNotifications.
+// No parameters are needed; the service always returns notifications for the
+// authenticated caller.
+message ListNotificationsRequest {}
+
+// ListNotificationsResponse is the output for NotificationService.ListNotifications.
+message ListNotificationsResponse {
+  // All notifications for the caller, ordered newest first.
+  repeated Notification notifications = 1;
+}
+
+// MarkNotificationReadRequest marks a single notification as acknowledged.
+message MarkNotificationReadRequest {
+  // UUID of the notification to mark as read. Must belong to the caller.
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+// MarkNotificationReadResponse is empty.
+message MarkNotificationReadResponse {}
+
+// NotificationService manages in-app notifications for the authenticated user.
+//
+// Notifications are created server-side only. This service exposes read and
+// acknowledgement operations for the caller's own notifications.
+service NotificationService {
+  // ListNotifications returns all notifications for the caller, ordered newest first.
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
+
+  // MarkNotificationRead marks the given notification as read.
+  // The notification must belong to the authenticated user; silently succeeds
+  // if it is already marked read.
+  rpc MarkNotificationRead(MarkNotificationReadRequest) returns (MarkNotificationReadResponse);
+}

@@ -1,34 +1,98 @@
+// Commit history API for the Hades schema registry.
+//
+// A commit represents a single push of .proto files to a module. Each commit
+// stores a content digest (B5 format) so clients can verify integrity after
+// download. Commits are immutable once created.
+
 syntax = "proto3";
 
 package hades.api.registry.v1;
 
-import "google/protobuf/timestamp.proto";
-import "api/registry/v1/user.proto";
 import "api/registry/v1/module.proto";
+import "api/registry/v1/user.proto";
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "gen/api/registry/v1";
 
+// DigestType identifies the algorithm used to compute a content digest.
 enum DigestType {
   DIGEST_TYPE_UNSPECIFIED = 0;
+  // B5 digest as used by the buf CLI. Compatible with buf.registry.module.v1.
   DIGEST_TYPE_B5 = 1;
 }
 
+// Digest is a content-addressed identifier for a set of .proto files.
 message Digest {
+  // Algorithm used to produce this digest.
   DigestType type = 1;
+  // Raw digest bytes.
   bytes value = 2;
 }
 
-// Commit represents a module commit.
+// Commit represents a single push of .proto files to a module.
 message Commit {
+  // Unique commit identifier (UUID).
   string id = 1;
+  // Git commit hash in the underlying Gitaly repository.
   string commit_hash = 2;
+  // When this commit was created.
   google.protobuf.Timestamp create_time = 3;
+  // When this commit record was last updated.
   google.protobuf.Timestamp update_time = 4;
+  // UUID of the user or organization that owns the module.
   string owner_id = 5;
+  // Full owner record, populated in read responses.
   hades.api.registry.v1.User owner = 6;
+  // UUID of the module this commit belongs to.
   string module_id = 7;
+  // Full module record, populated in read responses.
   hades.api.registry.v1.Module module = 8;
+  // Content digest for integrity verification.
   Digest digest = 9;
+  // UUID of the user who pushed this commit.
   string created_by_user_id = 10;
+  // Optional link to the source control commit that triggered this push
+  // (e.g. a GitHub commit URL).
   string source_control_url = 11;
+}
+
+// ListCommitsRequest is the input for CommitService.ListCommits.
+message ListCommitsRequest {
+  // Username of the module owner.
+  string owner = 1 [(buf.validate.field).required = true];
+  // Short module name (without the owner prefix).
+  string module = 2 [(buf.validate.field).required = true];
+}
+
+// ListCommitsResponse is the output for CommitService.ListCommits.
+message ListCommitsResponse {
+  // Commits for the module, ordered newest first.
+  repeated Commit commits = 1;
+}
+
+// GetCommitRequest is the input for CommitService.GetCommit.
+message GetCommitRequest {
+  // Git commit hash of the commit to fetch.
+  string commit_hash = 1 [(buf.validate.field).required = true];
+}
+
+// GetCommitResponse is the output for CommitService.GetCommit.
+message GetCommitResponse {
+  Commit commit = 1;
+}
+
+// CommitService exposes commit history for schema modules.
+//
+// Commits are immutable once created. The digest field allows clients to
+// verify content integrity independent of the transport layer.
+service CommitService {
+  // ListCommits returns all commits for the given module, ordered newest first.
+  // Returns NOT_FOUND if the module does not exist or the caller cannot read it.
+  rpc ListCommits(ListCommitsRequest) returns (ListCommitsResponse);
+
+  // GetCommit returns a single commit by its Git commit hash.
+  // Returns NOT_FOUND if the commit does not exist or the caller cannot read
+  // the module it belongs to.
+  rpc GetCommit(GetCommitRequest) returns (GetCommitResponse);
 }

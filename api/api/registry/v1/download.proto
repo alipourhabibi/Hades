@@ -1,19 +1,38 @@
+// Download API types for the Hades schema registry.
+//
+// These messages are used by the buf.build DownloadService adapter
+// (bufdownload package) which translates buf.build wire types into this
+// internal format before delegating to the download handler.
+//
+// There is no standalone DownloadService here because download is exposed
+// exclusively through the buf.build protocol compatibility layer.
+
 syntax = "proto3";
 
 package hades.api.registry.v1;
 
 import "api/registry/v1/commit.proto";
 
+option go_package = "gen/api/registry/v1";
+
+// File is a single .proto file returned in a download response.
 message File {
+  // Path of the file relative to the module root (e.g. "proto/foo/bar.proto").
   string path = 1;
+  // Raw file content.
   bytes content = 2;
 }
 
+// DownloadResponseContent pairs a commit record with the files it contains.
 message DownloadResponseContent {
+  // The commit that was downloaded.
   hades.api.registry.v1.Commit commit = 1;
+  // Proto files from this commit.
   repeated File files = 2;
 }
 
+// DownloadResponse carries the file contents for one or more module commits.
 message DownloadResponse {
+  // One entry per requested commit.
   repeated DownloadResponseContent contents = 1;
 }

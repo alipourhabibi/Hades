@@ -1,17 +1,40 @@
-syntax = "proto3";
+// Upload API types for the Hades schema registry.
+//
+// These messages are used by the buf.build UploadService adapter
+// (bufupload package) which translates buf.build wire types into this
+// internal format before delegating to the upload handler.
+//
+// There is no standalone UploadService here because upload is exposed
+// exclusively through the buf.build protocol compatibility layer.
 
-import "api/registry/v1/download.proto";
-import "api/registry/v1/module.proto";
+syntax = "proto3";
 
 package hades.api.registry.v1;
 
+import "api/registry/v1/download.proto";
+import "api/registry/v1/module.proto";
+import "buf/validate/validate.proto";
+
+option go_package = "gen/api/registry/v1";
+
+// UploadRequestContent bundles the files for a single module in a push.
+// A single upload call may contain files for multiple modules (batch push).
 message UploadRequestContent {
+  // Reference to the target module. Must resolve to an existing module that
+  // the caller has write access to.
   hades.api.registry.v1.ModuleRef module_ref = 1;
+  // Proto files to push. File paths are relative to the module root.
   repeated hades.api.registry.v1.File files = 2;
+  // Optional link to the source control commit that triggered this push
+  // (e.g. a GitHub commit URL). Stored on the resulting commit record.
   string source_control_url = 3;
 }
 
+// UploadRequest is the input for a batch module push.
 message UploadRequest {
-  repeated UploadRequestContent contents = 1;
+  // One entry per module being pushed. At least one content entry is required.
+  repeated UploadRequestContent contents = 1 [(buf.validate.field).repeated.min_items = 1];
+  // UUIDs of commits this push depends on. Used to record cross-module
+  // dependency edges.
   repeated string dep_commit_ids = 2;
 }

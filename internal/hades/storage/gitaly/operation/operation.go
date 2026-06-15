@@ -1,3 +1,5 @@
+// Package operation wraps the Gitaly OperationService gRPC client,
+// providing commit and branch mutation operations.
 package operation
 
 import (
@@ -15,11 +17,13 @@ import (
 	pb "gitlab.com/gitlab-org/gitaly/v16/proto/go/gitalypb"
 )
 
+// OperationService wraps the Gitaly OperationService gRPC client.
 type OperationService struct {
 	client             pb.OperationServiceClient
 	defaultStorageName string
 }
 
+// NewDefault dials the Gitaly server and returns an OperationService.
 func NewDefault(c config.Gitaly) (*OperationService, error) {
 	conn, err := grpc.NewClient(fmt.Sprintf(":%d", c.Port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -32,6 +36,9 @@ func NewDefault(c config.Gitaly) (*OperationService, error) {
 	}, nil
 }
 
+// UserCommitFiles writes files to a module's Gitaly repository in a single
+// commit and returns the resulting commit hash. Existing paths in `paths`
+// are updated; all others are created.
 func (o *OperationService) UserCommitFiles(ctx context.Context, module *registryv1.Module, files []*registryv1.File, user *registryv1.User, paths []string, digestValue string) (string, error) {
 	stream, err := o.client.UserCommitFiles(ctx)
 	if err != nil {
@@ -47,15 +54,9 @@ func (o *OperationService) UserCommitFiles(ctx context.Context, module *registry
 	repo := &pb.Repository{
 		StorageName:  o.defaultStorageName,
 		RelativePath: module.Name,
-		GlRepository: module.Name, // TODO check
+		GlRepository: module.Name,
 	}
 
-	// TODO remove it and set default in db
-	if module.DefaultBranch == "" {
-		module.DefaultBranch = "main"
-	}
-
-	// TODO think about it
 	commitMessage := fmt.Sprintf("module:%s\n\nupdate_by_user_id:%s\nat:%d\ndigest_value:%s", module.Name, user.Id, time.Now().Unix(), digestValue)
 	err = stream.Send(&pb.UserCommitFilesRequest{
 		UserCommitFilesRequestPayload: &pb.UserCommitFilesRequest_Header{
@@ -119,4 +120,40 @@ func (o *OperationService) UserCommitFiles(ctx context.Context, module *registry
 	}
 
 	return r.BranchUpdate.GetCommitId(), nil
+}
+
+// RollbackCommit resets module's default branch back to previousHead,
+// undoing the commit written by UserCommitFiles.
+// Called as a compensating action when a DB insert fails after a Gitaly write.
+// If previousHead is empty (the module had no commits before) the branch is
+// left in place - the orphan commit will be cleaned up by the background job
+// that reads gitaly_operation_log.
+func (o *OperationService) RollbackCommit(ctx context.Context, module *registryv1.Module, currentHead, previousHead string) error {
+	if previousHead == "" {
+		// No previous HEAD to reset to; the cleanup job handles this case.
+		return nil
+	}
+	userPb := &pb.User{
+		GlId:  "system",
+		Name:  []byte("system"),
+		Email: []byte("system@hades"),
+	}
+	resp, err := o.client.UserUpdateBranch(ctx, &pb.UserUpdateBranchRequest{
+		Repository: &pb.Repository{
+			StorageName:  o.defaultStorageName,
+			RelativePath: module.Name,
+			GlRepository: module.Name,
+		},
+		BranchName: []byte(module.DefaultBranch),
+		User:       userPb,
+		Newrev:     []byte(previousHead),
+		Oldrev:     []byte(currentHead),
+	})
+	if err != nil {
+		return err
+	}
+	if resp.GetPreReceiveError() != "" {
+		return fmt.Errorf("rollback blocked by pre-receive hook: %s", resp.GetPreReceiveError())
+	}
+	return nil
 }

@@ -1,49 +1,86 @@
+// User and account management API for the Hades schema registry.
+//
+// Users can be individuals (USER_TYPE_USER) or organizations
+// (USER_TYPE_ORGANIZATION). Organizations are modelled as user records with a
+// different type so that module ownership and RBAC can use a single identity
+// namespace. Use OrgService for organization-specific operations.
+
 syntax = "proto3";
 
 package hades.api.registry.v1;
 
-import "google/protobuf/timestamp.proto";
 import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "gen/api/registry/v1";
 
+// ModuleVisibility controls who can read a module.
 enum ModuleVisibility {
   MODULE_VISIBILITY_UNSPECIFIED = 0;
+  // Anyone can read the module without authentication.
   MODULE_VISIBILITY_PUBLIC = 1;
+  // Only the owner and explicitly granted members can read the module.
   MODULE_VISIBILITY_PRIVATE = 2;
 }
 
+// ModuleState reflects the lifecycle stage of a module.
 enum ModuleState {
   MODULE_STATE_UNSPECIFIED = 0;
+  // Module is actively maintained.
   MODULE_STATE_ACTIVE = 1;
+  // Module is no longer maintained. Reads are still allowed.
   MODULE_STATE_DEPRECATED = 2;
 }
 
+// UserType distinguishes human accounts from organization accounts.
 enum UserType {
   USER_TYPE_UNSPECIFIED = 0;
+  // An organization account. Managed via OrgService.
   USER_TYPE_ORGANIZATION = 1;
+  // A regular human account.
   USER_TYPE_USER = 2;
 }
 
+// UserState reflects the lifecycle stage of a user account.
 enum UserState {
   USER_STATE_UNSPECIFIED = 0;
+  // Account is in good standing and can authenticate normally.
   USER_STATE_ACTIVE = 1;
+  // Account has been deactivated. Login is rejected.
   USER_STATE_DEACTIVATED = 2;
 }
 
+// User is the canonical account record shared by individuals and organizations.
+//
+// Note: the password field is intentionally empty in all read responses.
+// It exists in this message only for internal service-to-service use; it is
+// never populated in responses returned to external callers.
 message User {
+  // Unique user identifier (UUID).
   string id = 1;
+  // When the account was created.
   google.protobuf.Timestamp create_time = 2;
+  // When the account was last updated.
   google.protobuf.Timestamp update_time = 3;
+  // Unique username used in module paths and mentions.
   string username = 4;
+  // Email address. Not returned in public read responses.
   string email = 5;
+  // Reserved for internal use. Always empty in external responses.
   string password = 6;
+  // Whether this record represents a human user or an organization.
   UserType type = 7;
+  // Lifecycle state of this account.
   UserState state = 8;
+  // Optional human-readable description shown on the profile page.
   string description = 9;
+  // Optional URL associated with the account (e.g. website or GitHub profile).
   string url = 10;
 }
 
+// CreateUserRequest creates a new user account.
+// New clients should use AuthenticationService.Register instead, which also
+// sends a verification email. This RPC exists for internal/admin use.
 message CreateUserRequest {
   string username = 1 [(buf.validate.field).required = true];
   string email = 2 [(buf.validate.field).required = true];
@@ -51,11 +88,69 @@ message CreateUserRequest {
   string description = 4;
 }
 
+// CreateUserResponse carries the newly created user record.
 message CreateUserResponse {
   User user = 1;
 }
 
-service UserService {
-  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+// GetUserRequest looks up a user by their username.
+message GetUserRequest {
+  // Username of the account to retrieve.
+  string username = 1 [(buf.validate.field).string.min_len = 1];
 }
 
+// GetUserResponse carries the user profile and summary counts.
+message GetUserResponse {
+  // Full user record.
+  User user = 1;
+  // Number of modules owned by this user or organization.
+  int32 module_count = 2;
+  // Organizations the user belongs to. Empty for organization accounts.
+  repeated User organizations = 3;
+}
+
+// ListUsersRequest searches for user accounts.
+message ListUsersRequest {
+  // Optional substring search on username. Empty returns the first 50 users.
+  string query = 1;
+}
+
+// ListUsersResponse carries matching user records.
+message ListUsersResponse {
+  repeated User users = 1;
+}
+
+// UpdateUserRequest updates the profile fields for the authenticated user.
+// Only the caller's own account can be updated via this RPC.
+message UpdateUserRequest {
+  // New description. Empty leaves the field unchanged.
+  string description = 1;
+  // New URL. Empty leaves the field unchanged.
+  string url = 2;
+}
+
+// UpdateUserResponse carries the updated user record.
+message UpdateUserResponse {
+  User user = 1;
+}
+
+// UserService manages user account profiles.
+//
+// Account creation for end-users should go through AuthenticationService.Register
+// which also handles email verification. CreateUser here is for internal/admin
+// use only.
+service UserService {
+  // CreateUser creates a user account without sending a verification email.
+  // Prefer AuthenticationService.Register for end-user registration.
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+
+  // GetUser returns the profile and summary counts for the given username.
+  // Returns NOT_FOUND if no account with that username exists.
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+
+  // ListUsers returns user accounts matching an optional username query.
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+
+  // UpdateUser updates the description and url for the authenticated caller's account.
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+}

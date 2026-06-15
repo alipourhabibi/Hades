@@ -1,0 +1,73 @@
+// Session management API for the Hades schema registry.
+//
+// A session is created at login and tracks the IP address, user agent, and
+// activity time of each authenticated client. Users can inspect and revoke
+// sessions to recover from suspected credential compromise. The current
+// session is identified by is_current in the session list.
+
+syntax = "proto3";
+
+package hades.api.authentication.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/authentication/v1";
+
+// Session describes one active or recently-active authenticated session.
+message Session {
+  // Unique session identifier (UUID).
+  string id = 1;
+  // IP address of the client that created this session.
+  string ip_address = 2;
+  // User-Agent recorded at session creation.
+  string user_agent = 3;
+  // When this session was created.
+  google.protobuf.Timestamp created_at = 4;
+  // When a request was last made with this session token.
+  google.protobuf.Timestamp last_activity_at = 5;
+  // True when this session corresponds to the caller's own Bearer token.
+  bool is_current = 6;
+}
+
+// ListSessionsRequest returns all active sessions for the authenticated user.
+message ListSessionsRequest {}
+
+// ListSessionsResponse carries the caller's active sessions.
+message ListSessionsResponse {
+  // Active sessions for the caller, ordered by last_activity_at descending.
+  repeated Session sessions = 1;
+}
+
+// RevokeSessionRequest revokes a specific session.
+message RevokeSessionRequest {
+  // UUID of the session to revoke. Must be owned by the authenticated user.
+  string session_id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+// RevokeSessionResponse is empty.
+message RevokeSessionResponse {}
+
+// RevokeAllOtherSessionsRequest revokes all sessions except the caller's current one.
+message RevokeAllOtherSessionsRequest {}
+
+// RevokeAllOtherSessionsResponse is empty.
+message RevokeAllOtherSessionsResponse {}
+
+// SessionService lets authenticated users inspect and revoke their sessions.
+//
+// Ownership is enforced server-side: callers can only operate on sessions that
+// belong to them. Attempting to revoke another user's session returns NOT_FOUND.
+service SessionService {
+  // ListSessions returns all active sessions for the authenticated user,
+  // with the current session identified by is_current.
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+
+  // RevokeSession revokes the session with the given identifier.
+  // Returns NOT_FOUND if the session does not exist or belongs to another user.
+  rpc RevokeSession(RevokeSessionRequest) returns (RevokeSessionResponse);
+
+  // RevokeAllOtherSessions revokes every session except the caller's current one.
+  // Useful after a suspected credential compromise.
+  rpc RevokeAllOtherSessions(RevokeAllOtherSessionsRequest) returns (RevokeAllOtherSessionsResponse);
+}

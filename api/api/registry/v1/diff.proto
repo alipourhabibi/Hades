@@ -1,0 +1,62 @@
+// Diff API for the Hades schema registry.
+//
+// Exposes file-level diffs for module commits. Each commit is compared
+// against its parent; the initial commit is compared against an empty tree.
+
+syntax = "proto3";
+
+package hades.api.registry.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "gen/api/registry/v1";
+
+// FileDiff represents the diff for a single file between a commit and its parent.
+message FileDiff {
+  // Path of the file in the parent commit. Empty for new files.
+  string from_path = 1;
+  // Path of the file in this commit. Empty for deleted files.
+  string to_path = 2;
+  // True when this file was added in this commit.
+  bool is_new_file = 3;
+  // True when this file was removed in this commit.
+  bool is_deleted_file = 4;
+  // True when the file was moved or renamed.
+  bool is_renamed_file = 5;
+  // Number of lines added.
+  int32 additions = 6;
+  // Number of lines removed.
+  int32 deletions = 7;
+  // Unified diff text. Empty for binary files or files exceeding the size limit.
+  string patch = 8;
+  // True when the file is binary (no text diff available).
+  bool binary = 9;
+  // True when the file exceeds the diff size limit and the patch was omitted.
+  bool too_large = 10;
+}
+
+// GetCommitDiffRequest is the input for DiffService.GetCommitDiff.
+message GetCommitDiffRequest {
+  // Git commit hash to diff against its parent.
+  string commit_hash = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetCommitDiffResponse carries the file-level diff for the requested commit.
+message GetCommitDiffResponse {
+  // Per-file diff entries.
+  repeated FileDiff diffs = 1;
+  // Total lines added across all files.
+  int32 total_additions = 2;
+  // Total lines removed across all files.
+  int32 total_deletions = 3;
+}
+
+// DiffService exposes file-level diffs for module commits.
+//
+// The initial commit in a repository is diffed against an empty tree, so
+// all files appear as additions with no deletions.
+service DiffService {
+  // GetCommitDiff returns the file-level diff for a commit vs its parent.
+  // Returns NOT_FOUND if the commit hash does not exist in any accessible module.
+  rpc GetCommitDiff(GetCommitDiffRequest) returns (GetCommitDiffResponse);
+}

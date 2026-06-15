@@ -1,3 +1,6 @@
+// Package bufdownload implements the buf.build DownloadService protocol adapter.
+// It translates buf.build wire types to internal types and delegates all
+// business logic to the download.Handler.
 package bufdownload
 
 import (
@@ -8,109 +11,50 @@ import (
 	"connectrpc.com/connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/buf/dto"
-	"github.com/alipourhabibi/Hades/internal/hades/constants"
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
-	"github.com/alipourhabibi/Hades/internal/hades/server/authorization"
-	commitdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
-	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/blob"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/operation"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/repository"
+	"github.com/alipourhabibi/Hades/internal/hades/server/download"
 	"github.com/alipourhabibi/Hades/utils/log"
-	"github.com/google/uuid"
 )
 
+// downloadProvider is the interface the Server delegates to.
+// download.Handler satisfies it; tests can provide a fake.
+type downloadProvider interface {
+	Download(ctx context.Context, refs []*registryv1.ModuleRef) ([]*registryv1.DownloadResponseContent, error)
+}
+
+// Server is the buf.build protocol adapter for download.
+// All business logic lives in download.Handler (own handler).
 type Server struct {
 	modulev1connect.DownloadServiceHandler
 
-	moduleDBStorage         *moduledb.ModuleStorage
-	commitDBStorage         *commitdb.CommitStorage
-	gitalyRepositoryService *repository.RepositoryService
-	gitalyOperationService  *operation.OperationService
-	authorization           *authorization.Server
-	blobStorage             *blob.BlobService
-
-	logger *log.LoggerWrapper
+	handler downloadProvider
+	logger  *log.LoggerWrapper
 }
 
 func NewServer(deps *server.Dependencies) *Server {
 	return &Server{
-		logger:                  deps.Logger,
-		moduleDBStorage:         deps.ModuleDB,
-		commitDBStorage:         deps.CommitDB,
-		gitalyRepositoryService: deps.GitalyRepositoryStorage,
-		gitalyOperationService:  deps.GitalyOperationStorage,
-		authorization:           deps.Authorization,
-		blobStorage:             deps.GitalyBlobStorage,
+		logger:  deps.Logger,
+		handler: download.New(deps),
 	}
 }
 
 func (s *Server) Download(ctx context.Context, req *connect.Request[modulev1.DownloadRequest]) (*connect.Response[modulev1.DownloadResponse], error) {
-
-	user, ok := ctx.Value("user").(*registryv1.User)
-	if !ok {
-		return nil, pkgerr.New("Internal", pkgerr.Internal)
-	}
-
-	refs := []*registryv1.ModuleRef{}
+	refs := make([]*registryv1.ModuleRef, 0, len(req.Msg.Values))
 	for _, ref := range req.Msg.Values {
-		id, err := uuid.Parse(ref.GetResourceRef().GetId())
-		if err != nil {
-			return nil, err
-		}
-		refs = append(refs, &registryv1.ModuleRef{
-			Id:     id.String(),
-			Owner:  ref.GetResourceRef().GetName().GetOwner(),
-			Module: ref.GetResourceRef().GetName().GetModule(),
-		})
+		refs = append(refs, dto.FromResourceRefPB(ref.GetResourceRef()))
 	}
 
-	modules, err := s.moduleDBStorage.GetModulesByRefs(ctx, refs...)
+	contents, err := s.handler.Download(ctx, refs)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, module := range modules {
-		moduleFullName := module.Name
-		pol := &constants.Policy{
-			Subject: user.Username,
-			Object:  string(constants.REPOSITORY),
-			Action:  string(constants.READ),
-			Domain:  moduleFullName,
-		}
-		can, err := s.authorization.Can(ctx, pol)
-		if err != nil {
-			return nil, pkgerr.FromCasbin(err)
-		}
-		if !can.Allowed {
-			return nil, pkgerr.New("Permission Denied getting module "+moduleFullName, pkgerr.PermissionDenied)
-		}
-	}
-
-	commits, err := s.commitDBStorage.GetCommitByOwnerModule(ctx, refs)
-	if err != nil {
-		return nil, err
-	}
-
-	contents := []*registryv1.DownloadResponseContent{}
-
-	for _, commit := range commits {
-		content, err := s.blobStorage.ListBlobs(ctx, commit)
-		if err != nil {
-			return nil, err
-		}
-		contents = append(contents, content...)
-	}
-
-	contentsResp := []*modulev1.DownloadResponse_Content{}
+	contentsResp := make([]*modulev1.DownloadResponse_Content, 0, len(contents))
 	for _, d := range contents {
 		contentsResp = append(contentsResp, dto.ToContentPB(d))
 	}
 
 	return &connect.Response[modulev1.DownloadResponse]{
-		Msg: &modulev1.DownloadResponse{
-			Contents: contentsResp,
-		},
+		Msg: &modulev1.DownloadResponse{Contents: contentsResp},
 	}, nil
 }

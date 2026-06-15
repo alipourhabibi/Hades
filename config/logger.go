@@ -1,14 +1,13 @@
 package config
 
-// Logger is the config struct for our logger
+// Logger configures the structured logging backend.
 type Logger struct {
-	Engine string `json:"engine" yaml:"engine"` // slog, zap
+	Engine string `json:"engine" yaml:"engine"` // "slog" or "zap"
 
-	// General configs
 	Level     string `json:"level" yaml:"level"`         // debug, info, warn, error
 	Format    string `json:"format" yaml:"format"`       // json or text
 	Output    string `json:"output" yaml:"output"`       // stdout, stderr, or file path
-	AddSource bool   `json:"addSource" yaml:"addSource"` // Include caller information
+	AddSource bool   `json:"addSource" yaml:"addSource"` // include caller file:line
 
 	zapLogger `yaml:",inline"`
 }

@@ -1,3 +1,7 @@
+// Package authorization implements the Authorization ConnectRPC service and
+// provides the auth middleware used by all other handlers. It wraps the OPA
+// engine to enforce role-based access control and exposes helpers for
+// checking read access to modules and managing role bindings.
 package authorization
 
 import (
@@ -7,42 +11,61 @@ import (
 	v1 "github.com/alipourhabibi/Hades/api/gen/api/authorization/v1"
 	"github.com/alipourhabibi/Hades/api/gen/api/authorization/v1/authorizationv1connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	"github.com/alipourhabibi/Hades/internal/hades/authorization"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/apitoken"
 	sessiondb "github.com/alipourhabibi/Hades/internal/hades/storage/db/session"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/totpsecret"
 	userdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
+	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
-	"github.com/casbin/casbin/v2"
+	"github.com/jackc/pgx/v5"
 )
 
+// Server implements the Authorization Connect-RPC service and provides internal
+// helpers used by other handlers and the auth middleware.
 type Server struct {
 	authorizationv1connect.AuthorizationHandler
 
 	logger *log.LoggerWrapper
 
-	userStorage    *userdb.UserStorage
-	sessionStorage *sessiondb.SessionStorage
-	casbin         *casbin.Enforcer
+	engine          *authorization.Engine
+	userStorage     *userdb.UserStorage
+	sessionStorage  *sessiondb.SessionStorage
+	apiTokenStorage *apitoken.APITokenStorage
+	totpSecretDB    *totpsecret.TOTPSecretStorage
 }
 
 func NewServer(
 	l *log.LoggerWrapper,
 	userStorage *userdb.UserStorage,
 	sessionStorage *sessiondb.SessionStorage,
-	casbin *casbin.Enforcer,
+	engine *authorization.Engine,
 ) *Server {
 	return &Server{
 		logger:         l,
 		userStorage:    userStorage,
 		sessionStorage: sessionStorage,
-		casbin:         casbin,
+		engine:         engine,
 	}
 }
 
+// WithAPITokenStorage injects the API token storage for token-based auth in middleware.
+func (s *Server) WithAPITokenStorage(at *apitoken.APITokenStorage) *Server {
+	s.apiTokenStorage = at
+	return s
+}
+
+// WithTOTPSecretStorage injects the TOTP secret storage for TOTP verification in middleware.
+func (s *Server) WithTOTPSecretStorage(ts *totpsecret.TOTPSecretStorage) *Server {
+	s.totpSecretDB = ts
+	return s
+}
+
 func (s *Server) UserBySession(ctx context.Context, in *connect.Request[v1.UserBySessionRequest]) (*connect.Response[v1.UserBySessionResponse], error) {
-	user, ok := ctx.Value("user").(*registryv1.User)
+	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
-		return nil, pkgerr.New("Internal", pkgerr.Internal)
+		return nil, connErr.Internal("missing user in context")
 	}
 
 	return &connect.Response[v1.UserBySessionResponse]{
@@ -53,76 +76,114 @@ func (s *Server) UserBySession(ctx context.Context, in *connect.Request[v1.UserB
 }
 
 func (s *Server) UserFromSessionID(ctx context.Context, session string) (*registryv1.User, error) {
-
 	user, err := s.userStorage.GetBySessionId(ctx, session)
 	if err != nil {
 		return nil, err
 	}
-
 	return user, nil
-
 }
 
-// TODO add a transaction mechanism
+// AddBasicRoles inserts the namespace-wide owner binding for a new user and
+// reloads the OPA store. This is the non-transactional variant.
 func (s *Server) AddBasicRoles(ctx context.Context, userName string) error {
-	roles := []*constants.Role{
-		{
-			User:   userName,
-			Role:   string(constants.OWNER),
-			Domain: userName + "/*",
-		},
-	}
-	policies := []*constants.Policy{
-		{
-			Subject: string(constants.OWNER),
-			Domain:  userName + "/*",
-			Object:  string(constants.REPOSITORY),
-			Action:  string(constants.CREATE),
-		},
-	}
-
-	policyList := [][]string{}
-	for _, policy := range policies {
-		policyList = append(policyList, []string{policy.Subject, policy.Domain, policy.Object, policy.Action})
-	}
-	_, err := s.casbin.AddPolicies(policyList)
-	if err != nil {
-		return err
-	}
-	for _, role := range roles {
-		_, err := s.casbin.AddRoleForUserInDomain(role.User, role.Role, role.Domain)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-
+	return s.engine.AddBinding(ctx, userName, constants.RoleOwner, userName+"/*")
 }
 
+// AddBasicRolesInTx inserts the namespace-wide owner binding within the
+
+// call ReloadPolicy() after the transaction commits.
+func (s *Server) AddBasicRolesInTx(ctx context.Context, tx pgx.Tx, userName string) error {
+	return s.engine.AddBindingTx(ctx, tx, userName, constants.RoleOwner, userName+"/*")
+}
+
+// ReloadPolicy syncs the in-memory OPA store from the database.
+func (s *Server) ReloadPolicy() error {
+	return s.engine.Reload(context.Background())
+}
+
+// normalizeResource maps legacy object names to OPA resource types.
+// Handlers historically used "repository" (constants.REPOSITORY); the Rego
+// policy uses "module" (constants.ResourceModule).
+func normalizeResource(obj string) string {
+	if obj == string(constants.REPOSITORY) {
+		return string(constants.ResourceModule)
+	}
+	return obj
+}
+
+// Can checks a single authorization policy via the OPA engine.
 func (s *Server) Can(ctx context.Context, in *constants.Policy) (*constants.CanResponse, error) {
-	allowed, err := s.casbin.Enforce(in.Subject, in.Domain, in.Object, in.Action)
+	input := authorization.Input{
+		Subject:      in.Subject,
+		Domain:       in.Domain,
+		ResourceType: normalizeResource(in.Object),
+		Action:       in.Action,
+		Visibility:   constants.VisibilityPrivate,
+	}
+	allowed, err := s.engine.Allow(ctx, input)
 	if err != nil {
 		return nil, err
 	}
-	return &constants.CanResponse{
-		Allowed: allowed,
-	}, nil
+	if !allowed {
+		return &constants.CanResponse{Allowed: false, Policy: in}, nil
+	}
+	return &constants.CanResponse{Allowed: true}, nil
 }
 
-// TODO add a transaction mechanism
-func (s *Server) AddPoliciesRolse(ctx context.Context, policies []*constants.Policy, roles []*constants.Role) error {
-
-	policyList := [][]string{}
-	for _, policy := range policies {
-		policyList = append(policyList, []string{policy.Subject, policy.Domain, policy.Object, policy.Action})
+// BatchCan checks multiple policies, returning the first denied one.
+func (s *Server) BatchCan(ctx context.Context, policies []*constants.Policy) (*constants.CanResponse, error) {
+	if len(policies) == 0 {
+		return &constants.CanResponse{Allowed: true}, nil
 	}
-	_, err := s.casbin.AddPolicies(policyList)
-	if err != nil {
-		return err
-	}
-	for _, role := range roles {
-		_, err := s.casbin.AddRoleForUserInDomain(role.User, role.Role, role.Domain)
+	for _, p := range policies {
+		resp, err := s.Can(ctx, p)
 		if err != nil {
+			return nil, err
+		}
+		if !resp.Allowed {
+			return resp, nil
+		}
+	}
+	return &constants.CanResponse{Allowed: true}, nil
+}
+
+// CheckReadAccess returns an error for the first private module the caller is
+// not authorised to read. Public modules pass without an OPA call.
+//
+// user may be nil (anonymous). An anonymous caller can read public modules but
+// cannot access private ones - those are surfaced as NotFound so that the
+// existence of private modules is never revealed to unauthenticated callers.
+func (s *Server) CheckReadAccess(ctx context.Context, user *registryv1.User, modules []*registryv1.Module) error {
+	for _, m := range modules {
+		if m.Visibility != registryv1.EVisibility_E_VISIBILITY_PRIVATE {
+			continue // public: always accessible
+		}
+		// Private module - must be authenticated.
+		if user == nil {
+			return connErr.NotFound("not found")
+		}
+		input := authorization.Input{
+			Subject:      user.Username,
+			Domain:       m.Name,
+			ResourceType: string(constants.ResourceModule),
+			Action:       string(constants.ActionRead),
+			Visibility:   constants.VisibilityPrivate,
+		}
+		allowed, err := s.engine.Allow(ctx, input)
+		if err != nil {
+			return err
+		}
+		if !allowed {
+			return connErr.PermissionDenied("permission denied reading module " + m.Name)
+		}
+	}
+	return nil
+}
+
+// AddPoliciesRoles inserts arbitrary role bindings via the OPA engine.
+func (s *Server) AddPoliciesRoles(ctx context.Context, policies []*constants.Policy, roles []*constants.Role) error {
+	for _, r := range roles {
+		if err := s.engine.AddBinding(ctx, r.User, r.Role, r.Domain); err != nil {
 			return err
 		}
 	}

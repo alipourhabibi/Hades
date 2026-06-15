@@ -7,41 +7,49 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// FromPgx maps a pgx error to a PkgError with the appropriate status code.
 func FromPgx(err error) error {
-	if IsQueryCancelled(err) {
+	if err == nil {
+		return nil
+	}
+
+	// already a package error; keep as-is
+	var pkgErr *PkgError
+	if errors.As(err, &pkgErr) {
+		return err
+	}
+
+	switch {
+	case IsQueryCancelled(err):
 		return New(err.Error(), Canceled)
-	} else if IsNotFound(err) {
-		return New(err.Error(), NotFound)
-	} else if IsUniqueViolation(err) {
-		return New(err.Error(), AlreadyExists)
-	} else {
+
+	case IsNotFound(err):
+		return New("not found", NotFound)
+
+	case IsUniqueViolation(err):
+		return New("already exists", AlreadyExists)
+
+	default:
 		return New("unknown error: "+err.Error(), Unknown)
 	}
 }
 
-// IsNotFound reutrns true if not rows found
+// IsNotFound reports whether err indicates that no rows were returned.
 func IsNotFound(err error) bool {
-	return err == pgx.ErrNoRows
+	return errors.Is(err, pgx.ErrNoRows)
 }
 
-// IsQueryCancelled returns true if an error is a query cancellation.
+// IsQueryCancelled reports whether err is a PostgreSQL query_canceled (57014).
 func IsQueryCancelled(err error) bool {
-	// https://www.postgresql.org/docs/11/errcodes-appendix.html
-	// query_canceled
 	return isPgError(err, "57014")
 }
 
-// IsUniqueViolation returns true if an error is a unique violation.
+// IsUniqueViolation reports whether err is a PostgreSQL unique_violation (23505).
 func IsUniqueViolation(err error) bool {
-	// https://www.postgresql.org/docs/11/errcodes-appendix.html
-	// unique_violation
 	return isPgError(err, "23505")
 }
 
 func isPgError(err error, code string) bool {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == code {
-		return true
-	}
-	return false
+	return errors.As(err, &pgErr) && pgErr.Code == code
 }

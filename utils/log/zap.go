@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// DefaultEncoderConfig returns a base encoder config with sensible defaults
+// DefaultEncoderConfig returns a production-ready zap encoder configuration.
 func DefaultEncoderConfig() zapcore.EncoderConfig {
 	return zapcore.EncoderConfig{
 		TimeKey:        "time",
@@ -29,9 +29,8 @@ func DefaultEncoderConfig() zapcore.EncoderConfig {
 	}
 }
 
-// ConfigureEncoder customizes the encoder config based on the provided options
+// ConfigureEncoder applies the user-supplied format options to a zap encoder config.
 func ConfigureEncoder(cfg *zapcore.EncoderConfig, c config.Logger) {
-	// Time encoding
 	switch c.TimeFormat {
 	case ISO8601:
 		cfg.EncodeTime = zapcore.ISO8601TimeEncoder
@@ -47,7 +46,6 @@ func ConfigureEncoder(cfg *zapcore.EncoderConfig, c config.Logger) {
 		cfg.EncodeTime = zapcore.EpochNanosTimeEncoder
 	}
 
-	// Level encoding
 	switch c.LevelFormat {
 	case Capital:
 		cfg.EncodeLevel = zapcore.CapitalLevelEncoder
@@ -59,7 +57,6 @@ func ConfigureEncoder(cfg *zapcore.EncoderConfig, c config.Logger) {
 		cfg.EncodeLevel = zapcore.LowercaseLevelEncoder
 	}
 
-	// Duration encoding
 	switch c.DurationFormat {
 	case String:
 		cfg.EncodeDuration = zapcore.StringDurationEncoder
@@ -69,7 +66,6 @@ func ConfigureEncoder(cfg *zapcore.EncoderConfig, c config.Logger) {
 		cfg.EncodeDuration = zapcore.MillisDurationEncoder
 	}
 
-	// Caller encoding
 	switch c.CallerFormat {
 	case Full:
 		cfg.EncodeCaller = zapcore.FullCallerEncoder
@@ -77,7 +73,6 @@ func ConfigureEncoder(cfg *zapcore.EncoderConfig, c config.Logger) {
 		cfg.EncodeCaller = zapcore.ShortCallerEncoder
 	}
 
-	// Custom key names
 	if c.TimeKey != "" {
 		cfg.TimeKey = c.TimeKey
 	}
@@ -98,9 +93,8 @@ func ConfigureEncoder(cfg *zapcore.EncoderConfig, c config.Logger) {
 	}
 }
 
-// NewZapWithConfig return a zap logger based on the configs it receives
+// NewZapWithConfig constructs a zap-backed LoggerWrapper from the given config.
 func NewZapWithConfig(c config.Logger) (*LoggerWrapper, error) {
-
 	var level zapcore.Level
 	err := level.UnmarshalText([]byte(c.Level))
 	if err != nil {

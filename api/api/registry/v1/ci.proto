@@ -1,0 +1,62 @@
+// CI (lint and breaking-change) run results for the Hades schema registry.
+//
+// When a commit is pushed, the server runs buf lint and buf breaking against
+// the previous commit. The results are stored as a CIRun record keyed by
+// (module, commit_hash). Re-running CI upserts the existing row.
+
+syntax = "proto3";
+
+package hades.api.registry.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/registry/v1";
+
+// CIRun holds the result of a lint and breaking-change check executed
+// when a module commit was pushed. Each (module, commit_hash) pair has at
+// most one CIRun record.
+message CIRun {
+  // Unique run identifier (UUID).
+  string id = 1;
+  // ID of the module this run belongs to.
+  string module_id = 2;
+  // Git commit hash the run was executed against.
+  string commit_hash = 3;
+  // True when no lint violations were found.
+  bool lint_passed = 4;
+  // True when no breaking changes were detected relative to the previous commit.
+  bool breaking_passed = 5;
+  // Lint error messages. Empty when lint_passed is true.
+  repeated string lint_errors = 6;
+  // Breaking-change error messages. Empty when breaking_passed is true.
+  repeated string breaking_errors = 7;
+  // When the CI run record was created.
+  google.protobuf.Timestamp create_time = 8;
+}
+
+// GetCIRunRequest is the input for CIService.GetCIRun.
+message GetCIRunRequest {
+  // Username of the module owner.
+  string owner = 1 [(buf.validate.field).required = true];
+  // Short module name (without the owner prefix).
+  string module_name = 2 [(buf.validate.field).required = true];
+  // Git commit hash to look up.
+  string commit_hash = 3 [(buf.validate.field).required = true];
+}
+
+// GetCIRunResponse is the output for CIService.GetCIRun.
+message GetCIRunResponse {
+  CIRun ci_run = 1;
+}
+
+// CIService exposes CI run results for schema module commits.
+//
+// Results are available immediately after a push; the lint and breaking checks
+// run synchronously as part of the upload handler.
+service CIService {
+  // GetCIRun returns the CI run result for the given owner/module/commit triple.
+  // Returns NOT_FOUND if no run record exists for that combination or the
+  // caller cannot read the module.
+  rpc GetCIRun(GetCIRunRequest) returns (GetCIRunResponse);
+}

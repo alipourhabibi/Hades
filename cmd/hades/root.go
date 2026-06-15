@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// newRootCmd returns the top-level Cobra command for the Hades CLI.
 func newRootCmd(_ []string) (*cobra.Command, error) {
 	cmd := &cobra.Command{
 		Use:   "hades",

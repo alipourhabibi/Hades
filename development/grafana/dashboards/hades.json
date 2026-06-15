@@ -1,0 +1,385 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "description": "Hades Schema Registry - per-operation resource usage: RAM (alloc delta), CPU (latency proxy), Storage I/O (proto/output bytes), GC pressure, and Go runtime. Includes Gitaly and S3 sub-phase breakdowns.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 200, "title": "Go Process (system-wide)", "type": "row" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 }, "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "go_memstats_alloc_bytes", "legendFormat": "heap alloc (live)", "refId": "A" },
+        { "expr": "go_memstats_heap_inuse_bytes", "legendFormat": "heap in-use", "refId": "B" },
+        { "expr": "go_memstats_heap_sys_bytes", "legendFormat": "heap sys (from OS)", "refId": "C" },
+        { "expr": "go_memstats_stack_inuse_bytes", "legendFormat": "stack in-use", "refId": "D" }
+      ],
+      "title": "Heap & Stack Memory", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 }, "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "go_goroutines", "legendFormat": "goroutines", "refId": "A" },
+        { "expr": "go_memstats_heap_objects", "legendFormat": "heap objects", "refId": "B" }
+      ],
+      "title": "Goroutines & Heap Objects", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 }, "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "go_gc_duration_seconds{quantile=\"0.5\"}", "legendFormat": "p50 GC pause", "refId": "A" },
+        { "expr": "go_gc_duration_seconds{quantile=\"0.75\"}", "legendFormat": "p75 GC pause", "refId": "B" },
+        { "expr": "go_gc_duration_seconds{quantile=\"1\"}", "legendFormat": "max GC pause", "refId": "C" },
+        { "expr": "go_memstats_gc_cpu_fraction * 100", "legendFormat": "GC CPU %", "refId": "D" }
+      ],
+      "title": "GC Pause & CPU Fraction", "type": "timeseries" },
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 201, "title": "Upload - Overview", "type": "row" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 10 }, "id": 10,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "rate(hades_upload_requests_total[5m])", "legendFormat": "{{status}}", "refId": "A" }
+      ],
+      "title": "Upload RPS", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 10 }, "id": 11,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_upload_duration_ms_bucket[5m]))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_upload_duration_ms_bucket[5m]))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, rate(hades_upload_duration_ms_bucket[5m]))", "legendFormat": "p99", "refId": "C" }
+      ],
+      "title": "Upload Latency - CPU proxy (ms)", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 10 }, "id": 12,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_upload_proto_bytes_bucket[5m]))", "legendFormat": "p50 proto bytes", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_upload_proto_bytes_bucket[5m]))", "legendFormat": "p95 proto bytes", "refId": "B" },
+        { "expr": "rate(hades_upload_proto_bytes_sum[5m]) / rate(hades_upload_proto_bytes_count[5m])", "legendFormat": "avg proto bytes", "refId": "C" }
+      ],
+      "title": "Upload Proto Bytes - Storage I/O (SSD write to Gitaly)", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 10 }, "id": 13,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_upload_file_count_bucket[5m]))", "legendFormat": "p50 files", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_upload_file_count_bucket[5m]))", "legendFormat": "p95 files", "refId": "B" }
+      ],
+      "title": "Upload File Count per Request", "type": "timeseries" },
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 202, "title": "Upload - Memory & GC", "type": "row" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 19 }, "id": 14,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_upload_alloc_bytes_bucket[5m]))", "legendFormat": "p50 total alloc", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_upload_alloc_bytes_bucket[5m]))", "legendFormat": "p95 total alloc", "refId": "B" },
+        { "expr": "histogram_quantile(0.50, rate(hades_upload_gitaly_alloc_bytes_bucket[5m]))", "legendFormat": "p50 Gitaly alloc", "refId": "C" },
+        { "expr": "histogram_quantile(0.95, rate(hades_upload_gitaly_alloc_bytes_bucket[5m]))", "legendFormat": "p95 Gitaly alloc", "refId": "D" }
+      ],
+      "title": "Upload Heap Alloc Delta - RAM (total vs Gitaly phase)", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 19 }, "id": 15,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_upload_gc_runs_bucket[5m]))", "legendFormat": "p50 GC runs", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_upload_gc_runs_bucket[5m]))", "legendFormat": "p95 GC runs", "refId": "B" },
+        { "expr": "histogram_quantile(1.0, rate(hades_upload_gc_runs_bucket[5m]))", "legendFormat": "max GC runs", "refId": "C" }
+      ],
+      "title": "Upload GC Cycles Triggered per Request", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 19 }, "id": 16,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_upload_gc_pause_ms_bucket[5m]))", "legendFormat": "p50 GC pause", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_upload_gc_pause_ms_bucket[5m]))", "legendFormat": "p95 GC pause", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, rate(hades_upload_gc_pause_ms_bucket[5m]))", "legendFormat": "p99 GC pause", "refId": "C" }
+      ],
+      "title": "Upload GC STW Pause per Request (ms)", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 19 }, "id": 17,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "rate(hades_upload_alloc_bytes_sum[5m]) / rate(hades_upload_alloc_bytes_count[5m])", "legendFormat": "avg total alloc/req", "refId": "A" },
+        { "expr": "rate(hades_upload_gitaly_alloc_bytes_sum[5m]) / rate(hades_upload_gitaly_alloc_bytes_count[5m])", "legendFormat": "avg Gitaly alloc/req", "refId": "B" }
+      ],
+      "title": "Upload Avg Alloc per Request (total vs Gitaly)", "type": "timeseries" },
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 203, "title": "Download - Overview", "type": "row" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 28 }, "id": 20,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "rate(hades_download_requests_total[5m])", "legendFormat": "{{status}}", "refId": "A" }
+      ],
+      "title": "Download RPS", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 28 }, "id": 21,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_download_duration_ms_bucket[5m]))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_download_duration_ms_bucket[5m]))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, rate(hades_download_duration_ms_bucket[5m]))", "legendFormat": "p99", "refId": "C" }
+      ],
+      "title": "Download Latency - CPU proxy (ms)", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 28 }, "id": 22,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_download_proto_bytes_bucket[5m]))", "legendFormat": "p50 proto bytes", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_download_proto_bytes_bucket[5m]))", "legendFormat": "p95 proto bytes", "refId": "B" },
+        { "expr": "rate(hades_download_proto_bytes_sum[5m]) / rate(hades_download_proto_bytes_count[5m])", "legendFormat": "avg proto bytes", "refId": "C" }
+      ],
+      "title": "Download Proto Bytes - Storage I/O (SSD read from Gitaly)", "type": "timeseries" },
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "id": 204, "title": "Download - Memory & GC", "type": "row" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 37 }, "id": 23,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_download_alloc_bytes_bucket[5m]))", "legendFormat": "p50 total alloc", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_download_alloc_bytes_bucket[5m]))", "legendFormat": "p95 total alloc", "refId": "B" },
+        { "expr": "histogram_quantile(0.50, rate(hades_download_gitaly_alloc_bytes_bucket[5m]))", "legendFormat": "p50 Gitaly alloc", "refId": "C" },
+        { "expr": "histogram_quantile(0.95, rate(hades_download_gitaly_alloc_bytes_bucket[5m]))", "legendFormat": "p95 Gitaly alloc", "refId": "D" }
+      ],
+      "title": "Download Heap Alloc Delta - RAM (total vs Gitaly phase)", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 37 }, "id": 24,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_download_gc_runs_bucket[5m]))", "legendFormat": "p50 GC runs", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_download_gc_runs_bucket[5m]))", "legendFormat": "p95 GC runs", "refId": "B" }
+      ],
+      "title": "Download GC Cycles per Request", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 37 }, "id": 25,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_download_gc_pause_ms_bucket[5m]))", "legendFormat": "p50 GC pause", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_download_gc_pause_ms_bucket[5m]))", "legendFormat": "p95 GC pause", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, rate(hades_download_gc_pause_ms_bucket[5m]))", "legendFormat": "p99 GC pause", "refId": "C" }
+      ],
+      "title": "Download GC STW Pause per Request (ms)", "type": "timeseries" },
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 },
+      "id": 205, "title": "SDK Worker - Overview", "type": "row" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 46 }, "id": 30,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "hades_sdk_queue_depth", "legendFormat": "queue depth", "refId": "A" }
+      ],
+      "title": "SDK Queue Depth", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 46 }, "id": 31,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "rate(hades_sdk_jobs_completed_total[5m])", "legendFormat": "{{status}} / {{language}}", "refId": "A" },
+        { "expr": "rate(hades_sdk_jobs_enqueued_total[5m])", "legendFormat": "enqueued / {{module}}", "refId": "B" }
+      ],
+      "title": "SDK Jobs/s (enqueued vs completed)", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 46 }, "id": 32,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_sdk_job_duration_ms_bucket[5m]))", "legendFormat": "p50 {{language}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_sdk_job_duration_ms_bucket[5m]))", "legendFormat": "p95 {{language}}", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, rate(hades_sdk_job_duration_ms_bucket[5m]))", "legendFormat": "p99 {{language}}", "refId": "C" }
+      ],
+      "title": "SDK Job Duration - total CPU proxy (ms)", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 46 }, "id": 33,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_sdk_proto_bytes_bucket[5m]))", "legendFormat": "p50 proto in (SSD read)", "refId": "A" },
+        { "expr": "histogram_quantile(0.50, rate(hades_sdk_output_bytes_bucket[5m]))", "legendFormat": "p50 output out (SSD→S3)", "refId": "B" },
+        { "expr": "histogram_quantile(0.95, rate(hades_sdk_output_bytes_bucket[5m]))", "legendFormat": "p95 output out (SSD→S3)", "refId": "C" }
+      ],
+      "title": "SDK Storage I/O (proto in vs generated output)", "type": "timeseries" },
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 54 },
+      "id": 206, "title": "SDK Worker - Phase Latency (CPU proxy per phase)", "type": "row" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 55 }, "id": 34,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_sdk_stream_duration_ms_bucket[5m]))", "legendFormat": "p50 stream {{language}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_sdk_stream_duration_ms_bucket[5m]))", "legendFormat": "p95 stream {{language}}", "refId": "B" }
+      ],
+      "title": "SDK Stream Phase (Gitaly → disk) - CPU proxy", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 55 }, "id": 35,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_sdk_gen_duration_ms_bucket[5m]))", "legendFormat": "p50 protoc {{language}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_sdk_gen_duration_ms_bucket[5m]))", "legendFormat": "p95 protoc {{language}}", "refId": "B" }
+      ],
+      "title": "SDK Generate Phase (protoc) - CPU proxy", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 55 }, "id": 36,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_sdk_s3_duration_ms_bucket[5m]))", "legendFormat": "p50 S3 {{language}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_sdk_s3_duration_ms_bucket[5m]))", "legendFormat": "p95 S3 {{language}}", "refId": "B" }
+      ],
+      "title": "SDK S3 Upload Phase - CPU proxy", "type": "timeseries" },
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 63 },
+      "id": 207, "title": "SDK Worker - Phase Memory (RAM alloc per phase)", "type": "row" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 64 }, "id": 37,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_sdk_stream_alloc_bytes_bucket[5m]))", "legendFormat": "p50 stream alloc {{language}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_sdk_stream_alloc_bytes_bucket[5m]))", "legendFormat": "p95 stream alloc {{language}}", "refId": "B" }
+      ],
+      "title": "SDK Stream Phase Heap Alloc (Gitaly → disk) - RAM", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 64 }, "id": 38,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_sdk_gen_alloc_bytes_bucket[5m]))", "legendFormat": "p50 protoc alloc {{language}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_sdk_gen_alloc_bytes_bucket[5m]))", "legendFormat": "p95 protoc alloc {{language}}", "refId": "B" }
+      ],
+      "title": "SDK Generate Phase Heap Alloc (protoc) - RAM", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 64 }, "id": 39,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_sdk_s3_alloc_bytes_bucket[5m]))", "legendFormat": "p50 S3 alloc {{language}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_sdk_s3_alloc_bytes_bucket[5m]))", "legendFormat": "p95 S3 alloc {{language}}", "refId": "B" },
+        { "expr": "histogram_quantile(0.50, rate(hades_sdk_alloc_bytes_bucket[5m]))", "legendFormat": "p50 total job alloc {{language}}", "refId": "C" }
+      ],
+      "title": "SDK S3 Phase Heap Alloc vs Total Job - RAM", "type": "timeseries" },
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 72 },
+      "id": 208, "title": "SDK Worker - GC Pressure per Job", "type": "row" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 73 }, "id": 40,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_sdk_gc_runs_bucket[5m]))", "legendFormat": "p50 GC runs {{language}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_sdk_gc_runs_bucket[5m]))", "legendFormat": "p95 GC runs {{language}}", "refId": "B" },
+        { "expr": "histogram_quantile(1.0, rate(hades_sdk_gc_runs_bucket[5m]))", "legendFormat": "max GC runs {{language}}", "refId": "C" }
+      ],
+      "title": "SDK GC Cycles per Job", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 73 }, "id": 41,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(hades_sdk_gc_pause_ms_bucket[5m]))", "legendFormat": "p50 GC pause {{language}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(hades_sdk_gc_pause_ms_bucket[5m]))", "legendFormat": "p95 GC pause {{language}}", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, rate(hades_sdk_gc_pause_ms_bucket[5m]))", "legendFormat": "p99 GC pause {{language}}", "refId": "C" }
+      ],
+      "title": "SDK GC STW Pause per Job (ms)", "type": "timeseries" },
+
+    { "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 73 }, "id": 42,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "rate(hades_sdk_alloc_bytes_sum[5m]) / rate(hades_sdk_alloc_bytes_count[5m])", "legendFormat": "avg total alloc {{language}}", "refId": "A" },
+        { "expr": "rate(hades_sdk_stream_alloc_bytes_sum[5m]) / rate(hades_sdk_stream_alloc_bytes_count[5m])", "legendFormat": "avg stream alloc {{language}}", "refId": "B" },
+        { "expr": "rate(hades_sdk_gen_alloc_bytes_sum[5m]) / rate(hades_sdk_gen_alloc_bytes_count[5m])", "legendFormat": "avg gen alloc {{language}}", "refId": "C" },
+        { "expr": "rate(hades_sdk_s3_alloc_bytes_sum[5m]) / rate(hades_sdk_s3_alloc_bytes_count[5m])", "legendFormat": "avg s3 alloc {{language}}", "refId": "D" }
+      ],
+      "title": "SDK Avg Alloc Breakdown by Phase - RAM", "type": "timeseries" }
+
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["hades", "observability"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Hades - Resource Usage per Operation",
+  "uid": "hades-resource-usage",
+  "version": 2
+}
