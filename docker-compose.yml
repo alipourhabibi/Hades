@@ -1,0 +1,100 @@
+services:
+  postgres:
+    image: postgres:15.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hades}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hades}
+      POSTGRES_DB: ${POSTGRES_DB:-hades}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hades}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  gitaly:
+    image: alpinelinux/gitaly:17.6.2
+    environment:
+      - GITALY_TESTING_NO_GIT_HOOKS=true
+    volumes:
+      - /var/lib/gitlab:/var/lib/gitlab
+      - ./development/config.toml:/etc/gitlab-gitaly/config.toml:ro
+    entrypoint: ["gitaly"]
+    command: ["serve", "/etc/gitlab-gitaly/config.toml"]
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  migrator:
+    image: ghcr.io/alipourhabibi/hades-migrate:latest
+    command:
+      - "-path=/migration"
+      - "-database=postgres://${POSTGRES_USER:-hades}:${POSTGRES_PASSWORD:-hades}@postgres:5432/${POSTGRES_DB:-hades}?sslmode=disable"
+      - "up"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  hades:
+    image: ghcr.io/alipourhabibi/hades:latest
+    volumes:
+      - ./config/prod.yaml:/app/config/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gitaly:
+        condition: service_started
+      redis:
+        condition: service_started
+      migrator:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/alipourhabibi/hades-frontend:latest
+    environment:
+      BACKEND_URL: http://hades:50051
+      NEXT_PUBLIC_DOMAIN: ${DOMAIN:-example.com}
+      REGISTRY_HOST: ${DOMAIN:-example.com}
+    depends_on:
+      - hades
+    restart: unless-stopped
+    ports:
+      - 3000:3000
+
+  caddy:
+    image: caddy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - hades
+      - frontend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  minio_data:
+  caddy_data:
+  caddy_config:

@@ -77,9 +77,10 @@ type Dependencies struct {
 	Redis       *redis.Client
 	RateLimiter *ratelimit.Limiter
 	EmailSender *email.Sender
-	AuthConfig  config.AuthConfig
-	TOTPConfig  config.TOTPConfig
-	OAuthConfig config.OAuthConfig
+	AuthConfig   config.AuthConfig
+	TOTPConfig   config.TOTPConfig
+	OAuthConfig  config.OAuthConfig
+	RegistryHost string
 
 	SDKStorageBackend sdkstorage.Backend
 

@@ -32,7 +32,9 @@ import (
 // to flush in-flight telemetry data.
 func Setup(ctx context.Context, cfg config.TelemetryConfig) (shutdown func(context.Context) error, err error) {
 	if !cfg.Enabled {
-		// Return a no-op shutdown so callers don't need a nil check.
+		// Still initialise metrics with the default no-op global provider so
+		// package-level metric variables are never nil.
+		_ = InitMetrics()
 		return func(context.Context) error { return nil }, nil
 	}
 

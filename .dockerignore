@@ -2,12 +2,12 @@
 .env
 .env.local
 .env.*.local
+config/prod.yaml
 .git
 Dockerfile
 .dockerignore
 frontend/
 development/
-migration/
 *.log
 hades
 tmp/

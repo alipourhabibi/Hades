@@ -308,9 +308,15 @@ func newSchemaRegistryServerSet(ctx context.Context, s *SchemaRegistryServer) (*
 		Redis:       redisClient,
 		RateLimiter: rateLimiter,
 		EmailSender: emailSender,
-		AuthConfig:  authCfg,
-		TOTPConfig:  totpCfg,
-		OAuthConfig: oauthCfg,
+		AuthConfig:   authCfg,
+		TOTPConfig:   totpCfg,
+		OAuthConfig:  oauthCfg,
+		RegistryHost: func() string {
+			if s.config != nil {
+				return s.config.Server.RegistryHost
+			}
+			return ""
+		}(),
 	}
 
 	authenticationServer := authentication.NewServer(dependencies)
