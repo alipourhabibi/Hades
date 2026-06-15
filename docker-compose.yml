@@ -16,13 +16,13 @@ services:
 
   gitaly:
     image: alpinelinux/gitaly:17.6.2
+    user: root
     environment:
       - GITALY_TESTING_NO_GIT_HOOKS=true
     volumes:
-      - /var/lib/gitlab:/var/lib/gitlab
+      - gitaly_data:/var/lib/gitlab
       - ./development/config.toml:/etc/gitlab-gitaly/config.toml:ro
-    entrypoint: ["gitaly"]
-    command: ["serve", "/etc/gitlab-gitaly/config.toml"]
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /var/lib/gitlab/repositories && gitaly serve /etc/gitlab-gitaly/config.toml"]
     restart: unless-stopped
 
   minio:
@@ -95,6 +95,7 @@ services:
 
 volumes:
   postgres_data:
+  gitaly_data:
   minio_data:
   caddy_data:
   caddy_config:

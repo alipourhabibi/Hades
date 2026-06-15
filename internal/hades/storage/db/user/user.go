@@ -7,6 +7,7 @@ import (
 	"time"
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	pkgerrors "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -314,8 +315,8 @@ RETURNING id, create_time, update_time, username, email, password, type, state, 
 	return user, nil
 }
 
-// GetBySessionId returns the user associated with a non-expired session.
-// Expired or unknown session IDs produce pgx.ErrNoRows.
+// GetBySessionId returns the user associated with a non-expired session token hash.
+// Expired, unknown, or malformed tokens produce a not-found error.
 func (u *UserStorage) GetBySessionId(ctx context.Context, sessionId string) (*registryv1.User, error) {
 	query := `
 SELECT
@@ -331,7 +332,7 @@ SELECT
 FROM users u
 WHERE u.id = (
   SELECT user_id FROM sessions
-  WHERE id = $1 AND expires_at > NOW()
+  WHERE token_hash = $1 AND expires_at > NOW()
 )
 `
 
@@ -352,7 +353,7 @@ WHERE u.id = (
 	user.CreateTime = timestamppb.New(createTime)
 	user.UpdateTime = timestamppb.New(updateTime)
 	if err != nil {
-		return nil, err
+		return nil, pkgerrors.FromPgx(err)
 	}
 
 	return user, nil
