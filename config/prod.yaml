@@ -1,0 +1,97 @@
+server:
+  listenPort: 50051
+  registryHost: "example.com" # change to your domain
+  # certKey / certFile omitted - Caddy in docker-compose handles TLS termination
+
+logger:
+  engine: zap
+  format: json
+  level: info
+  addSource: false
+  output: stdout
+  timeFormat: ISO8601
+  levelFormat: lowercase
+  durationFormat: string
+  callerFormat: short
+  timeKey: time
+  levelKey: level
+  nameKey: name
+  callerKey: caller
+  messageKey: message
+  stacktraceKey: stacktrace
+  sampling:
+    initial: 100
+    thereafter: 100
+
+gitaly:
+  host: gitaly
+  port: 9999
+  defaultStorageName: default
+  # hostname resolved via Docker network to the gitaly service
+
+db:
+  connectionString: "postgres://hades:hades@postgres:5432/hades?sslmode=disable"
+
+telemetry:
+  enabled: false
+
+auth:
+  password:
+    minLength: 12
+    bcryptCost: 12
+  session:
+    idleTimeoutDays: 7
+    absoluteTimeoutDays: 14
+    rotationGraceSeconds: 30
+  lockout:
+    maxAttempts: 5
+    cooldownMinutes: 30
+  emailVerification:
+    tokenExpiryHours: 24
+  passwordReset:
+    tokenExpiryHours: 1
+
+email:
+  stub: true # set to false and configure SMTP for real email delivery
+  from: "noreply@example.com"
+
+oauth:
+  github:
+    clientId: ""
+    clientSecret: ""
+    redirectUrl: "https://example.com/oauth/github/callback"
+  google:
+    clientId: ""
+    clientSecret: ""
+    redirectUrl: "https://example.com/oauth/google/callback"
+
+redis:
+  addr: "redis:6379"
+  password: ""
+  db: 0
+
+# IMPORTANT: generate a random 64-char hex key before deploying
+# openssl rand -hex 32
+totp:
+  encryptionKey: "CHANGE_ME_generate_with_openssl_rand_hex_32_output_here_000000000"
+  issuer: "Hades"
+
+sdk:
+  enabled: true
+  bufBin: "buf"
+  protocBin: "protoc"
+  lintEnabled: false
+  breakingEnabled: false
+  generators:
+    - language: go
+      plugin: go
+      options: "paths=source_relative"
+  storage:
+    type: s3
+    s3:
+      endpoint: "minio:9000"
+      bucket: "hades-sdks"
+      accessKeyId: "minioadmin" # change if you set custom MINIO credentials
+      secretAccessKey: "minioadmin" # change if you set custom MINIO credentials
+      useSSL: false
+      region: "us-east-1"

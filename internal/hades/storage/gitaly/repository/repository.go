@@ -20,7 +20,7 @@ type RepositoryService struct {
 
 // NewDefault dials the Gitaly server and returns a RepositoryService.
 func NewDefault(c config.Gitaly) (*RepositoryService, error) {
-	conn, err := grpc.NewClient(fmt.Sprintf(":%d", c.Port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", func() string { if c.Host != "" { return c.Host }; return "localhost" }(), c.Port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}

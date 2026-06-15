@@ -54,6 +54,7 @@ type Server struct {
 	rateLimiter          *ratelimit.Limiter
 	emailSender          *email.Sender
 	authCfg              config.AuthConfig
+	registryHost         string
 }
 
 func NewServer(deps *server.Dependencies) *Server {
@@ -69,6 +70,7 @@ func NewServer(deps *server.Dependencies) *Server {
 		rateLimiter:          deps.RateLimiter,
 		emailSender:          deps.EmailSender,
 		authCfg:              deps.AuthConfig,
+		registryHost:         deps.RegistryHost,
 	}
 }
 
@@ -174,7 +176,7 @@ func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRe
 			expiresAt := time.Now().Add(time.Duration(expiry) * time.Hour)
 			if err := s.emailVerStorage.Create(ctx, userID, hash, expiresAt); err == nil {
 				_ = s.emailSender.Send(emailAddr, "Verify your email",
-					fmt.Sprintf("Your verification token: %s", raw))
+					fmt.Sprintf("Verify your email: https://%s/verify-email/%s", s.registryHost, raw))
 			}
 		}
 	}
@@ -386,7 +388,7 @@ func (s *Server) ResendVerificationEmail(ctx context.Context, in *connect.Reques
 	}
 	if s.emailSender != nil {
 		_ = s.emailSender.Send(user.Email, "Verify your email",
-			fmt.Sprintf("Your verification token: %s", raw))
+			fmt.Sprintf("Verify your email: https://%s/verify-email/%s", s.registryHost, raw))
 	}
 	return &connect.Response[v1.ResendVerificationEmailResponse]{Msg: &v1.ResendVerificationEmailResponse{}}, nil
 }

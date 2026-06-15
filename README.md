@@ -2,12 +2,26 @@
 
 Hades is an open source [Buf](https://github.com/bufbuild/buf) compatible schema registry.
 
-## Getting started
+## quick start
+
+Bring up the full stack (backend, frontend, postgres, gitaly, minio, caddy) on your machine:
+
 ```bash
-cp config/config.sample.yaml config/dev.yaml
-docker compose -f development/docker-compose-dev.yaml up -d
-go run ./cmd/hades serve --config config/dev.yaml
+docker compose up -d
 ```
+
+**First time only - trust the TLS certificate:**
+```bash
+./trust-ca.sh
+```
+
+This exports Caddy's auto-generated local CA and installs it into the system trust store (Arch, Debian/Ubuntu, macOS). After this, `curl`, `buf`, `grpcurl`, and browsers all trust `https://example.com` without warnings.
+
+To use a custom domain instead of `example.com`:
+```bash
+DOMAIN=yourdomain.comm docker compose up -d
+```
+Then update `config/prod.yaml` → `server.registryHost` to match and add the domain to `/etc/hosts`.
 
 ## Development env
 

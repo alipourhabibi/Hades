@@ -26,6 +26,9 @@ func FromPgx(err error) error {
 	case IsNotFound(err):
 		return New("not found", NotFound)
 
+	case IsInvalidInputSyntax(err):
+		return New("not found", NotFound)
+
 	case IsUniqueViolation(err):
 		return New("already exists", AlreadyExists)
 
@@ -47,6 +50,12 @@ func IsQueryCancelled(err error) bool {
 // IsUniqueViolation reports whether err is a PostgreSQL unique_violation (23505).
 func IsUniqueViolation(err error) bool {
 	return isPgError(err, "23505")
+}
+
+// IsInvalidInputSyntax reports whether err is a PostgreSQL invalid_text_representation (22P02).
+// This happens when a non-UUID string is passed to a UUID column — treat as not found.
+func IsInvalidInputSyntax(err error) bool {
+	return isPgError(err, "22P02")
 }
 
 func isPgError(err error, code string) bool {

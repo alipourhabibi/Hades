@@ -25,7 +25,7 @@ type OperationService struct {
 
 // NewDefault dials the Gitaly server and returns an OperationService.
 func NewDefault(c config.Gitaly) (*OperationService, error) {
-	conn, err := grpc.NewClient(fmt.Sprintf(":%d", c.Port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", func() string { if c.Host != "" { return c.Host }; return "localhost" }(), c.Port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}

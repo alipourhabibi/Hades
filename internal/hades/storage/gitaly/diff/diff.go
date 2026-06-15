@@ -21,7 +21,7 @@ type DiffService struct {
 
 // NewDefault dials the Gitaly server and returns a DiffService.
 func NewDefault(c config.Gitaly) (*DiffService, error) {
-	conn, err := grpc.NewClient(fmt.Sprintf(":%d", c.Port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", func() string { if c.Host != "" { return c.Host }; return "localhost" }(), c.Port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}
