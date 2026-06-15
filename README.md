@@ -146,6 +146,25 @@ You can modify protos in `development/protos/googleapis` and push with `buf push
 #### Go module proxy
 - `/go/{module}/@v/...` - standard Go proxy protocol so SDK-generated Go packages are `go get`-able directly from Hades
 
+## Frontend
+
+Next.js web UI lives in [`frontend/`](./frontend/README.md).
+
+### Dev
+
+```bash
+cd frontend
+cp .env.example .env.local   # set BACKEND_URL, NEXT_PUBLIC_DOMAIN
+npm install
+npm run dev                  # http://localhost:3000
+```
+
+Requests to `/api/rpc/*` are proxied to `BACKEND_URL` (default `http://localhost:50051`), so the backend must be running.
+
+See [`frontend/README.md`](./frontend/README.md) for full env var reference and route map.
+
+---
+
 ## SDK Generation
 
 When a module is pushed, Hades asynchronously generates SDK code (Go, Python, gRPC stubs, etc.) using `protoc` and stores the artifacts in S3-compatible object storage (MinIO in dev).
