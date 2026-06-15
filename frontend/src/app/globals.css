@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+/* ── Dark theme (default) ── */
+:root {
+  --c-bg-canvas:      #0d1117;
+  --c-bg-default:     #161b22;
+  --c-bg-overlay:     #1c2128;
+  --c-bg-inset:       #010409;
+  --c-bg-subtle:      #21262d;
+  --c-border:         #30363d;
+  --c-border-muted:   #21262d;
+  --c-fg:             #e6edf3;
+  --c-fg-muted:       #8b949e;
+  --c-fg-subtle:      #6e7681;
+  --c-accent:         #4d9ef7;
+  --c-accent-muted:   #1f4f8a;
+  --c-accent-bg:      rgba(77, 158, 247, 0.10);
+  --c-success:        #3fb950;
+  --c-success-bg:     rgba(63, 185, 80, 0.10);
+  --c-danger:         #f85149;
+  --c-danger-bg:      rgba(248, 81, 73, 0.10);
+  --c-warning:        #d29922;
+  --c-warning-bg:     rgba(210, 153, 34, 0.10);
+  --c-purple:         #a371f7;
+  --c-purple-bg:      rgba(163, 113, 247, 0.10);
+  --c-orange:         #f0883e;
+  --c-orange-bg:      rgba(240, 136, 62, 0.10);
+  --btn-bg:           #21262d;
+  --btn-bg-hover:     #30363d;
+}
+
+/* ── Light theme ── */
+:root.light {
+  --c-bg-canvas:      #ffffff;
+  --c-bg-default:     #f6f8fa;
+  --c-bg-overlay:     #eaeef2;
+  --c-bg-inset:       #f6f8fa;
+  --c-bg-subtle:      #f0f3f6;
+  --c-border:         #d0d7de;
+  --c-border-muted:   #eaeef2;
+  --c-fg:             #1f2328;
+  --c-fg-muted:       #636c76;
+  --c-fg-subtle:      #8c959f;
+  --c-accent:         #0969da;
+  --c-accent-muted:   #b6d4fb;
+  --c-accent-bg:      rgba(9, 105, 218, 0.08);
+  --c-success:        #1a7f37;
+  --c-success-bg:     rgba(26, 127, 55, 0.10);
+  --c-danger:         #d1242f;
+  --c-danger-bg:      rgba(209, 36, 47, 0.10);
+  --c-warning:        #9a6700;
+  --c-warning-bg:     rgba(154, 103, 0, 0.10);
+  --c-purple:         #8250df;
+  --c-purple-bg:      rgba(130, 80, 223, 0.10);
+  --c-orange:         #bc4c00;
+  --c-orange-bg:      rgba(188, 76, 0, 0.10);
+  --btn-bg:           #f6f8fa;
+  --btn-bg-hover:     #eaeef2;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--c-bg-canvas);
+  color: var(--c-fg);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--c-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button, input, select, textarea { font-family: inherit; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c-fg-subtle); }
+.status-loading { color: var(--c-fg-muted); font-size: 14px; }
+.status-error   { color: var(--c-danger);   font-size: 14px; }

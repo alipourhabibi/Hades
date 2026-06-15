@@ -1,0 +1,13 @@
+*.md
+.env
+.env.local
+.env.*.local
+.git
+Dockerfile
+.dockerignore
+frontend/
+development/
+migration/
+*.log
+hades
+tmp/
