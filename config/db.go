@@ -1,6 +1,6 @@
 package config
 
-// DB is the config model for our database
+// DB holds the PostgreSQL connection parameters.
 type DB struct {
 	ConnectionString string `json:"connectionString" yaml:"connectionString"`
 }

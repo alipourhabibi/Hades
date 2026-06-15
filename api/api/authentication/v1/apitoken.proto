@@ -1,0 +1,93 @@
+// Personal API token management for the Hades schema registry.
+//
+// API tokens are long-lived credentials intended for non-interactive clients
+// such as CI pipelines and the buf CLI. Token values are hashed on the server;
+// the plaintext is returned exactly once at creation time and cannot be
+// retrieved again. Tokens support optional expiry and coarse-grained scopes.
+
+syntax = "proto3";
+
+package hades.api.authentication.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/authentication/v1";
+
+// APIToken describes a personal API token record. The plaintext value is
+// never returned after creation; only the prefix is shown for identification.
+message APIToken {
+  // Unique token identifier (UUID).
+  string id = 1;
+  // Human-readable name given at creation time.
+  string name = 2;
+  // Short prefix of the token (e.g. "hades1_ab123") used to identify the
+  // token in UI without exposing the full value.
+  string prefix = 3;
+  // Granted permission scopes (empty means full access for the owning user).
+  repeated string scopes = 4;
+  // When the token was last successfully used to authenticate a request.
+  // Null if the token has never been used.
+  google.protobuf.Timestamp last_used_at = 5;
+  // When the token expires. Null means the token does not expire.
+  google.protobuf.Timestamp expires_at = 6;
+  // When the token was created.
+  google.protobuf.Timestamp created_at = 7;
+}
+
+// CreateAPITokenRequest creates a new API token for the authenticated user.
+message CreateAPITokenRequest {
+  // Human-readable label for the token, shown in listings.
+  string name = 1 [(buf.validate.field).required = true];
+  // Optional permission scopes. Empty grants the same access as the owner.
+  repeated string scopes = 2;
+  // Optional expiry. When omitted the token does not expire.
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+// CreateAPITokenResponse carries the newly created token.
+message CreateAPITokenResponse {
+  // UUID of the new token record.
+  string id = 1;
+  // Raw token value. Shown exactly once; store it securely - it cannot be
+  // retrieved again.
+  string token = 2;
+  // Short prefix extracted from the raw token for identification in UI.
+  string prefix = 3;
+  // When the token was created.
+  google.protobuf.Timestamp created_at = 4;
+}
+
+// ListAPITokensRequest lists all active tokens for the authenticated user.
+message ListAPITokensRequest {}
+
+// ListAPITokensResponse carries the caller's token list.
+message ListAPITokensResponse {
+  repeated APIToken tokens = 1;
+}
+
+// RevokeAPITokenRequest revokes the token with the given identifier.
+message RevokeAPITokenRequest {
+  // UUID of the token to revoke. Must be owned by the authenticated user.
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+// RevokeAPITokenResponse is empty.
+message RevokeAPITokenResponse {}
+
+// APITokenService manages personal API tokens for authenticated users.
+//
+// Tokens are hashed on the server; only the prefix is retained for display.
+// Revoked tokens are rejected immediately on the next use.
+service APITokenService {
+  // CreateAPIToken creates a new API token and returns the plaintext value.
+  // The plaintext is never available again after this call.
+  rpc CreateAPIToken(CreateAPITokenRequest) returns (CreateAPITokenResponse);
+
+  // ListAPITokens returns all non-revoked API tokens for the caller.
+  rpc ListAPITokens(ListAPITokensRequest) returns (ListAPITokensResponse);
+
+  // RevokeAPIToken permanently revokes the given token.
+  // Returns NOT_FOUND if the token does not exist or is not owned by the caller.
+  rpc RevokeAPIToken(RevokeAPITokenRequest) returns (RevokeAPITokenResponse);
+}

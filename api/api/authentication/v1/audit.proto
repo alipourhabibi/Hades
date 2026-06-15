@@ -1,0 +1,63 @@
+// Audit log API for the Hades schema registry.
+//
+// The audit log is an append-only record of security-relevant actions performed
+// by or on behalf of a user account. Events are never updated or deleted.
+// Callers can page through their own event history using the cursor-based
+// pagination provided by ListAuditLog.
+
+syntax = "proto3";
+
+package hades.api.authentication.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/authentication/v1";
+
+// AuditEvent records a single security-relevant action.
+message AuditEvent {
+  // Unique event identifier (UUID).
+  string id = 1;
+  // Machine-readable event type (e.g. "login.succeeded", "api_token.created").
+  string event_type = 2;
+  // IP address of the client that triggered the event.
+  string ip_address = 3;
+  // User-Agent of the client, if available.
+  string user_agent = 4;
+  // Arbitrary event-specific key-value data (e.g. token ID, module name).
+  google.protobuf.Struct metadata = 5;
+  // When the event was recorded.
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// ListAuditLogRequest pages through the caller's audit events.
+message ListAuditLogRequest {
+  // Maximum number of events to return. Must be between 0 and 100 inclusive.
+  // 0 uses the server default (50).
+  int32 page_size = 1 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 100
+  }];
+  // Opaque pagination cursor from the previous response's next_page_token.
+  // Empty means start from the most recent event.
+  string page_token = 2;
+}
+
+// ListAuditLogResponse carries a page of audit events.
+message ListAuditLogResponse {
+  // Audit events for this page, ordered newest first.
+  repeated AuditEvent events = 1;
+  // Cursor for the next page. Empty when this is the last page.
+  string next_page_token = 2;
+}
+
+// AuditService exposes the audit log for the authenticated user.
+//
+// Only the events belonging to the caller are accessible. Administrators
+// querying events on behalf of other users must use an out-of-band mechanism.
+service AuditService {
+  // ListAuditLog returns audit events for the authenticated user, newest first.
+  // Supports cursor-based pagination via page_size and page_token.
+  rpc ListAuditLog(ListAuditLogRequest) returns (ListAuditLogResponse);
+}

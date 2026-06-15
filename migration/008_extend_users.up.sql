@@ -1,0 +1,4 @@
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email_verified_at  TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS failed_login_count INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS locked_until       TIMESTAMP;

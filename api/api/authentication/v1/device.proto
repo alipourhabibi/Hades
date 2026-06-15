@@ -1,0 +1,80 @@
+// Device Authorization Grant API for the Hades schema registry.
+//
+// Implements the OAuth 2.0 Device Authorization Grant (RFC 8628). This flow
+// is designed for devices that cannot open a browser (e.g. the buf CLI, CI
+// runners). The device requests a code, displays the user_code to the operator,
+// and polls PollDeviceToken until the user approves the grant in a browser
+// session via ApproveDeviceGrant.
+
+syntax = "proto3";
+
+package hades.api.authentication.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "gen/api/authentication/v1";
+
+// RequestDeviceCodeRequest initiates a device authorization flow. No
+// parameters are needed; the server generates the codes.
+message RequestDeviceCodeRequest {}
+
+// RequestDeviceCodeResponse carries the codes and polling parameters.
+message RequestDeviceCodeResponse {
+  // Opaque device code used by the device to poll for token issuance.
+  // Not shown to the user.
+  string device_code = 1;
+  // Short human-readable code the operator must enter at the verification URL.
+  string user_code = 2;
+  // URL where the operator should enter the user_code to approve the grant.
+  string verification_url = 3;
+  // Seconds until the device_code and user_code expire.
+  int32 expires_in_seconds = 4;
+  // Minimum interval in seconds between PollDeviceToken calls.
+  // Polling faster will result in SLOW_DOWN errors from the server.
+  int32 poll_interval_seconds = 5;
+}
+
+// PollDeviceTokenRequest checks whether the user has approved the grant.
+message PollDeviceTokenRequest {
+  // The device_code from RequestDeviceCodeResponse.
+  string device_code = 1 [(buf.validate.field).required = true];
+}
+
+// PollDeviceTokenResponse carries the session token when the grant is approved.
+message PollDeviceTokenResponse {
+  // Bearer token for the approved session. Empty while pending is true.
+  string token = 1;
+  // True when the user has not yet approved the grant. The device should
+  // continue polling at the rate given by poll_interval_seconds.
+  bool pending = 2;
+}
+
+// ApproveDeviceGrantRequest approves the device grant identified by user_code.
+message ApproveDeviceGrantRequest {
+  // The user_code displayed on the device. Must match an active, unexpired grant.
+  string user_code = 1 [(buf.validate.field).required = true];
+}
+
+// ApproveDeviceGrantResponse is empty; success is indicated by a non-error status.
+message ApproveDeviceGrantResponse {}
+
+// DeviceService implements the OAuth 2.0 Device Authorization Grant (RFC 8628).
+//
+// RequestDeviceCode and PollDeviceToken are reachable without authentication
+// because no session exists at that point. ApproveDeviceGrant requires the
+// operator to be authenticated with a full browser session.
+service DeviceService {
+  // RequestDeviceCode initiates a device authorization flow and returns the
+  // codes the device needs for polling and the operator needs for approval.
+  rpc RequestDeviceCode(RequestDeviceCodeRequest) returns (RequestDeviceCodeResponse);
+
+  // PollDeviceToken checks whether the user has approved the pending grant.
+  // Returns a session token when approved, or sets pending=true while waiting.
+  // Returns NOT_FOUND if the device_code has expired or never existed.
+  rpc PollDeviceToken(PollDeviceTokenRequest) returns (PollDeviceTokenResponse);
+
+  // ApproveDeviceGrant approves the grant identified by user_code.
+  // The authenticated user becomes the owner of the resulting session.
+  // Returns NOT_FOUND if the user_code is invalid or expired.
+  rpc ApproveDeviceGrant(ApproveDeviceGrantRequest) returns (ApproveDeviceGrantResponse);
+}

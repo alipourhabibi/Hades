@@ -37,6 +37,112 @@ services:
     ports:
       - "9999:9999"
 
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # Web UI
+    volumes:
+      - minio_data:/data
+
+  # ── TLS reverse proxy ───────────────────────────────────────────────────────
+  # Caddy terminates TLS on :443 and proxies to the Hades server (h2c) running
+  # on the host at port 50051.  Its local CA is auto-generated on first start;
+  # run `./development/trust-dev-ca.sh` once to trust it system-wide.
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    ports:
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # ── Observability stack ─────────────────────────────────────────────────────
+
+  # OpenTelemetry Collector - receives OTLP from Hades (port 4317),
+  # fans out to Jaeger (traces) and Prometheus (metrics).
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC (Hades → collector)
+      - "4318:4318" # OTLP HTTP (optional)
+      - "8889:8889" # Prometheus metrics scrape endpoint (collector self-metrics)
+    depends_on:
+      - jaeger
+
+  # Jaeger all-in-one - stores and visualises distributed traces.
+  # UI: http://localhost:16686
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4317" # OTLP gRPC (internal, collector → jaeger)
+    volumes:
+      - jaeger_data:/badger
+
+  # Prometheus - scrapes Hades (:9090/metrics) and the OTel collector (:8889).
+  # UI: http://localhost:9091
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yaml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9091:9090" # Prometheus UI (9091 to avoid clash with Hades :9090)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - otel-collector
+
+  # Grafana - dashboards over Prometheus and Jaeger.
+  # UI: http://localhost:3000  (admin / admin)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - jaeger
+
 volumes:
   postgres_data:
   pgadmin:
+  minio_data:
+  jaeger_data:
+  prometheus_data:
+  grafana_data:
+  caddy_data:
+  caddy_config:

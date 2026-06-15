@@ -8,9 +8,8 @@ import (
 	"github.com/alipourhabibi/Hades/config"
 )
 
-// NewWithConfig will return an slog logger with the configs it receives
+// NewWithConfig constructs an slog-backed LoggerWrapper from the given config.
 func NewWithConfig(c config.Logger) (*LoggerWrapper, error) {
-
 	var level slog.Level
 	err := level.UnmarshalText([]byte(c.Level))
 	if err != nil {

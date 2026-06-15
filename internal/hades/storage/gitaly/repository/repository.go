@@ -1,3 +1,4 @@
+// Package repository wraps the Gitaly RepositoryService gRPC client.
 package repository
 
 import (
@@ -11,11 +12,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// RepositoryService wraps the Gitaly RepositoryService gRPC client.
 type RepositoryService struct {
 	client             pb.RepositoryServiceClient
 	defaultStorageName string
 }
 
+// NewDefault dials the Gitaly server and returns a RepositoryService.
 func NewDefault(c config.Gitaly) (*RepositoryService, error) {
 	conn, err := grpc.NewClient(fmt.Sprintf(":%d", c.Port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -28,6 +31,21 @@ func NewDefault(c config.Gitaly) (*RepositoryService, error) {
 	}, nil
 }
 
+// DeleteRepository removes the Gitaly repository for the given module.
+// Used as a compensating action when a DB transaction fails after the
+// repository was already created (saga pattern).
+func (c *RepositoryService) DeleteRepository(ctx context.Context, in *registryv1.Module) error {
+	_, err := c.client.RemoveRepository(ctx, &pb.RemoveRepositoryRequest{
+		Repository: &pb.Repository{
+			RelativePath: in.Name,
+			StorageName:  c.defaultStorageName,
+			GlRepository: in.Name,
+		},
+	})
+	return err
+}
+
+// CreateRepository initialises a new bare Gitaly repository for the module.
 func (c *RepositoryService) CreateRepository(ctx context.Context, in *registryv1.Module) error {
 	if in.DefaultBranch == "" {
 		in.DefaultBranch = "main"

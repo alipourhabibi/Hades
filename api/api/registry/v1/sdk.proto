@@ -1,0 +1,66 @@
+// SDK generation job API for the Hades schema registry.
+//
+// When a module commit is pushed, the upload handler enqueues one SDK job per
+// configured language generator. Jobs are processed asynchronously by the SDK
+// worker. Clients poll this service to discover job outcomes and the storage
+// location of generated artifacts.
+
+syntax = "proto3";
+
+package hades.api.registry.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/registry/v1";
+
+// SDKJob represents a single SDK code-generation job. Jobs are enqueued by
+// the upload handler and processed by the SDK worker.
+message SDKJob {
+  // Unique job identifier (UUID).
+  string id = 1;
+  // ID of the module this job belongs to.
+  string module_id = 2;
+  // ID of the commit that triggered this job.
+  string commit_id = 3;
+  // Target programming language (e.g. "go", "typescript").
+  string language = 4;
+  // protoc plug-in used for generation (e.g. "protoc-gen-go").
+  string plugin = 5;
+  // Job lifecycle status: "pending", "running", "succeeded", "failed", "dead".
+  string status = 6;
+  // Storage path of the generated artifact. Set on success, empty otherwise.
+  string output_location = 7;
+  // Human-readable error detail. Set on failure, empty otherwise.
+  string error_message = 8;
+  // When the job was created.
+  google.protobuf.Timestamp create_time = 9;
+  // When the job last transitioned to a terminal state (succeeded or failed).
+  google.protobuf.Timestamp update_time = 10;
+}
+
+// ListSDKsRequest is the input for SDKService.ListSDKs.
+message ListSDKsRequest {
+  // Username of the module owner.
+  string owner = 1 [(buf.validate.field).required = true];
+  // Short module name (without the owner prefix).
+  string module = 2 [(buf.validate.field).required = true];
+}
+
+// ListSDKsResponse is the output for SDKService.ListSDKs.
+message ListSDKsResponse {
+  // All SDK generation jobs for the module, ordered newest first.
+  repeated SDKJob sdk_jobs = 1;
+}
+
+// SDKService exposes SDK generation job status for schema modules.
+//
+// Jobs are created automatically on each module push; there is no RPC to
+// create them manually. Poll ListSDKs to wait for a job to reach a terminal
+// state before downloading the artifact.
+service SDKService {
+  // ListSDKs returns all SDK generation jobs for the given module, ordered
+  // newest first. Returns NOT_FOUND if the module does not exist or the
+  // caller cannot read it.
+  rpc ListSDKs(ListSDKsRequest) returns (ListSDKsResponse);
+}

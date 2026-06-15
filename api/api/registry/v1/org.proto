@@ -1,0 +1,162 @@
+// Organization management API for the Hades schema registry.
+//
+// Organizations are modelled as user records with type USER_TYPE_ORGANIZATION,
+// so the same identity namespace covers both individuals and organizations.
+// This service handles membership, creation, and profile updates. Module
+// ownership and RBAC use the same user UUID for both kinds of account.
+
+syntax = "proto3";
+
+package hades.api.registry.v1;
+
+import "api/registry/v1/user.proto";
+import "buf/validate/validate.proto";
+
+option go_package = "gen/api/registry/v1";
+
+// OrgMember pairs a user account with their role within an organization.
+message OrgMember {
+  // The member's user profile.
+  hades.api.registry.v1.User user = 1;
+  // Role of the member (e.g. "admin", "member").
+  string role = 2;
+}
+
+// GetOrgRequest is the input for OrgService.GetOrg.
+message GetOrgRequest {
+  // Username of the organization to look up.
+  string name = 1 [(buf.validate.field).required = true];
+}
+
+// GetOrgResponse is the output for OrgService.GetOrg.
+message GetOrgResponse {
+
+  hades.api.registry.v1.User org = 1;
+  // Number of modules owned by this organization.
+  int32 module_count = 2;
+  // Number of members in this organization.
+  int32 member_count = 3;
+}
+
+// ListOrgMembersRequest is the input for OrgService.ListOrgMembers.
+message ListOrgMembersRequest {
+  // Username of the organization whose members to list.
+  string org_name = 1 [(buf.validate.field).required = true];
+}
+
+// ListOrgMembersResponse is the output for OrgService.ListOrgMembers.
+message ListOrgMembersResponse {
+  repeated OrgMember members = 1;
+}
+
+// CreateOrgRequest creates a new organization owned by the authenticated user.
+message CreateOrgRequest {
+  // Desired organization username. Must be unique in the registry.
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+  // Optional human-readable description.
+  string description = 2;
+  // Optional URL associated with the organization.
+  string url = 3;
+}
+
+// CreateOrgResponse carries the newly created organization record.
+message CreateOrgResponse {
+  hades.api.registry.v1.User org = 1;
+}
+
+// UpdateOrgRequest updates the profile fields of an organization.
+message UpdateOrgRequest {
+  // Username of the organization to update.
+  string org_name = 1 [(buf.validate.field).string.min_len = 1];
+  // New description. Empty leaves the field unchanged.
+  string description = 2;
+  // New URL. Empty leaves the field unchanged.
+  string url = 3;
+}
+
+// UpdateOrgResponse carries the updated organization record.
+message UpdateOrgResponse {
+  hades.api.registry.v1.User org = 1;
+}
+
+// AddOrgMemberRequest adds a user to an organization with the given role.
+message AddOrgMemberRequest {
+  // Username of the target organization.
+  string org_name = 1 [(buf.validate.field).string.min_len = 1];
+  // Username of the user to add.
+  string username = 2 [(buf.validate.field).string.min_len = 1];
+  // Role to assign. Valid values: "member", "admin". Defaults to "member".
+  string role = 3;
+}
+
+// AddOrgMemberResponse is empty.
+message AddOrgMemberResponse {}
+
+// RemoveOrgMemberRequest removes a user from an organization.
+message RemoveOrgMemberRequest {
+  // Username of the target organization.
+  string org_name = 1 [(buf.validate.field).string.min_len = 1];
+  // Username of the user to remove.
+  string username = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+// RemoveOrgMemberResponse is empty.
+message RemoveOrgMemberResponse {}
+
+// ListOrganizationsRequest searches for organization accounts.
+message ListOrganizationsRequest {
+  // Optional substring search on org username. Empty returns the first 50 orgs.
+  string query = 1;
+}
+
+// ListOrganizationsResponse carries matching organization records.
+message ListOrganizationsResponse {
+  repeated hades.api.registry.v1.User organizations = 1;
+}
+
+// GetUserOrgsRequest lists the organizations a user belongs to.
+message GetUserOrgsRequest {
+  // Username of the user whose organizations to list.
+  string username = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetUserOrgsResponse carries the organizations the user belongs to.
+message GetUserOrgsResponse {
+  repeated hades.api.registry.v1.User organizations = 1;
+}
+
+// OrgService manages organizations and their membership.
+//
+// Organizations share the user identity namespace; their records are User
+// messages with type = USER_TYPE_ORGANIZATION. Module ownership and RBAC
+// treat user and org UUIDs identically.
+service OrgService {
+  // GetOrg returns the organization record for the given username.
+  // Returns NOT_FOUND if no organization with that name exists.
+  rpc GetOrg(GetOrgRequest) returns (GetOrgResponse);
+
+  // ListOrgMembers returns all members of the given organization with their roles.
+  rpc ListOrgMembers(ListOrgMembersRequest) returns (ListOrgMembersResponse);
+
+  // CreateOrg creates a new organization. The caller becomes its first admin.
+  // Returns ALREADY_EXISTS if the username is taken.
+  rpc CreateOrg(CreateOrgRequest) returns (CreateOrgResponse);
+
+  // UpdateOrg updates the description and URL of an organization.
+  // Requires the caller to be an admin of the org.
+  rpc UpdateOrg(UpdateOrgRequest) returns (UpdateOrgResponse);
+
+  // AddOrgMember adds a user to an organization with the given role.
+  // Requires the caller to be an admin of the org.
+  rpc AddOrgMember(AddOrgMemberRequest) returns (AddOrgMemberResponse);
+
+  // RemoveOrgMember removes a user from an organization.
+  // Requires the caller to be an admin of the org, or the member themselves.
+  rpc RemoveOrgMember(RemoveOrgMemberRequest) returns (RemoveOrgMemberResponse);
+
+  // ListOrganizations returns organizations matching an optional query.
+  rpc ListOrganizations(ListOrganizationsRequest) returns (ListOrganizationsResponse);
+
+  // GetUserOrgs returns all organizations the given user belongs to.
+  rpc GetUserOrgs(GetUserOrgsRequest) returns (GetUserOrgsResponse);
+}

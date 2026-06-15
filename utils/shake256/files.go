@@ -9,10 +9,12 @@ import (
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 )
 
+// DigestFiles computes a single SHAKE-256 digest over a set of files.
+// Files are sorted by path before hashing to ensure deterministic output
+// regardless of input order.
 func DigestFiles(datas []*registryv1.File) (*digest, error) {
 	digests := ""
 
-	// Sort slice to be consistent with every order
 	slices.SortFunc(datas, func(a, b *registryv1.File) int {
 		if a.Path > b.Path {
 			return 1
@@ -32,7 +34,6 @@ func DigestFiles(datas []*registryv1.File) (*digest, error) {
 		digests += fmt.Sprintf("%s  %s\n", d.String(), v.Path)
 	}
 
-	// HERE TODO should look it up
 	digestOfDigests, err := NewDigestForContent(strings.NewReader(digests))
 	if err != nil {
 		panic(err)

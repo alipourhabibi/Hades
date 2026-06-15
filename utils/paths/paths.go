@@ -1,3 +1,4 @@
+// Package paths provides file path filtering for module uploads.
 package paths
 
 import (
@@ -7,17 +8,20 @@ import (
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 )
 
-var validPathes = []string{
+// allowedFiles lists non-proto files that are accepted in a module upload.
+var allowedFiles = []string{
 	"buf.md",
 	"README.md",
 	"README.markdown",
 	"LICENSE",
 }
 
+// GetPath filters files to only those that belong in a module: .proto files
+// and a small set of allowed metadata files.
 func GetPath(files []*registryv1.File) []*registryv1.File {
 	retFiles := []*registryv1.File{}
 	for _, f := range files {
-		if strings.HasSuffix(f.Path, ".proto") || slices.Contains(validPathes, f.Path) {
+		if strings.HasSuffix(f.Path, ".proto") || slices.Contains(allowedFiles, f.Path) {
 			retFiles = append(retFiles, f)
 		}
 	}

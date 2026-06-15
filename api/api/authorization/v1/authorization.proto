@@ -1,18 +1,34 @@
+// Authorization API for the Hades schema registry.
+//
+// Exposes session-to-user resolution used by internal services. The
+// UserBySession RPC is typically called by API gateways or CLI tools
+// that need to resolve a Bearer token to a full user record.
+
 syntax = "proto3";
 
 package hades.api.authorization.v1;
 
 import "api/registry/v1/user.proto";
+import "buf/validate/validate.proto";
 
 option go_package = "gen/api/authorization/v1";
 
-message UserBySessionRequest {
-}
+// UserBySessionRequest resolves the caller's Bearer token to a user record.
+message UserBySessionRequest {}
 
+// UserBySessionResponse carries the user associated with the current session.
 message UserBySessionResponse {
+  // Full user record for the authenticated caller.
   hades.api.registry.v1.User user = 1;
 }
 
+// Authorization resolves authenticated session context to user identity.
+//
+// This service is intentionally minimal. The middleware layer handles token
+// validation; this RPC is for callers that need to inspect the resolved user
+// record explicitly rather than reading it from context.
 service Authorization {
+  // UserBySession returns the user record associated with the caller's session.
+  // Returns UNAUTHENTICATED if the Bearer token is missing or invalid.
   rpc UserBySession(UserBySessionRequest) returns (UserBySessionResponse);
 }

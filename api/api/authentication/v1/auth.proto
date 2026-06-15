@@ -1,33 +1,176 @@
+// Authentication API for the Hades schema registry.
+//
+// This file defines the credential lifecycle: registration, login, logout,
+// email verification, password reset, and password change. The Login RPC
+// issues a session token; callers include that token in subsequent requests
+// as a Bearer token in the Authorization header.
+
 syntax = "proto3";
 
 package hades.api.authentication.v1;
 
 import "api/registry/v1/user.proto";
+import "buf/validate/validate.proto";
 
 option go_package = "gen/api/authentication/v1";
 
+// LoginRequest carries the credentials for password-based login.
 message LoginRequest {
-  string username = 1;
-  string password = 2;
+  // Username of the account to authenticate.
+  string username = 1 [(buf.validate.field).required = true];
+  // Password for the account.
+  string password = 2 [(buf.validate.field).required = true];
+  // Optional User-Agent string recorded in the session row for audit purposes.
+  string user_agent = 3;
 }
 
+// LoginResponse carries the session token issued on successful login.
 message LoginResponse {
+  // Bearer token to include in the Authorization header for subsequent calls.
+  // Empty when pending_totp is true.
   string token = 1;
+  // True when the account has TOTP enabled and the session is not yet fully
+  // authenticated. The caller must complete VerifyTOTP before the token
+  // becomes valid for other RPCs.
+  bool pending_totp = 2;
 }
 
-message SigninRequest {
-  string username = 1;
-  string password = 2;
+// RegisterRequest carries the information needed to create a new account.
+message RegisterRequest {
+  // Desired username. Must be 2–32 characters.
+  string username = 1 [(buf.validate.field).string = {
+    min_len: 2
+    max_len: 32
+  }];
+  // Plaintext password. Must be at least 8 characters; stored as a bcrypt hash.
+  string password = 2 [(buf.validate.field).string.min_len = 8];
+  // Optional human-readable description shown on the user profile.
   string description = 3;
-  string email = 4;
+  // Email address used for verification and password reset.
+  string email = 4 [(buf.validate.field).string.email = true];
 }
 
+// RegisterResponse carries the identifier of the newly created account.
+message RegisterResponse {
+  // UUID of the created user record.
+  string user_id = 1;
+}
+
+// SigninRequest is identical to RegisterRequest and is kept only for
+// backwards compatibility with older clients. New clients must use Register.
+message SigninRequest {
+  string username = 1 [(buf.validate.field).string = {
+    min_len: 2
+    max_len: 32
+  }];
+  string password = 2 [(buf.validate.field).string.min_len = 8];
+  string description = 3;
+  string email = 4 [(buf.validate.field).string.email = true];
+}
+
+// SigninResponse is the legacy registration response. The status field is
+// always true on success; errors are returned as RPC status codes.
 message SigninResponse {
   bool status = 1;
 }
 
+// LogoutRequest revokes the session associated with the caller's Bearer token.
+message LogoutRequest {}
 
+// LogoutResponse is empty; success is indicated by a non-error RPC status.
+message LogoutResponse {}
+
+// VerifyEmailRequest carries the single-use token sent to the user's address.
+message VerifyEmailRequest {
+  // The verification token from the confirmation email.
+  string token = 1 [(buf.validate.field).required = true];
+}
+
+// VerifyEmailResponse is empty; success is indicated by a non-error RPC status.
+message VerifyEmailResponse {}
+
+// ResendVerificationEmailRequest triggers a new verification email for the
+// authenticated user. No parameters are needed; the target address is taken
+// from the session.
+message ResendVerificationEmailRequest {}
+
+// ResendVerificationEmailResponse is empty.
+message ResendVerificationEmailResponse {}
+
+// RequestPasswordResetRequest initiates a password reset flow by sending a
+// reset link to the given email address.
+message RequestPasswordResetRequest {
+  // Email address of the account to reset. No error is returned if the address
+  // is not found, to avoid leaking account existence.
+  string email = 1 [(buf.validate.field).string.email = true];
+}
+
+// RequestPasswordResetResponse is empty.
+message RequestPasswordResetResponse {}
+
+// ResetPasswordRequest consumes a single-use reset token and sets a new password.
+message ResetPasswordRequest {
+  // The reset token from the password-reset email.
+  string token = 1 [(buf.validate.field).required = true];
+  // The new plaintext password. Must be at least 8 characters.
+  string new_password = 2 [(buf.validate.field).string.min_len = 8];
+}
+
+// ResetPasswordResponse is empty.
+message ResetPasswordResponse {}
+
+// ChangePasswordRequest updates the password for the authenticated user.
+message ChangePasswordRequest {
+  // Current password, required to authorise the change.
+  string old_password = 1 [(buf.validate.field).required = true];
+  // New plaintext password. Must be at least 8 characters.
+  string new_password = 2 [(buf.validate.field).string.min_len = 8];
+  // When true, all sessions other than the current one are revoked on success.
+  // Useful after a suspected credential compromise.
+  bool revoke_other_sessions = 3;
+}
+
+// ChangePasswordResponse is empty.
+message ChangePasswordResponse {}
+
+// AuthenticationService covers the full credential lifecycle for Hades accounts.
+//
+// Login and Register are reachable without a session. All other RPCs require a
+// valid Bearer token in the Authorization header, except VerifyEmail and the
+// password-reset pair which use single-use tokens that embed their own auth.
 service AuthenticationService {
+  // Login authenticates a user with username and password and issues a session
+  // token. When the account has TOTP enabled the response sets pending_totp and
+  // the caller must complete VerifyTOTP before the token grants full access.
   rpc Login(LoginRequest) returns (LoginResponse);
+
+  // Register creates a new user account and sends a verification email.
+  // Returns ALREADY_EXISTS if the username or email is taken.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Signin is kept for backwards compatibility. New clients must use Register.
   rpc Signin(SigninRequest) returns (SigninResponse);
+
+  // Logout revokes the session associated with the caller's Bearer token.
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+
+  // VerifyEmail consumes the single-use token from a verification email and
+  // marks the account's email address as verified.
+  rpc VerifyEmail(VerifyEmailRequest) returns (VerifyEmailResponse);
+
+  // ResendVerificationEmail sends a new verification email to the authenticated
+  // user. Can be called before email_verified_at is set.
+  rpc ResendVerificationEmail(ResendVerificationEmailRequest) returns (ResendVerificationEmailResponse);
+
+  // RequestPasswordReset sends a password-reset email to the given address.
+  // Always succeeds to avoid leaking whether an address is registered.
+  rpc RequestPasswordReset(RequestPasswordResetRequest) returns (RequestPasswordResetResponse);
+
+  // ResetPassword consumes a single-use reset token and replaces the password.
+  // Returns UNAUTHENTICATED if the token is expired or already used.
+  rpc ResetPassword(ResetPasswordRequest) returns (ResetPasswordResponse);
+
+  // ChangePassword updates the password for the authenticated user.
+  // Optionally revokes all other active sessions.
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
 }

@@ -1,3 +1,4 @@
+// Package commit wraps the Gitaly CommitService gRPC client.
 package commit
 
 import (
@@ -9,11 +10,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// CommitService wraps the Gitaly CommitService gRPC client.
 type CommitService struct {
 	client             pb.CommitServiceClient
 	defaultStorageName string
 }
 
+// NewDefault dials the Gitaly server and returns a CommitService.
 func NewDefault(c config.Gitaly) (*CommitService, error) {
 	conn, err := grpc.NewClient(fmt.Sprintf(":%d", c.Port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {

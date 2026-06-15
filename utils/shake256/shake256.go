@@ -1,3 +1,5 @@
+// Package shake256 provides content-addressable hashing for module files
+// using SHAKE-256. The digest format matches the Buf registry wire format.
 package shake256
 
 import (
@@ -20,7 +22,8 @@ func (d *digest) String() string {
 	return d.stringValue
 }
 
-// NewDigest returns a new Digest for the content read from the Reader.
+// NewDigestForContent computes a SHAKE-256 digest over the entire content
+// read from reader.
 func NewDigestForContent(reader io.Reader) (*digest, error) {
 	shakeHash := sha3.NewShake256()
 	shakeHash.Reset()

@@ -1,0 +1,12 @@
+example.com {
+	# Caddy generates a local CA and issues a certificate automatically.
+	# Run `./development/trust-dev-ca.sh` once to trust the CA system-wide.
+	tls internal
+
+	reverse_proxy host.docker.internal:50051 {
+		transport http {
+			# The Hades server speaks plaintext HTTP/2 (h2c) in dev mode.
+			versions h2c
+		}
+	}
+}
