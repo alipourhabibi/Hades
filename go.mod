@@ -3,11 +3,13 @@ module github.com/alipourhabibi/Hades
 go 1.25.0
 
 require (
+	buf.build/gen/go/bufbuild/buf/connectrpc/go v1.20.0-20260615143433-b825d214abb8.1
+	buf.build/gen/go/bufbuild/buf/protocolbuffers/go v1.36.11-20260615143433-b825d214abb8.1
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260415201107-50325440f8f2.1
-	buf.build/gen/go/bufbuild/registry/connectrpc/go v1.17.0-20241125212318-4a305dc3b757.1
-	buf.build/gen/go/bufbuild/registry/protocolbuffers/go v1.35.2-20241125212318-4a305dc3b757.1
+	buf.build/gen/go/bufbuild/registry/connectrpc/go v1.19.0-20250924144421-cb55f06efbd2.1
+	buf.build/gen/go/bufbuild/registry/protocolbuffers/go v1.36.10-20250924144421-cb55f06efbd2.1
 	buf.build/go/protovalidate v1.2.0
-	connectrpc.com/connect v1.17.0
+	connectrpc.com/connect v1.20.0
 	connectrpc.com/grpcreflect v1.2.0
 	connectrpc.com/otelconnect v0.9.0
 	github.com/alicebob/miniredis/v2 v2.37.0
@@ -36,7 +38,6 @@ require (
 	golang.org/x/crypto v0.49.0
 	golang.org/x/net v0.52.0
 	golang.org/x/oauth2 v0.36.0
-	google.golang.org/genproto v0.0.0-20240311173647-c811ad7063a7
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1

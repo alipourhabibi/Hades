@@ -16,6 +16,7 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	registryv1alpha1connect "buf.build/gen/go/bufbuild/buf/connectrpc/go/buf/alpha/registry/v1alpha1/registryv1alpha1connect"
 	"buf.build/gen/go/bufbuild/registry/connectrpc/go/buf/registry/module/v1/modulev1connect"
 	"github.com/alipourhabibi/Hades/api/gen/api/authentication/v1/authenticationv1connect"
 	"github.com/alipourhabibi/Hades/api/gen/api/authorization/v1/authorizationv1connect"
@@ -31,6 +32,7 @@ import (
 	bufcommits "github.com/alipourhabibi/Hades/internal/hades/server/bufcommits"
 	"github.com/alipourhabibi/Hades/internal/hades/server/bufdownload"
 	"github.com/alipourhabibi/Hades/internal/hades/server/bufgraph"
+	"github.com/alipourhabibi/Hades/internal/hades/server/bufauthn"
 	bufmodules "github.com/alipourhabibi/Hades/internal/hades/server/bufmodules"
 	"github.com/alipourhabibi/Hades/internal/hades/server/bufupload"
 	"github.com/alipourhabibi/Hades/internal/hades/server/cisvc"
@@ -89,7 +91,8 @@ type SchemaRegistryServerSet struct {
 	BufCommitServer      *bufcommits.Server
 	BufUploadServer      *bufupload.Server
 	BufGraphServer       *bufgraph.Server
-	BufDownloadServer    *bufdownload.Server
+	BufDownloadServer  *bufdownload.Server
+	BufAlphaAuthnServer *bufauthn.Server
 
 	// Authentication service handlers.
 	SessionHandler  *sessionsvc.Handler
@@ -349,6 +352,7 @@ func newSchemaRegistryServerSet(ctx context.Context, s *SchemaRegistryServer) (*
 
 	serverSet.AuthenticationServer = authenticationServer
 	serverSet.ModuleServer = moduleServer
+	serverSet.BufAlphaAuthnServer = bufauthn.NewServer(dependencies)
 	serverSet.BufModuleServer = bufModuleServer
 	serverSet.BufUploadServer = uploadServer
 	serverSet.BufCommitServer = bufCommitServer
@@ -422,6 +426,7 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 		registryv1connect.CIServiceName,
 		registryv1connect.NotificationServiceName,
 		registryv1connect.TreeServiceName,
+		registryv1alpha1connect.AuthnServiceName,
 	)
 
 	// The authorization interceptor skips Login/Register via noAuthProcedures.
@@ -448,6 +453,9 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 
 	bufdownloadPath, bufdownloadHandler := modulev1connect.NewDownloadServiceHandler(s.serverSet.BufDownloadServer, interceptors)
 	mux.Handle(bufdownloadPath, bufdownloadHandler)
+
+	bufAlphaAuthnPath, bufAlphaAuthnHandler := registryv1alpha1connect.NewAuthnServiceHandler(s.serverSet.BufAlphaAuthnServer, interceptors)
+	mux.Handle(bufAlphaAuthnPath, bufAlphaAuthnHandler)
 
 	sessionPath, sessionHandler := authenticationv1connect.NewSessionServiceHandler(s.serverSet.SessionHandler, interceptors)
 	mux.Handle(sessionPath, sessionHandler)

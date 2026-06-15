@@ -48,7 +48,7 @@ func (h *Handler) CreateAPIToken(ctx context.Context, in *connect.Request[v1.Cre
 		return nil, connErr.Internal("missing user in context")
 	}
 
-	raw, hash, err := utilscrypto.GenerateToken()
+	raw, _, err := utilscrypto.GenerateToken()
 	if err != nil {
 		h.logger.Error("failed to generate token", "error", err, "procedure", "CreateAPIToken", "user_id", user.Id)
 		return nil, connErr.Internal("failed to generate token")
@@ -58,6 +58,9 @@ func (h *Handler) CreateAPIToken(ctx context.Context, in *connect.Request[v1.Cre
 	// identify Hades tokens at a glance without exposing the full value.
 	prefix := fmt.Sprintf("hades1_%s", raw[:5])
 	fullToken := prefix + "_" + raw
+	// Hash the full token (what the user will present as Bearer) so the
+	// middleware lookup SHA256(Bearer) == stored hash.
+	tokenHash := utilscrypto.HashToken(fullToken)
 
 	var expiresAt *time.Time
 	if in.Msg.ExpiresAt != nil {
@@ -65,7 +68,7 @@ func (h *Handler) CreateAPIToken(ctx context.Context, in *connect.Request[v1.Cre
 		expiresAt = &t
 	}
 
-	id, err := h.apiTokenDB.Create(ctx, user.Id, in.Msg.Name, prefix, hash, in.Msg.Scopes, expiresAt)
+	id, err := h.apiTokenDB.Create(ctx, user.Id, in.Msg.Name, prefix, tokenHash, in.Msg.Scopes, expiresAt)
 	if err != nil {
 		h.logger.Error("failed to create API token", "error", err, "procedure", "CreateAPIToken", "user_id", user.Id)
 		return nil, connErr.FromPgx(err)
