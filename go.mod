@@ -13,7 +13,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/casbin/casbin/v2 v2.103.0
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.7.2
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/minio/minio-go/v7 v7.0.100
 	github.com/open-policy-agent/opa v1.15.2
 	github.com/pquerna/otp v1.5.0
