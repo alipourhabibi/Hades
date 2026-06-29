@@ -33,8 +33,8 @@ type Handler struct {
 	registryv1connect.CommitServiceHandler
 
 	logger          *log.LoggerWrapper
-	commitDBStorage *commitdb.CommitStorage
-	moduleDBStorage *moduledb.ModuleStorage
+	commitDBStorage commitdb.Storage
+	moduleDBStorage moduledb.Storage
 	authz           readAccessChecker
 }
 

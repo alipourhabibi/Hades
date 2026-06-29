@@ -3,10 +3,20 @@ example.com {
 	# Run `./development/trust-dev-ca.sh` once to trust the CA system-wide.
 	tls internal
 
-	reverse_proxy host.docker.internal:50051 {
+	# buf CLI / direct RPC / Go module proxy → Hades backend (h2c) on host
+	@rpc path /hades.api.* /buf.registry.* /gen/go/* /go/*
+	reverse_proxy @rpc host.docker.internal:50051 {
 		transport http {
-			# The Hades server speaks plaintext HTTP/2 (h2c) in dev mode.
 			versions h2c
+		}
+	}
+
+	# Everything else → Next.js dev server on host.
+	# Default port 3000; override with FRONTEND_PORT env var.
+	# HTTP/1.1 required for WebSocket (HMR) upgrade; do not use h2c here.
+	reverse_proxy host.docker.internal:{$FRONTEND_PORT:3000} {
+		transport http {
+			versions 1.1
 		}
 	}
 }

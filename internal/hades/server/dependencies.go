@@ -6,9 +6,9 @@ import (
 	"github.com/alipourhabibi/Hades/config"
 	authorizationengine "github.com/alipourhabibi/Hades/internal/hades/authorization"
 	authorizationsvc "github.com/alipourhabibi/Hades/internal/hades/server/authorization"
+	"github.com/alipourhabibi/Hades/internal/hades/cache"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/apitoken"
-	sdkstorage "github.com/alipourhabibi/Hades/internal/sdk/storage"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/auditlog"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/backupcode"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/cirun"
@@ -25,17 +25,12 @@ import (
 	sessiondb "github.com/alipourhabibi/Hades/internal/hades/storage/db/session"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/totpsecret"
 	userdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/blob"
-	gitaly_diff "github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/diff"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/operation"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/repository"
-	gitaly_tree "github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/tree"
+	gitstorage "github.com/alipourhabibi/Hades/internal/hades/storage/git"
+	sdkstorage "github.com/alipourhabibi/Hades/internal/sdk/storage"
 	"github.com/alipourhabibi/Hades/internal/proto/breaking"
 	"github.com/alipourhabibi/Hades/internal/proto/lint"
 	"github.com/alipourhabibi/Hades/utils/email"
 	"github.com/alipourhabibi/Hades/utils/log"
-	"github.com/alipourhabibi/Hades/utils/ratelimit"
-	"github.com/redis/go-redis/v9"
 )
 
 // Dependencies holds every storage, service, and configuration object
@@ -43,19 +38,15 @@ import (
 // and passed to each handler's NewServer/NewHandler constructor.
 type Dependencies struct {
 	OPAEngine               *authorizationengine.Engine
-	ModuleDB                *moduledb.ModuleStorage
-	CommitDB                *commitdb.CommitStorage
-	UserDB                  *userdb.UserStorage
-	SessionDB               *sessiondb.SessionStorage
-	SDKJobDB                *sdkjob.SDKJobStorage
-	OrgDB                   *orgdb.OrgStorage
-	CIRunDB                 *cirun.CIRunStorage
-	NotificationDB          *notification.NotificationStorage
-	GitalyBlobStorage       *blob.BlobService
-	GitalyRepositoryStorage *repository.RepositoryService
-	GitalyOperationStorage  *operation.OperationService
-	GitalyDiffStorage       *gitaly_diff.DiffService
-	GitalyTreeStorage       *gitaly_tree.TreeService
+	ModuleDB                moduledb.Storage
+	CommitDB                commitdb.Storage
+	UserDB                  userdb.Storage
+	SessionDB               sessiondb.Storage
+	SDKJobDB                sdkjob.Storage
+	OrgDB                   orgdb.Storage
+	CIRunDB                 cirun.Storage
+	NotificationDB          notification.Storage
+	GitStorage              gitstorage.Storage
 	GitalyOpLog             *gitalyoplog.GitalyOpLogStorage
 	Authorization           *authorizationsvc.Server
 	UoW                     db.UnitOfWork
@@ -64,19 +55,18 @@ type Dependencies struct {
 	BreakingChk             *breaking.Checker
 
 	// Authentication storage backends.
-	EmailVerificationDB *emailverification.EmailVerificationStorage
-	PasswordResetDB     *passwordreset.PasswordResetStorage
-	OAuthIdentityDB     *oauthidentity.OAuthIdentityStorage
-	APITokenDB          *apitoken.APITokenStorage
-	DeviceGrantDB       *devicegrant.DeviceGrantStorage
-	TOTPSecretDB        *totpsecret.TOTPSecretStorage
-	BackupCodeDB        *backupcode.BackupCodeStorage
-	AuditLogDB          *auditlog.AuditLogStorage
+	EmailVerificationDB emailverification.Storage
+	PasswordResetDB     passwordreset.Storage
+	OAuthIdentityDB     oauthidentity.Storage
+	APITokenDB          apitoken.Storage
+	DeviceGrantDB       devicegrant.Storage
+	TOTPSecretDB        totpsecret.Storage
+	BackupCodeDB        backupcode.Storage
+	AuditLogDB          auditlog.Storage
 
 	// Shared infrastructure clients.
-	Redis       *redis.Client
-	RateLimiter *ratelimit.Limiter
-	EmailSender *email.Sender
+	Cache        cache.Cache
+	EmailSender  *email.Sender
 	AuthConfig   config.AuthConfig
 	TOTPConfig   config.TOTPConfig
 	OAuthConfig  config.OAuthConfig

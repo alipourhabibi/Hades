@@ -29,8 +29,8 @@ type Handler struct {
 	v1connect.APITokenServiceHandler
 
 	logger     *log.LoggerWrapper
-	apiTokenDB *apitoken.APITokenStorage
-	auditLogDB *auditlog.AuditLogStorage
+	apiTokenDB apitoken.Storage
+	auditLogDB auditlog.Storage
 }
 
 func NewHandler(deps *server.Dependencies) *Handler {

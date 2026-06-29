@@ -22,7 +22,12 @@ services:
     volumes:
       - gitaly_data:/var/lib/gitlab
       - ./development/config.toml:/etc/gitlab-gitaly/config.toml:ro
-    entrypoint: ["/bin/sh", "-c", "mkdir -p /var/lib/gitlab/repositories && gitaly serve /etc/gitlab-gitaly/config.toml"]
+    entrypoint:
+      [
+        "/bin/sh",
+        "-c",
+        "mkdir -p /var/lib/gitlab/repositories && gitaly serve /etc/gitlab-gitaly/config.toml",
+      ]
     restart: unless-stopped
 
   minio:

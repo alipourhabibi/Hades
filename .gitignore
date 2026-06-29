@@ -30,3 +30,14 @@ go.work.sum
 /config/example.com.pem
 buf.lock
 /hades
+
+# runtime data (repos, generated SDKs, SQLite DB)
+/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Caddy auto-TLS data
+/caddy_data/
+/caddy_config/
+

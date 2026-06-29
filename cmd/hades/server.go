@@ -9,7 +9,7 @@ import (
 	"github.com/alipourhabibi/Hades/config"
 	server "github.com/alipourhabibi/Hades/internal/hades"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/git/gitaly"
 	"github.com/alipourhabibi/Hades/internal/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
@@ -65,10 +65,16 @@ func newServeCmd() *cobra.Command {
 				}()
 			}
 
-			db, err := db.New(configs.DB, log)
+			var dbBackend *db.DBs
+			if configs.Backends.Metadata == "sqlite" {
+				dbBackend, err = db.NewSQLite(*configs, log)
+			} else {
+				dbBackend, err = db.New(configs.DB, log)
+			}
 			if err != nil {
 				return err
 			}
+			db := dbBackend
 
 			gitalyStorage, err := gitaly.NewStorage(configs.Gitaly)
 			if err != nil {

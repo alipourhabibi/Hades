@@ -36,11 +36,11 @@ type Handler struct {
 	v1connect.TOTPServiceHandler
 
 	logger         *log.LoggerWrapper
-	totpSecretDB   *totpsecret.TOTPSecretStorage
-	backupCodeDB   *backupcode.BackupCodeStorage
-	sessionStorage *dbsession.SessionStorage
-	userStorage    *dbuser.UserStorage
-	auditLogDB     *auditlog.AuditLogStorage
+	totpSecretDB   totpsecret.Storage
+	backupCodeDB   backupcode.Storage
+	sessionStorage dbsession.Storage
+	userStorage    dbuser.Storage
+	auditLogDB     auditlog.Storage
 	totpCfg        config.TOTPConfig
 }
 

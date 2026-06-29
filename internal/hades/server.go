@@ -48,18 +48,19 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/server/treesvc"
 	"github.com/alipourhabibi/Hades/internal/hades/server/usersvc"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/git"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/git/gogit"
+	gitaly "github.com/alipourhabibi/Hades/internal/hades/storage/git/gitaly"
 	"github.com/alipourhabibi/Hades/internal/proto/breaking"
 	"github.com/alipourhabibi/Hades/internal/proto/lint"
 	"github.com/alipourhabibi/Hades/internal/sdk/generate"
 	sdkstorage "github.com/alipourhabibi/Hades/internal/sdk/storage"
-	"github.com/alipourhabibi/Hades/internal/sdk/storage/s3"
+	"github.com/alipourhabibi/Hades/internal/sdk/storagefactory"
 	"github.com/alipourhabibi/Hades/internal/sdk/worker"
+	"github.com/alipourhabibi/Hades/internal/hades/cache"
 	emailutils "github.com/alipourhabibi/Hades/utils/email"
 	errorsutils "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
-	"github.com/alipourhabibi/Hades/utils/ratelimit"
-	"github.com/redis/go-redis/v9"
 )
 
 // SchemaRegistryServer is the top-level API server. It owns the listener
@@ -235,25 +236,22 @@ func newSchemaRegistryServerSet(ctx context.Context, s *SchemaRegistryServer) (*
 	}
 
 	// SDK storage backend is shared between the SDK worker and Go proxy handler.
-	var sdkBackend sdkstorage.Backend
-	if sdkCfg.Storage.Type == "s3" {
-		b, err := s3.New(sdkCfg.Storage.S3)
-		if err != nil {
-			return nil, fmt.Errorf("sdk s3 backend: %w", err)
-		}
-		sdkBackend = b
+	// The factory selects the backend from config (disk default, gitaly, or s3).
+	sdkBackend, err := storagefactory.New(*s.config, buildGitStorage(s))
+	if err != nil {
+		return nil, fmt.Errorf("sdk artifact storage: %w", err)
 	}
 
-	// Redis-backed rate limiter is optional; nil when Redis is not configured.
-	var redisClient *redis.Client
-	var rateLimiter *ratelimit.Limiter
-	if s.config != nil && s.config.Redis.Addr != "" {
-		redisClient = redis.NewClient(&redis.Options{
-			Addr:     s.config.Redis.Addr,
-			Password: s.config.Redis.Password,
-			DB:       s.config.Redis.DB,
-		})
-		rateLimiter = ratelimit.New(redisClient)
+	// Cache backend (rate limiting, throttling). Defaults to in-memory when not configured.
+	var backendsCfg config.BackendsConfig
+	var redisCfg config.RedisConfig
+	if s.config != nil {
+		backendsCfg = s.config.Backends
+		redisCfg = s.config.Redis
+	}
+	cacheBackend, err := cache.New(backendsCfg, redisCfg)
+	if err != nil {
+		return nil, fmt.Errorf("cache backend: %w", err)
 	}
 
 	// Email sender; uses a stub implementation when SMTP is not configured.
@@ -283,11 +281,7 @@ func newSchemaRegistryServerSet(ctx context.Context, s *SchemaRegistryServer) (*
 		OrgDB:                   s.db.OrgStorage,
 		CIRunDB:                 s.db.CIRunStorage,
 		NotificationDB:          s.db.NotificationStorage,
-		GitalyBlobStorage:       s.gitaly.BlobService,
-		GitalyRepositoryStorage: s.gitaly.RepositoryService,
-		GitalyOperationStorage:  s.gitaly.OperattionService,
-		GitalyDiffStorage:       s.gitaly.DiffService,
-		GitalyTreeStorage:       s.gitaly.TreeService,
+		GitStorage:              buildGitStorage(s),
 		GitalyOpLog:             s.db.GitalyOpLogStorage,
 		UserDB:                  s.db.UserStorage,
 		SessionDB:               s.db.SessionStorage,
@@ -305,8 +299,7 @@ func newSchemaRegistryServerSet(ctx context.Context, s *SchemaRegistryServer) (*
 		BackupCodeDB:        s.db.BackupCodeStorage,
 		AuditLogDB:          s.db.AuditLogStorage,
 
-		Redis:       redisClient,
-		RateLimiter: rateLimiter,
+		Cache:       cacheBackend,
 		EmailSender: emailSender,
 		AuthConfig:   authCfg,
 		TOTPConfig:   totpCfg,
@@ -504,6 +497,34 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 	return mux, nil
 }
 
+// buildGitStorage constructs the git.Storage implementation selected by config.
+func buildGitStorage(s *SchemaRegistryServer) git.Storage {
+	if s.config == nil {
+		return gogit.New("")
+	}
+	switch git.SelectedBackend(s.config.Backends) {
+	case git.BackendGitaly:
+		if s.gitaly != nil {
+			return gitaly.New(
+				s.gitaly.RepositoryService,
+				s.gitaly.OperattionService,
+				s.gitaly.BlobService,
+				s.gitaly.CommitService,
+				s.gitaly.TreeService,
+				s.gitaly.DiffService,
+			)
+		}
+		// Fallthrough to default if gitaly not initialised.
+		fallthrough
+	default:
+		root := s.config.GitStorage.Root
+		if root == "" {
+			root = "./data/repos"
+		}
+		return gogit.New(root)
+	}
+}
+
 // newSDKWorker builds a worker.Worker, reusing the already-initialised
 // storage backend so it is shared with the Go proxy handler.
 func newSDKWorker(s *SchemaRegistryServer, backend sdkstorage.Backend) (*worker.Worker, error) {
@@ -517,7 +538,7 @@ func newSDKWorker(s *SchemaRegistryServer, backend sdkstorage.Backend) (*worker.
 	return worker.New(
 		s.db.SDKJobStorage,
 		s.db.CommitStorage,
-		s.gitaly.BlobService,
+		buildGitStorage(s),
 		generators,
 		backend,
 		s.logger,

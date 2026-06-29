@@ -31,6 +31,21 @@ logger:
     initial: 100 # Sample the first N entries
     thereafter: 10 # Sample every Nth entry after Initial
 
+backends:
+  metadata: sqlite       # sqlite | postgres
+  cache: memory          # memory | redis
+  git: gogit             # gogit | gitaly
+  artifactStorage: disk  # disk | gitaly | s3
+
+sqlite:
+  path: ./hades.db
+
+gitStorage:
+  root: ./data/repos
+
+diskStorage:
+  path: ./data/artifacts
+
 gitaly:
   port: 9999
   defaultStorageName: default

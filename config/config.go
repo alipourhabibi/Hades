@@ -22,6 +22,12 @@ type Config struct {
 	OAuth     OAuthConfig     `json:"oauth" yaml:"oauth"`
 	Redis     RedisConfig     `json:"redis" yaml:"redis"`
 	TOTP      TOTPConfig      `json:"totp" yaml:"totp"`
+
+	// Pluggable backend selectors and their per-backend configs.
+	Backends    BackendsConfig    `json:"backends" yaml:"backends"`
+	SQLite      SQLiteConfig      `json:"sqlite" yaml:"sqlite"`
+	GitStorage  GitStorageConfig  `json:"gitStorage" yaml:"gitStorage"`
+	DiskStorage DiskStorageConfig `json:"diskStorage" yaml:"diskStorage"`
 }
 
 // LoadFile reads and parses a YAML config file from the given path.
