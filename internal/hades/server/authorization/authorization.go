@@ -14,12 +14,11 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/authorization"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/apitoken"
-	sessiondb "github.com/alipourhabibi/Hades/internal/hades/storage/db/session"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/session"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/totpsecret"
-	userdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
 	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
-	"github.com/jackc/pgx/v5"
 )
 
 // Server implements the Authorization Connect-RPC service and provides internal
@@ -30,16 +29,16 @@ type Server struct {
 	logger *log.LoggerWrapper
 
 	engine          *authorization.Engine
-	userStorage     *userdb.UserStorage
-	sessionStorage  *sessiondb.SessionStorage
-	apiTokenStorage *apitoken.APITokenStorage
-	totpSecretDB    *totpsecret.TOTPSecretStorage
+	userStorage     user.Storage
+	sessionStorage  session.Storage
+	apiTokenStorage apitoken.Storage
+	totpSecretDB    totpsecret.Storage
 }
 
 func NewServer(
 	l *log.LoggerWrapper,
-	userStorage *userdb.UserStorage,
-	sessionStorage *sessiondb.SessionStorage,
+	userStorage user.Storage,
+	sessionStorage session.Storage,
 	engine *authorization.Engine,
 ) *Server {
 	return &Server{
@@ -51,13 +50,13 @@ func NewServer(
 }
 
 // WithAPITokenStorage injects the API token storage for token-based auth in middleware.
-func (s *Server) WithAPITokenStorage(at *apitoken.APITokenStorage) *Server {
+func (s *Server) WithAPITokenStorage(at apitoken.Storage) *Server {
 	s.apiTokenStorage = at
 	return s
 }
 
 // WithTOTPSecretStorage injects the TOTP secret storage for TOTP verification in middleware.
-func (s *Server) WithTOTPSecretStorage(ts *totpsecret.TOTPSecretStorage) *Server {
+func (s *Server) WithTOTPSecretStorage(ts totpsecret.Storage) *Server {
 	s.totpSecretDB = ts
 	return s
 }
@@ -89,11 +88,10 @@ func (s *Server) AddBasicRoles(ctx context.Context, userName string) error {
 	return s.engine.AddBinding(ctx, userName, constants.RoleOwner, userName+"/*")
 }
 
-// AddBasicRolesInTx inserts the namespace-wide owner binding within the
-
-// call ReloadPolicy() after the transaction commits.
-func (s *Server) AddBasicRolesInTx(ctx context.Context, tx pgx.Tx, userName string) error {
-	return s.engine.AddBindingTx(ctx, tx, userName, constants.RoleOwner, userName+"/*")
+// AddBasicRolesInTx inserts the namespace-wide owner binding using the
+// transaction injected into ctx. The caller must call ReloadPolicy after commit.
+func (s *Server) AddBasicRolesInTx(ctx context.Context, userName string) error {
+	return s.engine.AddBindingInTx(ctx, userName, constants.RoleOwner, userName+"/*")
 }
 
 // ReloadPolicy syncs the in-memory OPA store from the database.

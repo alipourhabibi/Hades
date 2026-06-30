@@ -7,9 +7,7 @@ import (
 	registrypbv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
-	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	"github.com/alipourhabibi/Hades/utils/log"
-	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,8 +34,8 @@ func (f *fakeModuleStorage) GetModuleByOwnerAndName(_ context.Context, _, _ stri
 	return f.modules[0], f.err
 }
 
-func (f *fakeModuleStorage) WithTx(_ pgx.Tx) *moduledb.ModuleStorage {
-	return nil // never called in GetModules tests
+func (f *fakeModuleStorage) Create(_ context.Context, _, _ string, _ registrypbv1.ModuleVisibility, _ registrypbv1.ModuleState, _, _, _, _ string) (*registrypbv1.Module, error) {
+	return nil, nil
 }
 
 type fakeAuth struct{ err error }
@@ -49,8 +47,6 @@ func (f *fakeAuth) CheckReadAccess(_ context.Context, _ *registrypbv1.User, _ []
 func (f *fakeAuth) Can(_ context.Context, _ *constants.Policy) (*constants.CanResponse, error) {
 	return &constants.CanResponse{Allowed: true}, nil
 }
-
-func (f *fakeAuth) AddBasicRolesInTx(_ context.Context, _ pgx.Tx, _ string) error { return nil }
 
 func (f *fakeAuth) ReloadPolicy() error { return nil }
 
@@ -68,8 +64,6 @@ var testUser = &registrypbv1.User{Id: "uid-1", Username: "alice"}
 
 // --- tests ---
 
-// TestGetModules_AnonymousAccess verifies that calling GetModules without a
-// user in context (anonymous) succeeds - no user is required for public modules.
 func TestGetModules_AnonymousAccess(t *testing.T) {
 	s := newGetModulesServer(&fakeModuleStorage{}, &fakeAuth{})
 	got, err := s.GetModules(context.Background(), nil)

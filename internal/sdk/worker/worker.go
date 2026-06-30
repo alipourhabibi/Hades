@@ -16,7 +16,7 @@ import (
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sdkjob"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/blob"
+	gitstorage "github.com/alipourhabibi/Hades/internal/hades/storage/git"
 	"github.com/alipourhabibi/Hades/internal/sdk/generate"
 	"github.com/alipourhabibi/Hades/internal/sdk/storage"
 	"github.com/alipourhabibi/Hades/internal/telemetry"
@@ -37,9 +37,9 @@ const (
 
 // Worker polls for pending sdk_jobs and processes them concurrently.
 type Worker struct {
-	jobStorage   *sdkjob.SDKJobStorage
-	commitDB     *commit.CommitStorage
-	blobService  *blob.BlobService
+	jobStorage   sdkjob.Storage
+	commitDB     commit.Storage
+	gitStorage   gitstorage.Storage
 	generators   map[string]*generate.Generator // keyed by plugin name
 	backend      storage.Backend
 	logger       *log.LoggerWrapper
@@ -49,9 +49,9 @@ type Worker struct {
 
 // New creates a Worker.
 func New(
-	jobStorage *sdkjob.SDKJobStorage,
-	commitDB *commit.CommitStorage,
-	blobService *blob.BlobService,
+	jobStorage sdkjob.Storage,
+	commitDB commit.Storage,
+	gitStorage gitstorage.Storage,
 	generators map[string]*generate.Generator,
 	backend storage.Backend,
 	logger *log.LoggerWrapper,
@@ -67,7 +67,7 @@ func New(
 	return &Worker{
 		jobStorage:   jobStorage,
 		commitDB:     commitDB,
-		blobService:  blobService,
+		gitStorage:   gitStorage,
 		generators:   generators,
 		backend:      backend,
 		logger:       logger,
@@ -198,7 +198,7 @@ func (w *Worker) process(ctx context.Context, job *sdkjob.SDKJob) {
 	runtime.ReadMemStats(&streamMemBefore)
 
 	_, blobSpan := tracer.Start(ctx, "sdk.stream_blobs")
-	if err := w.blobService.StreamBlobsToDir(ctx, commitRecord, protoDir); err != nil {
+	if err := w.gitStorage.StreamBlobsToDir(ctx, commitRecord.Module.Name, commitRecord.CommitHash, protoDir); err != nil {
 		blobSpan.RecordError(err)
 		blobSpan.SetStatus(codes.Error, "stream blobs")
 		blobSpan.End()

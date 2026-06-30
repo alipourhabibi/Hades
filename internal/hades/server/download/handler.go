@@ -11,6 +11,7 @@ import (
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
+	gitstorage "github.com/alipourhabibi/Hades/internal/hades/storage/git"
 	"github.com/alipourhabibi/Hades/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -27,11 +28,6 @@ type commitQuerier interface {
 	GetCommitByOwnerModule(ctx context.Context, refs []*registryv1.ModuleRef) ([]*registryv1.Commit, error)
 }
 
-// blobLister is the subset of BlobService used by the Handler.
-type blobLister interface {
-	ListBlobs(ctx context.Context, commit *registryv1.Commit) ([]*registryv1.DownloadResponseContent, error)
-}
-
 // readAccessChecker is the subset of the authorization Server used by the Handler.
 type readAccessChecker interface {
 	CheckReadAccess(ctx context.Context, user *registryv1.User, modules []*registryv1.Module) error
@@ -40,18 +36,18 @@ type readAccessChecker interface {
 // Handler provides download queries using own proto types.
 // The buf adapter (bufdownload) wraps this to expose the buf.build wire protocol.
 type Handler struct {
-	moduleDB moduleQuerier
-	commitDB commitQuerier
-	blobSvc  blobLister
-	authz    readAccessChecker
+	moduleDB   moduleQuerier
+	commitDB   commitQuerier
+	gitStorage gitstorage.Storage
+	authz      readAccessChecker
 }
 
 func New(deps *server.Dependencies) *Handler {
 	return &Handler{
-		moduleDB: deps.ModuleDB,
-		commitDB: deps.CommitDB,
-		blobSvc:  deps.GitalyBlobStorage,
-		authz:    deps.Authorization,
+		moduleDB:   deps.ModuleDB,
+		commitDB:   deps.CommitDB,
+		gitStorage: deps.GitStorage,
+		authz:      deps.Authorization,
 	}
 }
 
@@ -98,7 +94,7 @@ func (h *Handler) Download(ctx context.Context, refs []*registryv1.ModuleRef) ([
 
 	var contents []*registryv1.DownloadResponseContent
 	for _, commit := range commits {
-		blobs, err := h.blobSvc.ListBlobs(ctx, commit)
+		gitFiles, err := h.gitStorage.ListBlobs(ctx, commit.Module.Name, commit.CommitHash)
 		if err != nil {
 			blobSpan.RecordError(err)
 			blobSpan.SetStatus(codes.Error, "list blobs")
@@ -106,7 +102,14 @@ func (h *Handler) Download(ctx context.Context, refs []*registryv1.ModuleRef) ([
 			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
 			return nil, err
 		}
-		contents = append(contents, blobs...)
+		pbFiles := make([]*registryv1.File, len(gitFiles))
+		for i, f := range gitFiles {
+			pbFiles[i] = &registryv1.File{Path: f.Path, Content: f.Content}
+		}
+		contents = append(contents, &registryv1.DownloadResponseContent{
+			Commit: commit,
+			Files:  pbFiles,
+		})
 	}
 	blobSpan.End()
 

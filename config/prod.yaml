@@ -1,7 +1,12 @@
 server:
   listenPort: 50051
-  registryHost: "example.com" # change to your domain
-  # certKey / certFile omitted - Caddy in docker-compose handles TLS termination
+  registryHost: "example.com" # CHANGE: set to your domain
+
+backends:
+  database: postgres
+  git: gitaly
+  artifactStorage: s3
+  cache: redis
 
 logger:
   engine: zap

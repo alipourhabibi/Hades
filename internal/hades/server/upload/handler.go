@@ -24,8 +24,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/gitalyoplog"
 	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sdkjob"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/blob"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/operation"
+	gitstorage "github.com/alipourhabibi/Hades/internal/hades/storage/git"
 	"github.com/alipourhabibi/Hades/internal/proto/breaking"
 	"github.com/alipourhabibi/Hades/internal/proto/lint"
 	"github.com/alipourhabibi/Hades/internal/telemetry"
@@ -33,19 +32,18 @@ import (
 	"github.com/alipourhabibi/Hades/utils/paths"
 	"github.com/alipourhabibi/Hades/utils/shake256"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// uploadWorkItem holds all data needed to perform one upload write (Gitaly +
-// DB). It is populated during the read-only Phase 1 loop and consumed during
+// uploadWorkItem holds all data needed to perform one upload write (git + DB).
+// It is populated during the read-only Phase 1 loop and consumed during
 // the per-content UoW in Phase 2.
 type uploadWorkItem struct {
 	module       *registryv1.Module
-	files        []*registryv1.File
+	files        []*gitstorage.File
 	listFiles    []string
 	dig          string // hex digest without "shake256:" prefix
 	digestStr    string // same, for DB column
@@ -60,11 +58,10 @@ type uploadWorkItem struct {
 // The buf adapter (Server in upalod.go) wraps this to expose the buf.build wire protocol.
 // The own CLI will call Handler.Upload directly once the own upload service is registered.
 type Handler struct {
-	moduleDB        *moduledb.ModuleStorage
-	commitDB        *commitdb.CommitStorage
-	gitalyOpSvc     *operation.OperationService
-	blobSvc         *blob.BlobService
-	sdkJobDB        *sdkjob.SDKJobStorage
+	moduleDB        moduledb.Storage
+	commitDB        commitdb.Storage
+	gitStorage      gitstorage.Storage
+	sdkJobDB        sdkjob.Storage
 	sdkConfig       config.SDKConfig
 	protoLinter     *lint.Linter
 	breakingChecker *breaking.Checker
@@ -77,8 +74,7 @@ func NewHandler(deps *server.Dependencies) *Handler {
 	return &Handler{
 		moduleDB:        deps.ModuleDB,
 		commitDB:        deps.CommitDB,
-		gitalyOpSvc:     deps.GitalyOperationStorage,
-		blobSvc:         deps.GitalyBlobStorage,
+		gitStorage:      deps.GitStorage,
 		sdkJobDB:        deps.SDKJobDB,
 		sdkConfig:       deps.SDKConfig,
 		protoLinter:     deps.ProtoLinter,
@@ -177,12 +173,12 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 		var prevFiles []*registryv1.File
 
 		if !emptyCommit {
-			blobs, err := h.blobSvc.ListBlobs(ctx, moduleCommit[0])
+			gitBlobs, err := h.gitStorage.ListBlobs(ctx, module[0].Name, moduleCommit[0].CommitHash)
 			if err != nil {
 				return nil, err
 			}
 			uploadFiles := map[string]*registryv1.File{}
-			for _, f := range blobs[0].Files {
+			for _, f := range gitBlobs {
 				uploadFiles[f.Path] = &registryv1.File{Path: f.Path, Content: f.Content}
 			}
 			for _, f := range content.Files {
@@ -192,11 +188,14 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 			for _, f := range uploadFiles {
 				files = append(files, f)
 			}
-			listFiles = make([]string, 0, len(blobs[0].Files))
-			for _, f := range blobs[0].Files {
+			listFiles = make([]string, 0, len(gitBlobs))
+			for _, f := range gitBlobs {
 				listFiles = append(listFiles, f.Path)
 			}
-			prevFiles = blobs[0].Files
+			prevFiles = make([]*registryv1.File, len(gitBlobs))
+			for i, f := range gitBlobs {
+				prevFiles[i] = &registryv1.File{Path: f.Path, Content: f.Content}
+			}
 		} else {
 			listFiles = []string{}
 			files = content.Files
@@ -226,6 +225,11 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 		for _, f := range files {
 			totalProtoBytes += int64(len(f.Content))
 		}
+		// Convert []*registryv1.File to []*gitstorage.File for the work item.
+		gitFiles := make([]*gitstorage.File, len(files))
+		for i, f := range files {
+			gitFiles[i] = &gitstorage.File{Path: f.Path, Content: f.Content}
+		}
 
 		// Proto health checks. Storing per-file digests in the DB would let us
 		// skip the full blob fetch on re-upload, but that requires a schema change.
@@ -240,7 +244,7 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 
 		workItems = append(workItems, uploadWorkItem{
 			module:       module[0],
-			files:        files,
+			files:        gitFiles,
 			listFiles:    listFiles,
 			dig:          dig,
 			digestStr:    dig,
@@ -272,38 +276,35 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 		_, gitalySpan := tracer.Start(ctx, "upload.gitaly_write")
 
 		wCopy := w // capture for closure
-		result, err := h.uow.Do(ctx, func(ctx context.Context, tx pgx.Tx) (interface{}, error) {
-			// Gitaly write inside the UoW so the DB transaction is already open.
-			// If the Gitaly write fails no DB changes are pending; no compensation needed.
-			commitId, err := h.gitalyOpSvc.UserCommitFiles(ctx, wCopy.module, wCopy.files, user, wCopy.listFiles, wCopy.dig)
+		result, err := h.uow.Do(ctx, func(ctx context.Context) (interface{}, error) {
+			// Git write inside the UoW so the DB transaction is already open.
+			commitId, err := h.gitStorage.PutFiles(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, wCopy.files, user.Username, user.Email, "upload:"+wCopy.dig, wCopy.listFiles)
 			if err != nil {
 				return nil, err
 			}
 			if len(commitId) < 32 {
-				_ = h.gitalyOpSvc.RollbackCommit(ctx, wCopy.module, commitId, wCopy.previousHead)
+				_ = h.gitStorage.RollbackCommit(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, commitId, wCopy.previousHead)
 				return nil, connErr.Internal("commit ID is less than 32 characters")
 			}
 			id, err := uuid.Parse(commitId[:32])
 			if err != nil {
-				_ = h.gitalyOpSvc.RollbackCommit(ctx, wCopy.module, commitId, wCopy.previousHead)
+				_ = h.gitStorage.RollbackCommit(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, commitId, wCopy.previousHead)
 				return nil, connErr.Internal("cannot parse commit UUID")
 			}
 
-			txCommit := h.commitDB.WithTx(tx)
-			if err := txCommit.Create(
+			if err := h.commitDB.Create(
 				ctx,
 				id, commitId, wCopy.userId, wCopy.moduleId,
 				registryv1.DigestType_DIGEST_TYPE_B5,
 				wCopy.digestStr, wCopy.userId, "",
 			); err != nil {
-				_ = h.gitalyOpSvc.RollbackCommit(ctx, wCopy.module, commitId, wCopy.previousHead)
+				_ = h.gitStorage.RollbackCommit(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, commitId, wCopy.previousHead)
 				return nil, connErr.FromPgx(err)
 			}
 
 			if h.sdkConfig.Enabled && len(h.sdkConfig.Generators) > 0 {
-				txSDKJob := h.sdkJobDB.WithTx(tx)
-				if err := txSDKJob.CreateBatch(ctx, id.String(), wCopy.moduleId, h.sdkConfig.Generators); err != nil {
-					_ = h.gitalyOpSvc.RollbackCommit(ctx, wCopy.module, commitId, wCopy.previousHead)
+				if err := h.sdkJobDB.CreateBatch(ctx, id.String(), wCopy.moduleId, h.sdkConfig.Generators); err != nil {
+					_ = h.gitStorage.RollbackCommit(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, commitId, wCopy.previousHead)
 					return nil, connErr.FromPgx(err)
 				}
 				telemetry.SDKJobsEnqueued.Add(ctx, int64(len(h.sdkConfig.Generators)),

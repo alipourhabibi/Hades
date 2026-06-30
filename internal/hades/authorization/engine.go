@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/opabinding"
-	"github.com/jackc/pgx/v5"
 	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/open-policy-agent/opa/v1/storage"
 	"github.com/open-policy-agent/opa/v1/storage/inmem"
@@ -65,7 +64,7 @@ type Engine struct {
 
 // New creates a new Engine, seeds the in-memory store from the database, and
 // compiles the Rego policy once.
-func New(ctx context.Context, db *opabinding.OPABindingStorage) (*Engine, error) {
+func New(ctx context.Context, db opabinding.Storage) (*Engine, error) {
 	return newFromStore(ctx, db)
 }
 
@@ -183,16 +182,10 @@ func (e *Engine) AddBinding(ctx context.Context, subject, role, domain string) e
 	return e.Reload(ctx)
 }
 
-// AddBindingTx inserts a single role binding within an existing database
-// transaction. The OPA store is NOT reloaded here - the caller must call
-// Reload after the transaction commits.
-func (e *Engine) AddBindingTx(ctx context.Context, tx pgx.Tx, subject, role, domain string) error {
-	if bs, ok := e.db.(interface {
-		WithTx(pgx.Tx) *opabinding.OPABindingStorage
-	}); ok {
-		return bs.WithTx(tx).Create(ctx, subject, role, domain)
-	}
-	// Fallback: create without transaction (e.g. in tests with a fake store).
+// AddBindingInTx inserts a single role binding using the transaction injected
+// into ctx by UnitOfWork.Do. The OPA store is NOT reloaded here; the caller
+// must call Reload after the transaction commits.
+func (e *Engine) AddBindingInTx(ctx context.Context, subject, role, domain string) error {
 	return e.db.Create(ctx, subject, role, domain)
 }
 

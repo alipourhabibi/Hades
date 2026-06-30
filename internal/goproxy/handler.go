@@ -33,9 +33,9 @@ import (
 
 // Handler implements the GOPROXY protocol for generated Go SDKs.
 type Handler struct {
-	moduleDB     *moduledb.ModuleStorage
-	commitDB     *commitdb.CommitStorage
-	sdkJobDB     *sdkjobdb.SDKJobStorage
+	moduleDB     moduledb.Storage
+	commitDB     commitdb.Storage
+	sdkJobDB     sdkjobdb.Storage
 	backend      sdkstorage.Backend
 	registryHost string // resolved from DOMAIN env var or config
 	logger       *log.LoggerWrapper
