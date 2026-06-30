@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:15.4
+    container_name: hades_postgres
+    environment:
+      POSTGRES_USER: hades
+      POSTGRES_PASSWORD: hades
+      POSTGRES_DB: hades
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  caddy:
+    image: caddy:latest
+    container_name: hades_caddy
+    ports:
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

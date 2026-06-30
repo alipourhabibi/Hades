@@ -3,15 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/pprof"
 
 	"github.com/alipourhabibi/Hades/config"
 	server "github.com/alipourhabibi/Hades/internal/hades"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/db"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/git/gitaly"
 	"github.com/alipourhabibi/Hades/internal/telemetry"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 )
 
@@ -28,11 +23,6 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 
-			log, err := getLogger(configs.Logger)
-			if err != nil {
-				return err
-			}
-
 			ctx := context.Background()
 
 			shutdownTelemetry, err := telemetry.Setup(ctx, configs.Telemetry)
@@ -41,53 +31,7 @@ func newServeCmd() *cobra.Command {
 			}
 			defer func() { _ = shutdownTelemetry(ctx) }()
 
-			if configs.Telemetry.PprofPort > 0 {
-				go func() {
-					pprofMux := http.NewServeMux()
-					pprofMux.HandleFunc("/debug/pprof/", pprof.Index)
-					pprofMux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-					pprofMux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-					pprofMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-					pprofMux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-					addr := fmt.Sprintf(":%d", configs.Telemetry.PprofPort)
-					log.Info("pprof server listening", "addr", addr)
-					_ = http.ListenAndServe(addr, pprofMux)
-				}()
-			}
-
-			if configs.Telemetry.PrometheusPort > 0 {
-				go func() {
-					promMux := http.NewServeMux()
-					promMux.Handle("/metrics", promhttp.Handler())
-					addr := fmt.Sprintf(":%d", configs.Telemetry.PrometheusPort)
-					log.Info("prometheus metrics server listening", "addr", addr)
-					_ = http.ListenAndServe(addr, promMux)
-				}()
-			}
-
-			var dbBackend *db.DBs
-			if configs.Backends.Metadata == "sqlite" {
-				dbBackend, err = db.NewSQLite(*configs, log)
-			} else {
-				dbBackend, err = db.New(configs.DB, log)
-			}
-			if err != nil {
-				return err
-			}
-			db := dbBackend
-
-			gitalyStorage, err := gitaly.NewStorage(configs.Gitaly)
-			if err != nil {
-				return err
-			}
-
-			srv, err := server.NewServer(
-				ctx,
-				configs,
-				server.WithDB(db),
-				server.WithLogger(log),
-				server.WithGitaly(gitalyStorage),
-			)
+			srv, err := server.NewServer(ctx, configs)
 			if err != nil {
 				return err
 			}

@@ -21,21 +21,21 @@ func New(cfg config.Config, gitStore gitstorage.Storage) (sdkstorage.Backend, er
 	backend := cfg.Backends.ArtifactStorage
 	if backend == "" {
 		// Backwards-compatibility: fall back to sdk.storage.type.
-		backend = cfg.SDK.Storage.Type
+		backend = config.ArtifactBackend(cfg.SDK.Storage.Type)
 	}
 	if backend == "" {
-		backend = "disk"
+		backend = config.ArtifactDisk
 	}
 
 	switch backend {
-	case "disk":
+	case config.ArtifactDisk:
 		return disk.New(cfg.DiskStorage.Path), nil
-	case "gitaly":
+	case config.ArtifactGitaly:
 		if gitStore == nil {
 			return nil, fmt.Errorf("artifact storage: gitaly backend requires a git.Storage instance")
 		}
 		return gitalysdk.New(gitStore), nil
-	case "s3":
+	case config.ArtifactS3:
 		return s3.New(cfg.SDK.Storage.S3)
 	default:
 		return nil, fmt.Errorf("artifact storage: unknown backend %q (valid: disk, gitaly, s3)", backend)

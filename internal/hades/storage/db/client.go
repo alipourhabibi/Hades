@@ -61,6 +61,16 @@ type DBs struct {
 	UOW                      UnitOfWork
 }
 
+// NewFromConfig selects the database backend from cfg.Backends.Database and
+// returns the appropriate DBs instance. This is the preferred entry point;
+// it keeps backend-selection logic out of the CLI layer.
+func NewFromConfig(cfg config.Config, logger *log.LoggerWrapper) (*DBs, error) {
+	if cfg.Backends.Database == config.DatabaseSQLite || cfg.Backends.Database == "" {
+		return NewSQLite(cfg, logger)
+	}
+	return New(cfg.DB, logger)
+}
+
 // New opens a pgx connection pool and initialises all PostgreSQL storage backends.
 func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
 	ctx := context.Background()

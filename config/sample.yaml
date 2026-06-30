@@ -32,7 +32,7 @@ logger:
     thereafter: 10 # Sample every Nth entry after Initial
 
 backends:
-  metadata: sqlite       # sqlite | postgres
+  database: sqlite       # sqlite | postgres
   cache: memory          # memory | redis
   git: gogit             # gogit | gitaly
   artifactStorage: disk  # disk | gitaly | s3

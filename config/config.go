@@ -42,10 +42,16 @@ func LoadFile(filename string) (*Config, error) {
 
 func loadYaml(content []byte) (*Config, error) {
 	cfg := &Config{}
-	err := yaml.Unmarshal(content, cfg)
-	if err != nil {
+	if err := yaml.Unmarshal(content, cfg); err != nil {
 		return nil, err
 	}
-
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	return cfg, nil
+}
+
+// Validate returns an error if any config field holds an unrecognised value.
+func (c *Config) Validate() error {
+	return c.Backends.Validate()
 }

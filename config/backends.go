@@ -1,16 +1,100 @@
 package config
 
+import "fmt"
+
+// DatabaseBackend selects the metadata storage implementation.
+type DatabaseBackend string
+
+const (
+	DatabaseSQLite   DatabaseBackend = "sqlite"
+	DatabasePostgres DatabaseBackend = "postgres"
+)
+
+func (d DatabaseBackend) Validate() error {
+	switch d {
+	case DatabaseSQLite, DatabasePostgres, "":
+		return nil
+	default:
+		return fmt.Errorf("backends.database: unknown value %q (valid: sqlite, postgres)", d)
+	}
+}
+
+// CacheBackend selects the cache/rate-limit implementation.
+type CacheBackend string
+
+const (
+	CacheMemory CacheBackend = "memory"
+	CacheRedis  CacheBackend = "redis"
+)
+
+func (c CacheBackend) Validate() error {
+	switch c {
+	case CacheMemory, CacheRedis, "":
+		return nil
+	default:
+		return fmt.Errorf("backends.cache: unknown value %q (valid: memory, redis)", c)
+	}
+}
+
+// GitBackend selects the git versioning implementation.
+type GitBackend string
+
+const (
+	GitGoGit  GitBackend = "gogit"
+	GitGitaly GitBackend = "gitaly"
+)
+
+func (g GitBackend) Validate() error {
+	switch g {
+	case GitGoGit, GitGitaly, "":
+		return nil
+	default:
+		return fmt.Errorf("backends.git: unknown value %q (valid: gogit, gitaly)", g)
+	}
+}
+
+// ArtifactBackend selects the SDK artifact storage implementation.
+type ArtifactBackend string
+
+const (
+	ArtifactDisk   ArtifactBackend = "disk"
+	ArtifactGitaly ArtifactBackend = "gitaly"
+	ArtifactS3     ArtifactBackend = "s3"
+)
+
+func (a ArtifactBackend) Validate() error {
+	switch a {
+	case ArtifactDisk, ArtifactGitaly, ArtifactS3, "":
+		return nil
+	default:
+		return fmt.Errorf("backends.artifactStorage: unknown value %q (valid: disk, gitaly, s3)", a)
+	}
+}
+
 // BackendsConfig selects which backend implementation to use for each subsystem.
 // Unset fields default to the zero-dep local implementations.
 type BackendsConfig struct {
-	// Metadata selects the metadata storage backend: "sqlite" (default) or "postgres".
-	Metadata string `json:"metadata" yaml:"metadata"`
+	// Database selects the metadata storage backend: "sqlite" (default) or "postgres".
+	Database DatabaseBackend `json:"database" yaml:"database"`
 	// Cache selects the cache/rate-limit backend: "memory" (default) or "redis".
-	Cache string `json:"cache" yaml:"cache"`
+	Cache CacheBackend `json:"cache" yaml:"cache"`
 	// Git selects the git versioning backend: "gogit" (default) or "gitaly".
-	Git string `json:"git" yaml:"git"`
+	Git GitBackend `json:"git" yaml:"git"`
 	// ArtifactStorage selects the SDK artifact storage backend: "disk" (default), "gitaly", or "s3".
-	ArtifactStorage string `json:"artifactStorage" yaml:"artifactStorage"`
+	ArtifactStorage ArtifactBackend `json:"artifactStorage" yaml:"artifactStorage"`
+}
+
+func (b BackendsConfig) Validate() error {
+	if err := b.Database.Validate(); err != nil {
+		return err
+	}
+	if err := b.Cache.Validate(); err != nil {
+		return err
+	}
+	if err := b.Git.Validate(); err != nil {
+		return err
+	}
+	return b.ArtifactStorage.Validate()
 }
 
 // SQLiteConfig holds configuration for the embedded SQLite metadata backend.

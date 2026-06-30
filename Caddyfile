@@ -1,8 +1,7 @@
-{$DOMAIN:example.com} {
-    tls internal
+{$DOMAIN} {
+    # Caddy obtains a TLS certificate from Let's Encrypt automatically.
+    # Port 80 must be reachable from the internet for the HTTP-01 challenge.
 
-    # RPC traffic (gRPC, Connect-RPC, JSON) + Go module proxy → Hades backend (h2c)
-    # Matches: /hades.api.*, /buf.registry.*, /gen/go/* (go-import discovery), /go/* (GOPROXY)
     @rpc path /hades.api.* /buf.registry.* /gen/go/* /go/*
     reverse_proxy @rpc hades:50051 {
         transport http {
@@ -10,6 +9,5 @@
         }
     }
 
-    # Everything else → Next.js frontend
     reverse_proxy frontend:3000
 }
