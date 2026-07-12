@@ -209,3 +209,16 @@ CREATE TABLE IF NOT EXISTS notifications (
     read_at     DATETIME,
     created_at  DATETIME NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS resources (
+    id            TEXT PRIMARY KEY,
+    resource_type TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS labels (
+    id        TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    module_id TEXT NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
+    name      TEXT NOT NULL,
+    commit_id TEXT REFERENCES commits(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_labels_module_name ON labels(module_id, name);

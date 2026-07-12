@@ -7,6 +7,7 @@ import (
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -14,11 +15,12 @@ import (
 
 // SQLiteModuleStorage implements module.Storage using database/sql with SQLite.
 type SQLiteModuleStorage struct {
-	db *sql.DB
+	db  *sql.DB
+	res resource.Storage
 }
 
-func NewModule(db *sql.DB) *SQLiteModuleStorage {
-	return &SQLiteModuleStorage{db: db}
+func NewModule(db *sql.DB, res resource.Storage) *SQLiteModuleStorage {
+	return &SQLiteModuleStorage{db: db, res: res}
 }
 
 func (m *SQLiteModuleStorage) q(ctx context.Context) txkeys.SQLQuerier {
@@ -70,8 +72,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 	if err != nil {
 		return nil, err
 	}
-	return scanSQLiteModule(m.q(ctx).QueryRowContext(ctx,
+	mod, err := scanSQLiteModule(m.q(ctx).QueryRowContext(ctx,
 		`SELECT `+sqliteModuleCols+` FROM modules WHERE name = ?`, name))
+	if err != nil {
+		return nil, err
+	}
+	if err := m.res.Register(ctx, mod.Id, resource.ResourceTypeModule); err != nil {
+		return nil, err
+	}
+	return mod, nil
 }
 
 func (m *SQLiteModuleStorage) ListModules(ctx context.Context, ownerUsername string) ([]*registryv1.Module, error) {

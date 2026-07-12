@@ -8,6 +8,7 @@ import (
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -18,10 +19,11 @@ import (
 // CommitStorage handles commit CRUD against PostgreSQL.
 type CommitStorage struct {
 	pool *pgxpool.Pool
+	res  resource.Storage
 }
 
-func NewCommit(pool *pgxpool.Pool) *CommitStorage {
-	return &CommitStorage{pool: pool}
+func NewCommit(pool *pgxpool.Pool, res resource.Storage) *CommitStorage {
+	return &CommitStorage{pool: pool, res: res}
 }
 
 func (c *CommitStorage) q(ctx context.Context) txkeys.PgxQuerier {
@@ -48,7 +50,10 @@ INSERT INTO commits (
 		id, commitHash, ownerId, moduleId,
 		digestType, digestValue, createdByUserId, sourceControlUrl,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return c.res.Register(ctx, id.String(), resource.ResourceTypeCommit)
 }
 
 func (c *CommitStorage) GetCommitById(ctx context.Context, id string) (*registryv1.Commit, error) {

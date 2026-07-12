@@ -18,6 +18,7 @@ type moduleQuerier interface {
 
 // commitQuerier is the subset of CommitStorage used by the Handler.
 type commitQuerier interface {
+	GetCommitById(ctx context.Context, id string) (*registryv1.Commit, error)
 	GetCommitByOwnerModule(ctx context.Context, refs []*registryv1.ModuleRef) ([]*registryv1.Commit, error)
 }
 
@@ -43,20 +44,41 @@ func New(deps *server.Dependencies) *Handler {
 }
 
 // GetGraph returns the commits that form the dependency graph for the given
-// module refs, after checking read access. user may be nil (anonymous); public
-// modules are served without auth, private ones return NotFound.
-//
-// Currently the graph is a flat list of latest commits per requested module.
-// Full DAG traversal (parent commits, cross-module transitive deps) requires
-// schema support for commit parents and is tracked separately.
-func (h *Handler) GetGraph(ctx context.Context, refs []*registryv1.ModuleRef) ([]*registryv1.Commit, error) {
-	user, _ := ctx.Value(constants.ContextKeyUser).(*registryv1.User) // nil for anonymous
-	modules, err := h.moduleDB.GetModulesByRefs(ctx, refs...)
-	if err != nil {
-		return nil, err
+// module refs and/or commit IDs, after checking read access.
+func (h *Handler) GetGraph(ctx context.Context, commitIDs []string, moduleRefs []*registryv1.ModuleRef) ([]*registryv1.Commit, error) {
+	user, _ := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
+
+	var result []*registryv1.Commit
+
+	for _, id := range commitIDs {
+		cmt, err := h.commitDB.GetCommitById(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		modules, err := h.moduleDB.GetModulesByRefs(ctx, &registryv1.ModuleRef{Id: cmt.ModuleId})
+		if err != nil {
+			return nil, err
+		}
+		if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
+			return nil, err
+		}
+		result = append(result, cmt)
 	}
-	if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
-		return nil, err
+
+	if len(moduleRefs) > 0 {
+		modules, err := h.moduleDB.GetModulesByRefs(ctx, moduleRefs...)
+		if err != nil {
+			return nil, err
+		}
+		if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
+			return nil, err
+		}
+		commits, err := h.commitDB.GetCommitByOwnerModule(ctx, moduleRefs)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, commits...)
 	}
-	return h.commitDB.GetCommitByOwnerModule(ctx, refs)
+
+	return result, nil
 }

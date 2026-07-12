@@ -14,6 +14,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/cirun"
 	commitdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/devicegrant"
+	resourcedb "github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/emailverification"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/gitalyoplog"
 	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
@@ -40,6 +41,7 @@ type Dependencies struct {
 	OPAEngine               *authorizationengine.Engine
 	ModuleDB                moduledb.Storage
 	CommitDB                commitdb.Storage
+	ResourceDB              resourcedb.Storage
 	UserDB                  userdb.Storage
 	SessionDB               sessiondb.Storage
 	SDKJobDB                sdkjob.Storage

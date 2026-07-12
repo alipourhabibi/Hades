@@ -7,7 +7,9 @@ import (
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -15,10 +17,11 @@ import (
 // ModuleStorage executes module queries against PostgreSQL.
 type ModuleStorage struct {
 	pool *pgxpool.Pool
+	res  resource.Storage
 }
 
-func NewModule(pool *pgxpool.Pool) *ModuleStorage {
-	return &ModuleStorage{pool: pool}
+func NewModule(pool *pgxpool.Pool, res resource.Storage) *ModuleStorage {
+	return &ModuleStorage{pool: pool, res: res}
 }
 
 func (m *ModuleStorage) q(ctx context.Context) txkeys.PgxQuerier {
@@ -42,7 +45,14 @@ INSERT INTO modules (
 RETURNING id, create_time, update_time, name, owner_id, visibility, state, description, url, default_label_name, default_branch`
 
 	row := m.q(ctx).QueryRow(ctx, query, name, ownerId, visibility, state, description, url, defaultLabelName, defaultBranch)
-	return scanModuleRow(row)
+	mod, err := scanModuleRow(row)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.res.Register(ctx, mod.Id, resource.ResourceTypeModule); err != nil {
+		return nil, err
+	}
+	return mod, nil
 }
 
 func scanModuleRow(row interface {
@@ -122,49 +132,21 @@ WHERE users.username = $1 AND modules.name = $2`
 }
 
 func (m *ModuleStorage) GetModulesByRefs(ctx context.Context, refs ...*registryv1.ModuleRef) ([]*registryv1.Module, error) {
-	query := `
-SELECT
-  id, create_time, update_time, name, owner_id,
-  visibility, state, description, url, default_label_name, default_branch
-FROM modules WHERE `
-
-	var conditions []string
-	var args []interface{}
-	argIndex := 1
-
-	for _, req := range refs {
-		if req.Id != "" {
-			conditions = append(conditions, fmt.Sprintf("id = $%d", argIndex))
-			args = append(args, req.Id)
-		} else {
-			conditions = append(conditions, fmt.Sprintf("modules.name = $%d", argIndex))
-			args = append(args, req.Owner+"/"+req.Module)
-		}
-		argIndex++
-	}
-	for i, f := range conditions {
-		query += f
-		if i < len(refs)-1 {
-			query += " AND "
-		}
-	}
-
-	rows, err := m.q(ctx).Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
 	var modules []*registryv1.Module
-	for rows.Next() {
-		mod, err := scanModuleRow(rows)
+	for _, ref := range refs {
+		var row pgx.Row
+		if ref.Id != "" {
+			row = m.q(ctx).QueryRow(ctx,
+				moduleSelectColumns+` WHERE modules.id = $1`, ref.Id)
+		} else {
+			row = m.q(ctx).QueryRow(ctx,
+				moduleSelectColumns+` WHERE modules.name = $1`, ref.Owner+"/"+ref.Module)
+		}
+		mod, err := scanModuleRow(row)
 		if err != nil {
 			return nil, err
 		}
 		modules = append(modules, mod)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	return modules, nil
 }

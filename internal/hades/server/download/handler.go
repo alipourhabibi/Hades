@@ -18,23 +18,19 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// moduleQuerier is the subset of ModuleStorage used by the Handler.
 type moduleQuerier interface {
 	GetModulesByRefs(ctx context.Context, refs ...*registryv1.ModuleRef) ([]*registryv1.Module, error)
 }
 
-// commitQuerier is the subset of CommitStorage used by the Handler.
 type commitQuerier interface {
+	GetCommitById(ctx context.Context, id string) (*registryv1.Commit, error)
 	GetCommitByOwnerModule(ctx context.Context, refs []*registryv1.ModuleRef) ([]*registryv1.Commit, error)
 }
 
-// readAccessChecker is the subset of the authorization Server used by the Handler.
 type readAccessChecker interface {
 	CheckReadAccess(ctx context.Context, user *registryv1.User, modules []*registryv1.Module) error
 }
 
-// Handler provides download queries using own proto types.
-// The buf adapter (bufdownload) wraps this to expose the buf.build wire protocol.
 type Handler struct {
 	moduleDB   moduleQuerier
 	commitDB   commitQuerier
@@ -51,8 +47,14 @@ func New(deps *server.Dependencies) *Handler {
 	}
 }
 
-// Download resolves module refs to file trees, enforcing read access on private modules.
-func (h *Handler) Download(ctx context.Context, refs []*registryv1.ModuleRef) ([]*registryv1.DownloadResponseContent, error) {
+// Download resolves refs to file trees and enforces read access.
+//
+// commitIDs are resource IDs that the buf CLI resolved as commit IDs from a
+// prior GetGraph call. moduleRefs are owner/module name-based refs.
+// The two paths are kept separate so each uses the correct storage lookup:
+// commit IDs go directly to GetCommitById; name refs use GetModulesByRefs
+// then GetCommitByOwnerModule for the latest commit.
+func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs []*registryv1.ModuleRef) ([]*registryv1.DownloadResponseContent, error) {
 	start := time.Now()
 	var memBefore runtime.MemStats
 	runtime.ReadMemStats(&memBefore)
@@ -64,41 +66,37 @@ func (h *Handler) Download(ctx context.Context, refs []*registryv1.ModuleRef) ([
 		span.End()
 	}()
 
-	// user may be nil for anonymous access; CheckReadAccess handles the nil case.
 	user, _ := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 
-	modules, err := h.moduleDB.GetModulesByRefs(ctx, refs...)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "get modules")
-		telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
-		return nil, err
-	}
-	if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
-		telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
-		return nil, err
-	}
-
-	var gitalyMemBefore runtime.MemStats
-	runtime.ReadMemStats(&gitalyMemBefore)
-	_, blobSpan := tracer.Start(ctx, "download.list_blobs")
-
-	commits, err := h.commitDB.GetCommitByOwnerModule(ctx, refs)
-	if err != nil {
-		blobSpan.RecordError(err)
-		blobSpan.SetStatus(codes.Error, "fetch commits")
-		blobSpan.End()
-		telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
-		return nil, err
-	}
-
 	var contents []*registryv1.DownloadResponseContent
-	for _, commit := range commits {
+
+	// --- Commit ID path ---
+	// ResourceRef.id from buf CLI after GetGraph is a commit UUID.
+	// Resolve the commit directly, then fetch the full module (for visibility
+	// check) using the module_id stored on the commit.
+	for _, commitID := range commitIDs {
+		commit, err := h.commitDB.GetCommitById(ctx, commitID)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "get commit by id")
+			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
+			return nil, err
+		}
+		modules, err := h.moduleDB.GetModulesByRefs(ctx, &registryv1.ModuleRef{Id: commit.ModuleId})
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "get module for commit")
+			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
+			return nil, err
+		}
+		if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
+			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
+			return nil, err
+		}
 		gitFiles, err := h.gitStorage.ListBlobs(ctx, commit.Module.Name, commit.CommitHash)
 		if err != nil {
-			blobSpan.RecordError(err)
-			blobSpan.SetStatus(codes.Error, "list blobs")
-			blobSpan.End()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "list blobs")
 			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
 			return nil, err
 		}
@@ -111,11 +109,50 @@ func (h *Handler) Download(ctx context.Context, refs []*registryv1.ModuleRef) ([
 			Files:  pbFiles,
 		})
 	}
-	blobSpan.End()
+
+	// --- Module name path ---
+	// owner/module name refs: look up the module, check access, then fetch
+	// the latest commit and its files.
+	if len(moduleRefs) > 0 {
+		modules, err := h.moduleDB.GetModulesByRefs(ctx, moduleRefs...)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "get modules")
+			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
+			return nil, err
+		}
+		if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
+			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
+			return nil, err
+		}
+		commits, err := h.commitDB.GetCommitByOwnerModule(ctx, moduleRefs)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "fetch commits")
+			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
+			return nil, err
+		}
+		for _, commit := range commits {
+			gitFiles, err := h.gitStorage.ListBlobs(ctx, commit.Module.Name, commit.CommitHash)
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "list blobs")
+				telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
+				return nil, err
+			}
+			pbFiles := make([]*registryv1.File, len(gitFiles))
+			for i, f := range gitFiles {
+				pbFiles[i] = &registryv1.File{Path: f.Path, Content: f.Content}
+			}
+			contents = append(contents, &registryv1.DownloadResponseContent{
+				Commit: commit,
+				Files:  pbFiles,
+			})
+		}
+	}
 
 	var gitalyMemAfter runtime.MemStats
 	runtime.ReadMemStats(&gitalyMemAfter)
-	gitalyAllocDelta := int64(gitalyMemAfter.TotalAlloc - gitalyMemBefore.TotalAlloc)
 
 	var totalProtoBytes int64
 	for _, c := range contents {
@@ -133,7 +170,6 @@ func (h *Handler) Download(ctx context.Context, refs []*registryv1.ModuleRef) ([
 	telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "ok")))
 	telemetry.DownloadProtoBytes.Record(ctx, totalProtoBytes)
 	telemetry.DownloadAllocBytes.Record(ctx, allocDelta)
-	telemetry.DownloadGitalyAllocBytes.Record(ctx, gitalyAllocDelta)
 	telemetry.DownloadGCRuns.Record(ctx, gcRuns)
 	telemetry.DownloadGCPauseMs.Record(ctx, gcPauseMs)
 

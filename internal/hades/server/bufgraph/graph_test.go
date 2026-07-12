@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,12 +19,25 @@ type fakeGraphProvider struct {
 	err     error
 }
 
-func (f *fakeGraphProvider) GetGraph(_ context.Context, _ []*registryv1.ModuleRef) ([]*registryv1.Commit, error) {
+func (f *fakeGraphProvider) GetGraph(_ context.Context, _ []string, _ []*registryv1.ModuleRef) ([]*registryv1.Commit, error) {
 	return f.commits, f.err
 }
 
+type fakeResourceResolver struct {
+	rt  resource.ResourceType
+	err error
+}
+
+func (f *fakeResourceResolver) ResolveType(_ context.Context, _ string) (resource.ResourceType, error) {
+	return f.rt, f.err
+}
+
 func newServer(h graphProvider) *Server {
-	return &Server{handler: h}
+	return &Server{handler: h, resolver: &fakeResourceResolver{rt: resource.ResourceTypeCommit}}
+}
+
+func newServerWithResolver(h graphProvider, r resourceResolver) *Server {
+	return &Server{handler: h, resolver: r}
 }
 
 func resourceRef(owner, module string) *modulev1.ResourceRef {
@@ -34,6 +48,12 @@ func resourceRef(owner, module string) *modulev1.ResourceRef {
 				Module: module,
 			},
 		},
+	}
+}
+
+func idRef(id string) *modulev1.ResourceRef {
+	return &modulev1.ResourceRef{
+		Value: &modulev1.ResourceRef_Id{Id: id},
 	}
 }
 
@@ -76,4 +96,59 @@ func TestGetGraph_PropagatesAnyError(t *testing.T) {
 	})
 	_, err := s.GetGraph(context.Background(), req)
 	assert.ErrorIs(t, err, handlerErr)
+}
+
+func TestGetGraph_IDRefCommitType(t *testing.T) {
+	commits := []*registryv1.Commit{{Id: "c1", Digest: &registryv1.Digest{}}}
+	s := newServerWithResolver(
+		&fakeGraphProvider{commits: commits},
+		&fakeResourceResolver{rt: resource.ResourceTypeCommit},
+	)
+	req := connect.NewRequest(&modulev1.GetGraphRequest{
+		ResourceRefs: []*modulev1.ResourceRef{idRef("some-commit-uuid")},
+	})
+	resp, err := s.GetGraph(context.Background(), req)
+	require.NoError(t, err)
+	assert.Len(t, resp.Msg.Graph.Commits, 1)
+}
+
+func TestGetGraph_IDRefModuleType(t *testing.T) {
+	commits := []*registryv1.Commit{{Id: "c1", Digest: &registryv1.Digest{}}}
+	s := newServerWithResolver(
+		&fakeGraphProvider{commits: commits},
+		&fakeResourceResolver{rt: resource.ResourceTypeModule},
+	)
+	req := connect.NewRequest(&modulev1.GetGraphRequest{
+		ResourceRefs: []*modulev1.ResourceRef{idRef("some-module-uuid")},
+	})
+	resp, err := s.GetGraph(context.Background(), req)
+	require.NoError(t, err)
+	assert.Len(t, resp.Msg.Graph.Commits, 1)
+}
+
+func TestGetGraph_IDRefLabelType(t *testing.T) {
+	s := newServerWithResolver(
+		&fakeGraphProvider{},
+		&fakeResourceResolver{rt: resource.ResourceTypeLabel},
+	)
+	req := connect.NewRequest(&modulev1.GetGraphRequest{
+		ResourceRefs: []*modulev1.ResourceRef{idRef("some-label-uuid")},
+	})
+	_, err := s.GetGraph(context.Background(), req)
+	var ce *connect.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, connect.CodeUnimplemented, ce.Code())
+}
+
+func TestGetGraph_IDRefResolverError(t *testing.T) {
+	resolverErr := pkgerr.New("resource not found", pkgerr.NotFound)
+	s := newServerWithResolver(
+		&fakeGraphProvider{},
+		&fakeResourceResolver{err: resolverErr},
+	)
+	req := connect.NewRequest(&modulev1.GetGraphRequest{
+		ResourceRefs: []*modulev1.ResourceRef{idRef("unknown-uuid")},
+	})
+	_, err := s.GetGraph(context.Background(), req)
+	assert.ErrorIs(t, err, resolverErr)
 }

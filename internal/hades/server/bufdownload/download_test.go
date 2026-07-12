@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,12 +19,25 @@ type fakeDownloadProvider struct {
 	err      error
 }
 
-func (f *fakeDownloadProvider) Download(_ context.Context, _ []*registryv1.ModuleRef) ([]*registryv1.DownloadResponseContent, error) {
+func (f *fakeDownloadProvider) Download(_ context.Context, _ []string, _ []*registryv1.ModuleRef) ([]*registryv1.DownloadResponseContent, error) {
 	return f.contents, f.err
 }
 
+type fakeResourceResolver struct {
+	rt  resource.ResourceType
+	err error
+}
+
+func (f *fakeResourceResolver) ResolveType(_ context.Context, _ string) (resource.ResourceType, error) {
+	return f.rt, f.err
+}
+
 func newServer(h downloadProvider) *Server {
-	return &Server{handler: h}
+	return &Server{handler: h, resolver: &fakeResourceResolver{rt: resource.ResourceTypeCommit}}
+}
+
+func newServerWithResolver(h downloadProvider, r resourceResolver) *Server {
+	return &Server{handler: h, resolver: r}
 }
 
 func downloadValue(owner, module string) *modulev1.DownloadRequest_Value {
@@ -35,6 +49,14 @@ func downloadValue(owner, module string) *modulev1.DownloadRequest_Value {
 					Module: module,
 				},
 			},
+		},
+	}
+}
+
+func downloadIDValue(id string) *modulev1.DownloadRequest_Value {
+	return &modulev1.DownloadRequest_Value{
+		ResourceRef: &modulev1.ResourceRef{
+			Value: &modulev1.ResourceRef_Id{Id: id},
 		},
 	}
 }
@@ -80,4 +102,34 @@ func TestDownload_PropagatesAnyError(t *testing.T) {
 	})
 	_, err := s.Download(context.Background(), req)
 	assert.ErrorIs(t, err, handlerErr)
+}
+
+func TestDownload_CommitIDRef_RoutedCorrectly(t *testing.T) {
+	contents := []*registryv1.DownloadResponseContent{
+		{Commit: &registryv1.Commit{Id: "c1", Digest: &registryv1.Digest{}}},
+	}
+	s := newServerWithResolver(
+		&fakeDownloadProvider{contents: contents},
+		&fakeResourceResolver{rt: resource.ResourceTypeCommit},
+	)
+	req := connect.NewRequest(&modulev1.DownloadRequest{
+		Values: []*modulev1.DownloadRequest_Value{downloadIDValue("some-commit-uuid")},
+	})
+	resp, err := s.Download(context.Background(), req)
+	require.NoError(t, err)
+	assert.Len(t, resp.Msg.Contents, 1)
+}
+
+func TestDownload_LabelIDRef_ReturnsUnimplemented(t *testing.T) {
+	s := newServerWithResolver(
+		&fakeDownloadProvider{},
+		&fakeResourceResolver{rt: resource.ResourceTypeLabel},
+	)
+	req := connect.NewRequest(&modulev1.DownloadRequest{
+		Values: []*modulev1.DownloadRequest_Value{downloadIDValue("some-label-uuid")},
+	})
+	_, err := s.Download(context.Background(), req)
+	var ce *connect.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, connect.CodeUnimplemented, ce.Code())
 }

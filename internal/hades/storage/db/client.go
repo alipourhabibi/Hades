@@ -28,6 +28,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/org"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/passwordreset"
 	pg "github.com/alipourhabibi/Hades/internal/hades/storage/db/postgres"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sdkjob"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/session"
 	sq "github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlite"
@@ -45,6 +46,7 @@ type DBs struct {
 	ModuleStorage            module.Storage
 	OPABindingStorage        opabinding.Storage
 	CommitStorage            commit.Storage
+	ResourceStorage          resource.Storage
 	SDKJobStorage            sdkjob.Storage
 	OrgStorage               org.Storage
 	CIRunStorage             cirun.Storage
@@ -85,12 +87,14 @@ func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
 		return nil, err
 	}
 
+	resStorage := pg.NewResource(pool)
 	return &DBs{
 		UserStorage:              pg.NewUser(pool),
 		SessionStorage:           pg.NewSession(pool),
-		ModuleStorage:            pg.NewModule(pool),
+		ModuleStorage:            pg.NewModule(pool, resStorage),
 		OPABindingStorage:        pg.NewOPABinding(pool),
-		CommitStorage:            pg.NewCommit(pool),
+		CommitStorage:            pg.NewCommit(pool, resStorage),
+		ResourceStorage:          resStorage,
 		SDKJobStorage:            pg.NewSDKJob(pool),
 		OrgStorage:               pg.NewOrg(pool),
 		CIRunStorage:             pg.NewCIRun(pool),
@@ -144,12 +148,14 @@ func NewSQLite(cfg config.Config, logger *log.LoggerWrapper) (*DBs, error) {
 		return nil, fmt.Errorf("db: sqlite: migrate: %w", err)
 	}
 
+	sqRes := sq.NewResource(sqlDB)
 	return &DBs{
 		UserStorage:              sq.NewUser(sqlDB),
 		SessionStorage:           sq.NewSession(sqlDB),
-		ModuleStorage:            sq.NewModule(sqlDB),
+		ModuleStorage:            sq.NewModule(sqlDB, sqRes),
 		OPABindingStorage:        sq.NewOPABinding(sqlDB),
-		CommitStorage:            sq.NewCommit(sqlDB),
+		CommitStorage:            sq.NewCommit(sqlDB, sqRes),
+		ResourceStorage:          sqRes,
 		SDKJobStorage:            sq.NewSDKJob(sqlDB),
 		OrgStorage:               sq.NewOrg(sqlDB),
 		CIRunStorage:             sq.NewCIRun(sqlDB),

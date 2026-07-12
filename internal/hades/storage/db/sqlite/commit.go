@@ -9,6 +9,7 @@ import (
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/google/uuid"
@@ -17,11 +18,12 @@ import (
 
 // SQLiteCommitStorage implements commit.Storage using database/sql with SQLite.
 type SQLiteCommitStorage struct {
-	db *sql.DB
+	db  *sql.DB
+	res resource.Storage
 }
 
-func NewCommit(db *sql.DB) *SQLiteCommitStorage {
-	return &SQLiteCommitStorage{db: db}
+func NewCommit(db *sql.DB, res resource.Storage) *SQLiteCommitStorage {
+	return &SQLiteCommitStorage{db: db, res: res}
 }
 
 func (c *SQLiteCommitStorage) q(ctx context.Context) txkeys.SQLQuerier {
@@ -36,7 +38,10 @@ func (c *SQLiteCommitStorage) Create(ctx context.Context, id uuid.UUID, commitHa
 INSERT INTO commits (id, commit_hash, owner_id, module_id, digest_type, digest_value, created_by_user_id, source_control_url)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		id.String(), commitHash, ownerId, moduleId, digestType, digestValue, createdByUserId, sourceControlUrl)
-	return err
+	if err != nil {
+		return err
+	}
+	return c.res.Register(ctx, id.String(), resource.ResourceTypeCommit)
 }
 
 func scanSQLiteCommitRows(rows *sql.Rows) ([]*registryv1.Commit, error) {
@@ -86,7 +91,7 @@ SELECT
   m.visibility, m.description, m.default_branch, m.state, m.url, m.default_label_name
 FROM commits c
 LEFT JOIN modules m ON m.id = c.module_id
-WHERE c.id = ?`, id).Scan(
+WHERE REPLACE(c.id, '-', '') = REPLACE(?, '-', '')`, id).Scan(
 		&cmt.Id, &cmt.CommitHash, &createTime, &updateTime,
 		&cmt.OwnerId, &cmt.ModuleId, &cmt.Digest.Type, &cmt.Digest.Value,
 		&cmt.CreatedByUserId, &cmt.SourceControlUrl,
@@ -150,7 +155,7 @@ func (c *SQLiteCommitStorage) GetCommitByOwnerModule(ctx context.Context, module
 		var err error
 		if ref.Id != "" {
 			rows, err = c.q(ctx).QueryContext(ctx,
-				`SELECT `+sqliteCommitJoinCols+` WHERE c.id = ?`, ref.Id)
+				`SELECT `+sqliteCommitJoinCols+` WHERE REPLACE(c.id, '-', '') = REPLACE(?, '-', '')`, ref.Id)
 		} else {
 			// Latest commit per module (SQLite DISTINCT ON equivalent via subquery)
 			rows, err = c.q(ctx).QueryContext(ctx, `

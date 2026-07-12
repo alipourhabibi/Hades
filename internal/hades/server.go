@@ -142,6 +142,7 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 		Authorization:       authorizationServer,
 		ModuleDB:            ss.db.ModuleStorage,
 		CommitDB:            ss.db.CommitStorage,
+		ResourceDB:          ss.db.ResourceStorage,
 		SDKJobDB:            ss.db.SDKJobStorage,
 		SDKStorageBackend:   sdkBackend,
 		OrgDB:               ss.db.OrgStorage,

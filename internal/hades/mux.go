@@ -30,6 +30,7 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 	)
 
 	base := []connect.Interceptor{
+		middleware.NewRequestLoggingInterceptor(s.logger),
 		protovalidateInterceptor,
 		otelInterceptor,
 		errorsutils.NewErrorInterceptor(),
