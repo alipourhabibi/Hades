@@ -37,7 +37,7 @@ docker compose -f development/docker-compose-minimal.yaml up -d
 ./development/trust-dev-ca.sh
 ```
 
-This exports Caddy's root certificate and installs it into the system trust store. Supports Arch/Fedora (`update-ca-trust`), Debian/Ubuntu (`update-ca-certificates`), and macOS (Keychain). After this, `buf`, `grpcurl`, and browsers trust `https://example.com` without warnings.
+This exports Caddy's root certificate and installs it into the system trust store. Only tested on Archlinux. After this, `buf`, `grpcurl`, and browsers trust `https://example.com` without warnings.
 
 **4. Run migrations (Postgres only):**
 

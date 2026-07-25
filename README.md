@@ -2,16 +2,21 @@
 
 An open-source [Buf](https://github.com/bufbuild/buf)-compatible schema registry for managing and versioning Protocol Buffer definitions.
 
-## Features
+<table width="100%">
+  <tr>
+    <td width="50%" align="center">
+      <img src=".github/assets/overview.png" alt="Module overview" width="100%"/>
+      <br/><sub><b>Module Overview</b> (latest commit, buf.yaml and visibility)</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src=".github/assets/sdk.png" alt="Generated SDKs" width="100%"/>
+      <br/><sub><b>Generated SDKs</b> (per-language install commands with version selector)</sub>
+    </td>
+  </tr>
+</table>
 
-- **Buf CLI integration**: `buf push`, `buf dep update`, `buf generate` work out of the box
-- **Immutable commit history**: every push creates a commit; diffs and file tree browsing at any ref
-- **Modules and organizations**: fine-grained role-based access control (OPA-backed)
-- **CI checks**: `buf lint` and `buf breaking` run automatically on push
-- **SDK generation**: async codegen (Go, Python, gRPC stubs) stored in S3-compatible storage
-- **Go module proxy**: generated Go SDKs are `go get`-able directly from Hades
-- **Audit log**: append-only security event log with cursor pagination
-- **Auth**: sessions, email verification, password reset, TOTP, OAuth (GitHub, Google), API tokens
+<video src=".github/assets/buf.webm" autoplay loop muted playsinline width="100%"></video>
+<p align="center"><sub><b>buf push → commit visible in registry</b></sub></p>
 
 ## Quickstart
 
@@ -33,24 +38,7 @@ go run ./cmd/hades serve --config config/dev.yaml
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for the full development guide.
 
-## Architecture
-
-```
-cmd/hades/           CLI entry point (Cobra)
-internal/hades/
-  server/            Connect-RPC handlers (one package per domain)
-  storage/
-    db/              Metadata: PostgreSQL or SQLite
-      postgres/      Postgres implementations
-      sqlite/        SQLite implementations
-    git/             Git storage
-      gogit/         go-git backend (local bare repos, default)
-      gitaly/        Gitaly gRPC backend
-  authorization/     OPA policy engine (RBAC)
-config/              YAML config structs
-migration/           SQL migration files
-frontend/            Next.js web UI
-```
+## Storage tools
 
 Storage backends are configurable and swappable:
 
@@ -58,7 +46,7 @@ Storage backends are configurable and swappable:
 |---|---|---|
 | Metadata | SQLite | PostgreSQL |
 | Git | go-git (local) | Gitaly |
-| Artifacts | Local disk | S3 / MinIO |
+| Artifacts | Local disk | Gitaly / S3 / MinIO |
 | Cache | In-memory | Redis |
 
 ## Using the Buf CLI
