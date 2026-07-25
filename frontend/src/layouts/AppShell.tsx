@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { getSidebarCollapsed, setSidebarCollapsed, getTheme, setTheme, getRecentModules, getUsername } from '../lib/auth';
 import { rpcFetch } from '../lib/rpc';
 import { useAuthStore } from '../stores/authStore';
+import { useWizardStore } from '../stores/wizardStore';
 import {
   IconHome, IconSearch, IconGear, IconKey, IconShield,
   IconMenu, IconPlus, IconBell, IconSun, IconMoon, IconLogout, IconLock, IconGlobe,
@@ -69,10 +70,10 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const router = useRouter();
   const pathname = usePathname();
   const { clearAuth, username } = useAuthStore();
+  const { open: wizardOpen, openWizard, closeWizard } = useWizardStore();
   const [collapsed, setCollapsed] = useState(false);
   const [isDark, setIsDark] = useState(true);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [wizardOpen, setWizardOpen] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userPopupOpen, setUserPopupOpen] = useState(false);
@@ -396,7 +397,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <Badge variant="default" style={{ fontSize: 11 }}>v0.1.0</Badge>
           </div>
           <div style={{ flex: 1 }}/>
-          {isAuthenticated && <Btn variant="primary" size="sm" icon={<IconPlus size={13}/>} onClick={() => setWizardOpen(true)}>New Module</Btn>}
+          {isAuthenticated && <Btn variant="primary" size="sm" icon={<IconPlus size={13}/>} onClick={openWizard}>New Module</Btn>}
           <button onClick={() => router.push('/search')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-fg-muted)', display: 'flex', padding: 4 }}>
             <IconSearch size={16}/>
           </button>
@@ -424,7 +425,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
       {/* Overlays */}
       {notifOpen && <NotificationsDrawer onClose={() => setNotifOpen(false)}/>}
-      {wizardOpen && <ModuleWizard onClose={() => setWizardOpen(false)} onCreated={(owner, name) => { setWizardOpen(false); router.push(`/${owner}/${name}`); }}/>}
+      {wizardOpen && <ModuleWizard onClose={closeWizard} onCreated={(owner, name) => { closeWizard(); router.push(`/${owner}/${name}`); }}/>}
 
       {/* Logout confirmation dialog */}
       {logoutConfirmOpen && (

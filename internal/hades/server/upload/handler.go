@@ -207,7 +207,10 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 		}
 
 		dig, _ := strings.CutPrefix(digest.String(), "shake256:")
-		commit, err := h.commitDB.GetCommitByQuery(ctx, map[string]any{"digest_value": dig})
+		commit, err := h.commitDB.GetCommitByQuery(ctx, map[string]any{
+			"digest_value": dig,
+			"module_id":    module[0].Id,
+		})
 		if err != nil {
 			// Not found is expected - not a dedup hit.
 			var ce *connect.Error

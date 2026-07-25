@@ -28,8 +28,8 @@ var noAuthProcedures = map[string]bool{
 	"/hades.api.authentication.v1.OAuthService/GetOAuthURL":        true,
 	"/hades.api.authentication.v1.OAuthService/OAuthCallback":      true,
 	// Org data is always public - no user context needed
-	"/hades.api.registry.v1.OrgService/GetOrg":          true,
-	"/hades.api.registry.v1.OrgService/ListOrgMembers":  true,
+	"/hades.api.registry.v1.OrgService/GetOrg":         true,
+	"/hades.api.registry.v1.OrgService/ListOrgMembers": true,
 }
 
 // optionalAuthProcedures lists read-only procedures that serve both public
@@ -39,19 +39,19 @@ var noAuthProcedures = map[string]bool{
 // token still returns Unauthenticated.
 var optionalAuthProcedures = map[string]bool{
 	// Internal Hades registry reads
-	"/hades.api.registry.v1.ModuleService/ListModules": true,
-	"/hades.api.registry.v1.ModuleService/GetModule":   true,
-	"/hades.api.registry.v1.CommitService/ListCommits":        true,
-	"/hades.api.registry.v1.CommitService/GetCommit":          true,
-	"/hades.api.registry.v1.DiffService/GetCommitDiff":        true,
-	"/hades.api.registry.v1.UserService/GetUser":              true,
-	"/hades.api.registry.v1.UserService/ListUsers":            true,
-	"/hades.api.registry.v1.OrgService/ListOrganizations":     true,
-	"/hades.api.registry.v1.OrgService/GetUserOrgs":           true,
-	"/hades.api.registry.v1.TreeService/ListModuleFiles":      true,
-	"/hades.api.registry.v1.TreeService/GetFileContent":       true,
-	"/hades.api.registry.v1.CIService/GetCIRun":        true,
-	"/hades.api.registry.v1.SDKService/ListSDKs":       true,
+	"/hades.api.registry.v1.ModuleService/ListModules":    true,
+	"/hades.api.registry.v1.ModuleService/GetModule":      true,
+	"/hades.api.registry.v1.CommitService/ListCommits":    true,
+	"/hades.api.registry.v1.CommitService/GetCommit":      true,
+	"/hades.api.registry.v1.DiffService/GetCommitDiff":    true,
+	"/hades.api.registry.v1.UserService/GetUser":          true,
+	"/hades.api.registry.v1.UserService/ListUsers":        true,
+	"/hades.api.registry.v1.OrgService/ListOrganizations": true,
+	"/hades.api.registry.v1.OrgService/GetUserOrgs":       true,
+	"/hades.api.registry.v1.TreeService/ListModuleFiles":  true,
+	"/hades.api.registry.v1.TreeService/GetFileContent":   true,
+	"/hades.api.registry.v1.CIService/GetCIRun":           true,
+	"/hades.api.registry.v1.SDKService/ListSDKs":          true,
 	// buf.build registry protocol reads (used by the buf CLI)
 	"/buf.registry.module.v1.ModuleService/GetModules":  true,
 	"/buf.registry.module.v1.ModuleService/ListModules": true,
