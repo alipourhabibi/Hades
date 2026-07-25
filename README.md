@@ -15,7 +15,7 @@ An open-source [Buf](https://github.com/bufbuild/buf)-compatible schema registry
   </tr>
 </table>
 
-<video src=".github/assets/buf.webm" autoplay loop muted playsinline width="100%"></video>
+<video src="https://github.com/user-attachments/assets/a9758133-1611-4e75-b801-a9b55e341319" autoplay loop muted playsinline width="100%"></video>
 <p align="center"><sub><b>buf push → commit visible in registry</b></sub></p>
 
 ## Quickstart
