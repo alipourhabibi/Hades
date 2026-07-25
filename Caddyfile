@@ -2,7 +2,7 @@
     # Caddy obtains a TLS certificate from Let's Encrypt automatically.
     # Port 80 must be reachable from the internet for the HTTP-01 challenge.
 
-    @rpc path /hades.api.* /buf.registry.* /gen/go/* /go/*
+    @rpc path /hades.api.* /buf.registry.* /buf.alpha.* /gen/go/* /go/*
     reverse_proxy @rpc hades:50051 {
         transport http {
             versions h2c

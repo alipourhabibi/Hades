@@ -98,11 +98,33 @@ func extractClientIP(req connect.AnyRequest) string {
 	return host
 }
 
+// reservedUsernames is the set of names that cannot be registered as a
+// username or organisation name because they conflict with frontend routes,
+// backend protocol paths, or common administrative slugs.
+var reservedUsernames = map[string]struct{}{
+	// Frontend routes
+	"settings": {}, "login": {}, "signup": {}, "search": {},
+	"verify-email": {}, "api": {}, "app": {},
+	// Backend / protocol paths
+	"go": {}, "gen": {}, "oauth2": {}, "buf": {}, "hades": {},
+	// Administrative / common reserved
+	"admin": {}, "administrator": {}, "root": {}, "system": {},
+	"help": {}, "support": {}, "about": {}, "pricing": {},
+	"terms": {}, "privacy": {}, "security": {}, "status": {},
+	"user": {}, "users": {}, "org": {}, "orgs": {},
+	"team": {}, "teams": {}, "me": {}, "null": {}, "undefined": {},
+	"new": {}, "home": {},
+}
+
 // Register creates a new user account.
 func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error) {
 	// Normalise username and email to lowercase for case-insensitive handling.
 	username := strings.ToLower(in.Msg.Username)
 	emailAddr := strings.ToLower(in.Msg.Email)
+
+	if _, blocked := reservedUsernames[username]; blocked {
+		return nil, connErr.InvalidArgument("username is reserved")
+	}
 
 	if s.cache != nil {
 		ip := extractClientIP(in)

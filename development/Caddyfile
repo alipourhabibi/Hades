@@ -4,7 +4,7 @@ example.com {
 	tls internal
 
 	# buf CLI / direct RPC / Go module proxy → Hades backend (h2c) on host
-	@rpc path /hades.api.* /buf.registry.* /gen/go/* /go/*
+	@rpc path /hades.api.* /buf.registry.* /buf.alpha.* /gen/go/* /go/*
 	reverse_proxy @rpc host.docker.internal:50051 {
 		transport http {
 			versions h2c

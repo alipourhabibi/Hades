@@ -18,6 +18,7 @@ import (
 	bufcommits "github.com/alipourhabibi/Hades/internal/hades/server/bufcommits"
 	"github.com/alipourhabibi/Hades/internal/hades/server/bufdownload"
 	"github.com/alipourhabibi/Hades/internal/hades/server/bufgraph"
+	"github.com/alipourhabibi/Hades/internal/hades/server/bufauthn"
 	bufmodules "github.com/alipourhabibi/Hades/internal/hades/server/bufmodules"
 	"github.com/alipourhabibi/Hades/internal/hades/server/bufupload"
 	"github.com/alipourhabibi/Hades/internal/hades/server/cisvc"
@@ -65,23 +66,24 @@ type SchemaRegistryServerSet struct {
 	BufCommitServer      *bufcommits.Server
 	BufUploadServer      *bufupload.Server
 	BufGraphServer       *bufgraph.Server
-	BufDownloadServer    *bufdownload.Server
-	SessionHandler       *sessionsvc.Handler
-	OAuthHandler         *oauthsvc.Handler
-	APITokenHandler      *apitokensvc.Handler
-	DeviceHandler        *devicesvc.Handler
-	TOTPHandler          *totpsvc.Handler
-	AuditHandler         *auditsvc.Handler
-	CommitHandler        *commitsvc.Handler
-	DiffHandler          *diffsvc.Handler
-	UserHandler          *usersvc.Handler
-	SDKHandler           *sdksvc.Handler
-	OrgHandler           *orgsvc.Handler
-	CIHandler            *cisvc.Handler
-	NotificationHandler  *notificationsvc.Handler
-	TreeHandler          *treesvc.Handler
-	GoProxyHandler       *goproxy.Handler
-	SDKBackend           sdkstorage.Backend
+	BufDownloadServer   *bufdownload.Server
+	BufAlphaAuthnServer *bufauthn.Server
+	SessionHandler      *sessionsvc.Handler
+	OAuthHandler        *oauthsvc.Handler
+	APITokenHandler     *apitokensvc.Handler
+	DeviceHandler       *devicesvc.Handler
+	TOTPHandler         *totpsvc.Handler
+	AuditHandler        *auditsvc.Handler
+	CommitHandler       *commitsvc.Handler
+	DiffHandler         *diffsvc.Handler
+	UserHandler         *usersvc.Handler
+	SDKHandler          *sdksvc.Handler
+	OrgHandler          *orgsvc.Handler
+	CIHandler           *cisvc.Handler
+	NotificationHandler *notificationsvc.Handler
+	TreeHandler         *treesvc.Handler
+	GoProxyHandler      *goproxy.Handler
+	SDKBackend          sdkstorage.Backend
 }
 
 // NewServer constructs a fully wired SchemaRegistryServer from config.
@@ -181,6 +183,7 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 		BufUploadServer:     bufupload.NewServer(deps),
 		BufGraphServer:      bufgraph.NewServer(deps),
 		BufDownloadServer:   bufdownload.NewServer(deps),
+		BufAlphaAuthnServer: bufauthn.NewServer(deps),
 		SessionHandler:      sessionsvc.NewHandler(deps),
 		OAuthHandler:        oauthsvc.NewHandler(deps),
 		APITokenHandler:     apitokensvc.NewHandler(deps),

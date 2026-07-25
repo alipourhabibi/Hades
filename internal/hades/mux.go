@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/otelconnect"
 	"go.opentelemetry.io/otel"
 
+	registryv1alpha1connect "buf.build/gen/go/bufbuild/buf/connectrpc/go/buf/alpha/registry/v1alpha1/registryv1alpha1connect"
 	"buf.build/gen/go/bufbuild/registry/connectrpc/go/buf/registry/module/v1/modulev1connect"
 	"github.com/alipourhabibi/Hades/api/gen/api/authentication/v1/authenticationv1connect"
 	"github.com/alipourhabibi/Hades/api/gen/api/authorization/v1/authorizationv1connect"
@@ -60,6 +61,7 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 		registryv1connect.CIServiceName,
 		registryv1connect.NotificationServiceName,
 		registryv1connect.TreeServiceName,
+		registryv1alpha1connect.AuthnServiceName,
 	)
 
 	mux := http.NewServeMux()
@@ -72,6 +74,7 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 	mux.Handle(modulev1connect.NewUploadServiceHandler(s.serverSet.BufUploadServer, withAuth))
 	mux.Handle(modulev1connect.NewGraphServiceHandler(s.serverSet.BufGraphServer, withAuth))
 	mux.Handle(modulev1connect.NewDownloadServiceHandler(s.serverSet.BufDownloadServer, withAuth))
+	mux.Handle(registryv1alpha1connect.NewAuthnServiceHandler(s.serverSet.BufAlphaAuthnServer, withAuth))
 	mux.Handle(authenticationv1connect.NewSessionServiceHandler(s.serverSet.SessionHandler, withAuth))
 	mux.Handle(authenticationv1connect.NewOAuthServiceHandler(s.serverSet.OAuthHandler, noAuth))
 	mux.Handle(authenticationv1connect.NewAPITokenServiceHandler(s.serverSet.APITokenHandler, withAuth))
