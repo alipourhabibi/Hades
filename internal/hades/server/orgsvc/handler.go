@@ -24,9 +24,9 @@ type Handler struct {
 	registryv1connect.OrgServiceHandler
 
 	logger     *log.LoggerWrapper
-	orgStorage *orgdb.OrgStorage
-	userDB     *userdb.UserStorage
-	moduleDB   *moduledb.ModuleStorage
+	orgStorage orgdb.Storage
+	userDB     userdb.Storage
+	moduleDB   moduledb.Storage
 }
 
 // NewHandler constructs a Handler wired to the dependency bag.

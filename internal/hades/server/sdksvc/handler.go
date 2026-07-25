@@ -33,8 +33,8 @@ type Handler struct {
 	registryv1connect.SDKServiceHandler
 
 	logger          *log.LoggerWrapper
-	sdkJobStorage   *sdkjob.SDKJobStorage
-	moduleDBStorage *moduledb.ModuleStorage
+	sdkJobStorage   sdkjob.Storage
+	moduleDBStorage moduledb.Storage
 	authz           readAccessChecker
 }
 

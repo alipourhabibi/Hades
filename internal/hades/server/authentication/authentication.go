@@ -28,12 +28,11 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/passwordreset"
 	dbsession "github.com/alipourhabibi/Hades/internal/hades/storage/db/session"
 	dbuser "github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
+	"github.com/alipourhabibi/Hades/internal/hades/cache"
 	utilscrypto "github.com/alipourhabibi/Hades/utils/crypto"
 	"github.com/alipourhabibi/Hades/utils/email"
 	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
-	"github.com/alipourhabibi/Hades/utils/ratelimit"
-	"github.com/jackc/pgx/v5"
 )
 
 // dummyHash is bcrypt'd "x" used for constant-time comparison when a user does
@@ -44,14 +43,14 @@ type Server struct {
 	v1connect.AuthenticationServiceHandler
 
 	logger               *log.LoggerWrapper
-	userStorage          *dbuser.UserStorage
-	sessionStorage       *dbsession.SessionStorage
-	emailVerStorage      *emailverification.EmailVerificationStorage
-	passwordResetStorage *passwordreset.PasswordResetStorage
-	auditLogStorage      *auditlog.AuditLogStorage
+	userStorage          dbuser.Storage
+	sessionStorage       dbsession.Storage
+	emailVerStorage      emailverification.Storage
+	passwordResetStorage passwordreset.Storage
+	auditLogStorage      auditlog.Storage
 	authorizationService *authorization.Server
 	uow                  db.UnitOfWork
-	rateLimiter          *ratelimit.Limiter
+	cache                cache.Cache
 	emailSender          *email.Sender
 	authCfg              config.AuthConfig
 	registryHost         string
@@ -67,7 +66,7 @@ func NewServer(deps *server.Dependencies) *Server {
 		auditLogStorage:      deps.AuditLogDB,
 		authorizationService: deps.Authorization,
 		uow:                  deps.UoW,
-		rateLimiter:          deps.RateLimiter,
+		cache:                deps.Cache,
 		emailSender:          deps.EmailSender,
 		authCfg:              deps.AuthConfig,
 		registryHost:         deps.RegistryHost,
@@ -105,9 +104,9 @@ func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRe
 	username := strings.ToLower(in.Msg.Username)
 	emailAddr := strings.ToLower(in.Msg.Email)
 
-	if s.rateLimiter != nil {
+	if s.cache != nil {
 		ip := extractClientIP(in)
-		allowed, err := s.rateLimiter.Allow(ctx, fmt.Sprintf("register:ip:%s", ip), 3, time.Minute)
+		allowed, err := s.cache.Allow(ctx, fmt.Sprintf("register:ip:%s", ip), 3, time.Minute)
 		if err == nil && !allowed {
 			return nil, connErr.ResourceExhausted("too many requests")
 		}
@@ -137,8 +136,8 @@ func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRe
 	}
 
 	var userID string
-	_, err = s.uow.Do(ctx, func(ctx context.Context, tx pgx.Tx) (interface{}, error) {
-		if err := s.userStorage.WithTx(tx).Create(
+	_, err = s.uow.Do(ctx, func(ctx context.Context) (interface{}, error) {
+		if err := s.userStorage.Create(
 			ctx,
 			username,
 			emailAddr,
@@ -150,12 +149,12 @@ func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRe
 		); err != nil {
 			return nil, connErr.FromPgx(err)
 		}
-		user, err := s.userStorage.WithTx(tx).GetByUsername(ctx, username)
+		user, err := s.userStorage.GetByUsername(ctx, username)
 		if err != nil {
 			return nil, connErr.FromPgx(err)
 		}
 		userID = user.Id
-		return nil, s.authorizationService.AddBasicRolesInTx(ctx, tx, username)
+		return nil, s.authorizationService.AddBasicRolesInTx(ctx, username)
 	}, 15*time.Second)
 	if err != nil {
 		return nil, err
@@ -207,8 +206,8 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 		ua = in.Header().Get("User-Agent")
 	}
 
-	if s.rateLimiter != nil {
-		allowed, err := s.rateLimiter.Allow(ctx, fmt.Sprintf("login:ip:%s", ip), 10, time.Minute)
+	if s.cache != nil {
+		allowed, err := s.cache.Allow(ctx, fmt.Sprintf("login:ip:%s", ip), 10, time.Minute)
 		if err == nil && !allowed {
 			return nil, connErr.ResourceExhausted("too many requests")
 		}
@@ -367,8 +366,8 @@ func (s *Server) ResendVerificationEmail(ctx context.Context, in *connect.Reques
 		return nil, connErr.InvalidArgument("email is already verified")
 	}
 
-	if s.rateLimiter != nil {
-		allowed, err := s.rateLimiter.Allow(ctx, fmt.Sprintf("emailresend:user:%s", user.Id), 3, 10*time.Minute)
+	if s.cache != nil {
+		allowed, err := s.cache.Allow(ctx, fmt.Sprintf("emailresend:user:%s", user.Id), 3, 10*time.Minute)
 		if err == nil && !allowed {
 			return nil, connErr.ResourceExhausted("too many requests")
 		}
@@ -396,8 +395,8 @@ func (s *Server) ResendVerificationEmail(ctx context.Context, in *connect.Reques
 // RequestPasswordReset initiates a password reset flow.
 func (s *Server) RequestPasswordReset(ctx context.Context, in *connect.Request[v1.RequestPasswordResetRequest]) (*connect.Response[v1.RequestPasswordResetResponse], error) {
 	ip := extractClientIP(in)
-	if s.rateLimiter != nil {
-		allowed, err := s.rateLimiter.Allow(ctx, fmt.Sprintf("pwreset:ip:%s", ip), 3, time.Minute)
+	if s.cache != nil {
+		allowed, err := s.cache.Allow(ctx, fmt.Sprintf("pwreset:ip:%s", ip), 3, time.Minute)
 		if err == nil && !allowed {
 			return nil, connErr.ResourceExhausted("too many requests")
 		}

@@ -13,6 +13,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/buf/dto"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
 	"github.com/alipourhabibi/Hades/internal/hades/server/commits"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
@@ -20,7 +21,12 @@ import (
 // commitsProvider is the interface the Server delegates to.
 // commits.Handler satisfies it; tests can provide a fake.
 type commitsProvider interface {
-	GetCommits(ctx context.Context, refs []*registryv1.ModuleRef) ([]*registryv1.Commit, error)
+	GetCommits(ctx context.Context, commitIDs []string, moduleRefs []*registryv1.ModuleRef) ([]*registryv1.Commit, error)
+}
+
+// resourceResolver resolves a resource UUID to its type.
+type resourceResolver interface {
+	ResolveType(ctx context.Context, id string) (resource.ResourceType, error)
 }
 
 // Server is the buf.build protocol adapter for commit queries.
@@ -28,31 +34,55 @@ type commitsProvider interface {
 type Server struct {
 	modulev1connect.CommitServiceHandler
 
-	handler commitsProvider
-	logger  *log.LoggerWrapper
+	handler  commitsProvider
+	resolver resourceResolver
+	logger   *log.LoggerWrapper
 }
 
 func NewServer(deps *server.Dependencies) *Server {
 	return &Server{
-		logger:  deps.Logger,
-		handler: commits.New(deps),
+		logger:   deps.Logger,
+		handler:  commits.New(deps),
+		resolver: deps.ResourceDB,
 	}
 }
 
 func (s *Server) GetCommits(ctx context.Context, req *connect.Request[modulev1.GetCommitsRequest]) (*connect.Response[modulev1.GetCommitsResponse], error) {
-	// Reject label/generic refs before conversion - internal ModuleRef has no label fields.
+	// Reject label/generic name refs before routing.
 	for _, r := range req.Msg.ResourceRefs {
 		if r.GetName().GetLabelName() != "" || r.GetName().GetRef() != "" {
 			return nil, connErr.Unimplemented("label refs and generic refs are not yet supported; use a module owner/name or a direct commit id")
 		}
 	}
 
-	refs := make([]*registryv1.ModuleRef, 0, len(req.Msg.ResourceRefs))
+	var commitIDs []string
+	var moduleRefs []*registryv1.ModuleRef
+
 	for _, r := range req.Msg.ResourceRefs {
-		refs = append(refs, dto.FromResourceRefPB(r))
+		if r.GetId() != "" {
+			rt, err := s.resolver.ResolveType(ctx, r.GetId())
+			if err != nil {
+				return nil, err
+			}
+			switch rt {
+			case resource.ResourceTypeCommit:
+				commitIDs = append(commitIDs, r.GetId())
+			case resource.ResourceTypeModule:
+				moduleRefs = append(moduleRefs, &registryv1.ModuleRef{Id: r.GetId()})
+			case resource.ResourceTypeLabel:
+				return nil, connErr.Unimplemented("label refs are not yet supported in GetCommits")
+			default:
+				return nil, connErr.Unimplemented("unknown resource type for id: " + r.GetId())
+			}
+		} else {
+			moduleRefs = append(moduleRefs, &registryv1.ModuleRef{
+				Owner:  r.GetName().GetOwner(),
+				Module: r.GetName().GetModule(),
+			})
+		}
 	}
 
-	result, err := s.handler.GetCommits(ctx, refs)
+	result, err := s.handler.GetCommits(ctx, commitIDs, moduleRefs)
 	if err != nil {
 		return nil, err
 	}

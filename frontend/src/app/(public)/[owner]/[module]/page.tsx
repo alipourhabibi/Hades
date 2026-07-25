@@ -34,13 +34,22 @@ function isPublic(v: string | number): boolean { return v === 'E_VISIBILITY_PUBL
 function fmtDate(ts?: string): string { if (!ts) return '-'; try { return new Date(ts).toLocaleDateString(); } catch { return ts; } }
 
 const LANG_EMOJIS: Record<string, string> = { go: '🐹', typescript: '🔷', python: '🐍', java: '☕', rust: '🦀', swift: '🦅' };
-function getLangEmoji(lang: string): string { return LANG_EMOJIS[lang.toLowerCase()] || '📦'; }
-function getInstallCmd(lang: string, owner: string, mod: string): string {
+function getLangEmoji(lang: string): string { return LANG_EMOJIS[lang.toLowerCase()] ?? '📦'; }
+function getInstallCmd(lang: string, owner: string, mod: string, version?: string): string {
+  const ver = version ? `@${version}` : '@latest';
   switch (lang.toLowerCase()) {
-    case 'go': return `go get ${DOMAIN}/${owner}/${mod}/gen/go`;
-    case 'typescript': return `npm install @buf/${owner}_${mod}`;
-    case 'python': return `pip install buf-${owner}-${mod}`;
+    case 'go': return `GOPROXY=https://${DOMAIN}/go,off GONOSUMDB=* \\\n  go get ${DOMAIN}/gen/go/${owner}/${mod}${ver}`;
+    case 'typescript': return `npm install @buf/${owner}_${mod}${version ? `@${version}` : ''}`;
+    case 'python': return `pip install buf-${owner}-${mod}${version ? `==${version}` : ''}`;
     default: return `# Install ${lang} SDK for ${owner}/${mod}`;
+  }
+}
+function getUsageCode(lang: string, owner: string, mod: string): string {
+  switch (lang.toLowerCase()) {
+    case 'go': return `import (\n  pb "${DOMAIN}/gen/go/${owner}/${mod}/proto"\n)\n\nmsg := &pb.MyRequest{}`;
+    case 'typescript': return `import { MyRequest } from "@buf/${owner}_${mod}";\n\nconst req = new MyRequest();`;
+    case 'python': return `from buf_${owner}_${mod} import my_pb2\n\nreq = my_pb2.MyRequest()`;
+    default: return `// See documentation for ${lang} usage examples`;
   }
 }
 
@@ -84,6 +93,8 @@ function ModuleDetailContent() {
   const [mod, setMod] = useState<Module | null>(null);
   const [commits, setCommits] = useState<Commit[]>([]);
   const [sdks, setSdks] = useState<SDK[]>([]);
+  const [sdkLang, setSdkLang] = useState<string | null>(null);
+  const [sdkVersionId, setSdkVersionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [settingsDesc, setSettingsDesc] = useState('');
@@ -122,7 +133,11 @@ function ModuleDetailContent() {
           rpcFetch<{ sdkJobs: SDK[] }>('/hades.api.registry.v1.SDKService/ListSDKs', { owner, module: moduleName }),
         ]).then(([commitResult, sdkResult]) => {
           if (commitResult.status === 'fulfilled') setCommits(commitResult.value.commits || []);
-          if (sdkResult.status === 'fulfilled') setSdks(sdkResult.value.sdkJobs || []);
+          if (sdkResult.status === 'fulfilled') {
+            const jobs = sdkResult.value.sdkJobs || [];
+            setSdks(jobs);
+            if (jobs.length > 0) setSdkLang(prev => prev ?? jobs[0].language);
+          }
         });
       })
       .catch(e => setError(e.message))
@@ -218,12 +233,12 @@ function ModuleDetailContent() {
         actions={<>
           <Btn size="sm" icon={<IconStar size={13}/>}>Star</Btn>
           <Btn size="sm" icon={<IconDownload size={13}/>}>Clone</Btn>
-          <Btn size="sm" variant="primary" icon={<IconCode size={13}/>} onClick={() => router.push(`/${owner}/${moduleName}/sdks`)}>Get SDKs</Btn>
+          <Btn size="sm" variant="primary" icon={<IconCode size={13}/>} onClick={() => setTab('sdks')}>Get SDKs</Btn>
         </>}
       />
 
       <div style={{ padding: '0 32px' }}>
-        <Tabs tabs={MODULE_TABS.map(t => ({ ...t, count: t.id === 'commits' ? commits.length : t.id === 'sdks' ? sdks.length : undefined }))} active={activeTab} onChange={setTab}/>
+        <Tabs tabs={MODULE_TABS.map(t => ({ ...t, count: t.id === 'commits' ? commits.length : t.id === 'sdks' ? new Set(sdks.map(s => s.language)).size || undefined : undefined }))} active={activeTab} onChange={setTab}/>
       </div>
 
       {activeTab === 'overview' && (
@@ -256,8 +271,6 @@ function ModuleDetailContent() {
                 <Stat label="Visibility" value={pub ? 'Public' : 'Private'} icon={pub ? <IconGlobe size={14}/> : <IconLock size={14}/>}/>
                 <Divider/>
                 <Stat label="Commits" value={String(commits.length)} icon={<IconGitCommit size={14}/>}/>
-                <Divider/>
-                <Stat label="SDKs" value={String(sdks.length)} icon={<IconPackage size={14}/>}/>
               </div>
             </Card>
             <Card style={{ padding: 16 }}>
@@ -303,24 +316,77 @@ function ModuleDetailContent() {
         </Section>
       )}
 
-      {activeTab === 'sdks' && (
-        <Section>
-          {sdks.length === 0 ? <EmptyState icon={<IconCode size={40}/>} title="No SDKs generated" subtitle="SDK generation runs automatically when you push commits."/> : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
-              {sdks.map(sdk => (
-                <Card key={sdk.id} style={{ padding: 18 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                    <span style={{ fontSize: 22 }}>{getLangEmoji(sdk.language)}</span>
-                    <div><div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-fg)', textTransform: 'capitalize' }}>{sdk.language}</div>{sdk.status && <div style={{ fontSize: 11, color: 'var(--c-fg-subtle)' }}>{sdk.status}</div>}</div>
-                    <Btn size="sm" style={{ marginLeft: 'auto' }} icon={<IconDownload size={12}/>}>Install</Btn>
-                  </div>
-                  <CodeBlock code={getInstallCmd(sdk.language, owner, moduleName)} style={{ marginBottom: 0 }}/>
-                </Card>
-              ))}
+      {activeTab === 'sdks' && (() => {
+        const sdkLanguages = Array.from(new Set(sdks.map(s => s.language)));
+        const activeLang = sdkLang ?? sdkLanguages[0] ?? null;
+        const langSdks = sdks.filter(s => s.language === activeLang);
+        const activeSdk = sdkVersionId ? (langSdks.find(s => s.id === sdkVersionId) ?? langSdks[0]) : langSdks[0] ?? null;
+        const versionLabel = (sdk: SDK, idx: number) => {
+          const tag = idx === 0 ? 'latest' : `v${langSdks.length - idx}`;
+          return sdk.commitId ? `${tag} (${sdk.commitId.slice(0, 8)})` : tag;
+        };
+        if (sdks.length === 0) return <Section><EmptyState icon={<IconPackage size={40}/>} title="No SDKs generated" subtitle="SDK generation runs automatically when you push commits."/></Section>;
+        return (
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+            <div style={{ width: 180, flexShrink: 0, borderRight: '1px solid var(--c-border)', overflowY: 'auto', padding: '16px 0' }}>
+              <div style={{ padding: '0 12px 8px', fontSize: 11, fontWeight: 600, color: 'var(--c-fg-subtle)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Languages</div>
+              {sdkLanguages.map(lang => {
+                const isActive = lang === activeLang;
+                const count = sdks.filter(s => s.language === lang).length;
+                return (
+                  <button key={lang} onClick={() => { setSdkLang(lang); setSdkVersionId(null); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', background: isActive ? 'var(--c-accent-bg)' : 'transparent', border: 'none', borderLeft: `2px solid ${isActive ? 'var(--c-accent)' : 'transparent'}`, cursor: 'pointer', color: isActive ? 'var(--c-accent)' : 'var(--c-fg-muted)', fontSize: 13, fontWeight: isActive ? 600 : 400, fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.1s' }}>
+                    <span style={{ fontSize: 18, lineHeight: 1 }}>{getLangEmoji(lang)}</span>
+                    <span style={{ textTransform: 'capitalize', flex: 1 }}>{lang}</span>
+                    {count > 1 && <span style={{ fontSize: 10, background: 'var(--c-bg-overlay)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '1px 6px', color: 'var(--c-fg-subtle)' }}>{count}</span>}
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </Section>
-      )}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+              {activeSdk && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 36 }}>{getLangEmoji(activeSdk.language)}</span>
+                      <div>
+                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--c-fg)', textTransform: 'capitalize' }}>{activeSdk.language} SDK</h2>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                          {activeSdk.status && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 4, background: activeSdk.status === 'success' ? 'var(--c-success-bg)' : 'var(--c-bg-overlay)', color: activeSdk.status === 'success' ? 'var(--c-success)' : 'var(--c-fg-muted)', border: '1px solid currentColor' }}>{activeSdk.status}</span>}
+                          {activeSdk.plugin && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 4, background: 'var(--c-bg-overlay)', color: 'var(--c-fg-muted)', border: '1px solid var(--c-border)' }}>{activeSdk.plugin}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {langSdks.length > 1 && (
+                        <select value={activeSdk.id} onChange={e => setSdkVersionId(e.target.value)} style={{ background: 'var(--c-bg-inset)', border: '1px solid var(--c-border)', borderRadius: 6, color: 'var(--c-fg)', fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", padding: '5px 10px', cursor: 'pointer', outline: 'none' }}>
+                          {langSdks.map((s, i) => <option key={s.id} value={s.id}>{versionLabel(s, i)}</option>)}
+                        </select>
+                      )}
+                      {langSdks.length === 1 && activeSdk.commitId && <span style={{ fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", padding: '1px 6px', borderRadius: 4, background: 'var(--c-bg-overlay)', border: '1px solid var(--c-border)', color: 'var(--c-fg-muted)' }}>{activeSdk.commitId.slice(0, 8)}</span>}
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 24 }}>
+                    <h3 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 600, color: 'var(--c-fg)' }}>Installation</h3>
+                    <CodeBlock code={getInstallCmd(activeSdk.language, owner, moduleName, activeSdk.commitId?.slice(0, 12))} lang={activeSdk.language.toLowerCase() === 'typescript' ? 'bash' : activeSdk.language.toLowerCase()}/>
+                  </div>
+                  <div style={{ marginBottom: 24 }}>
+                    <h3 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 600, color: 'var(--c-fg)' }}>Usage</h3>
+                    <CodeBlock code={getUsageCode(activeSdk.language, owner, moduleName)} lang={activeSdk.language.toLowerCase()}/>
+                  </div>
+                  {activeSdk.commitId && (
+                    <Card style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: 'var(--c-fg-muted)' }}>
+                        <span>Generated from commit</span>
+                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: 'var(--c-accent)', cursor: 'pointer' }} onClick={() => router.push(`/${owner}/${moduleName}/commit/${activeSdk.commitId}`)}>{activeSdk.commitId.slice(0, 12)}</span>
+                      </div>
+                    </Card>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {activeTab === 'dependencies' && <Section><EmptyState icon={<IconBox size={40}/>} title="No dependencies" subtitle="This module has no external dependencies declared."/></Section>}
       {activeTab === 'ci' && <Section><EmptyState icon={<IconCode size={40}/>} title="CI / Lint" subtitle="Connect your repository to enable lint checks and breaking change detection."/></Section>}

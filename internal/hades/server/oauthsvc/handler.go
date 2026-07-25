@@ -39,10 +39,10 @@ type Handler struct {
 	v1connect.OAuthServiceHandler
 
 	logger           *log.LoggerWrapper
-	userStorage      *dbuser.UserStorage
-	sessionStorage   *dbsession.SessionStorage
-	oauthIdentityDB  *oauthidentity.OAuthIdentityStorage
-	auditLogDB       *auditlog.AuditLogStorage
+	userStorage      dbuser.Storage
+	sessionStorage   dbsession.Storage
+	oauthIdentityDB  oauthidentity.Storage
+	auditLogDB       auditlog.Storage
 	authorizationSvc *authorization.Server
 	oauthCfg         config.OAuthConfig
 	authCfg          config.AuthConfig

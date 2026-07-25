@@ -16,9 +16,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/server/authorization"
 	commitdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
 	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/blob"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/operation"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/repository"
+	gitstorage "github.com/alipourhabibi/Hades/internal/hades/storage/git"
 	"github.com/alipourhabibi/Hades/utils/log"
 	"github.com/alipourhabibi/Hades/utils/paths"
 	"github.com/alipourhabibi/Hades/utils/shake256"
@@ -28,24 +26,20 @@ import (
 type Server struct {
 	modulev1connect.UploadServiceHandler
 
-	moduleDBStorage         *moduledb.ModuleStorage
-	commitDBStorage         *commitdb.CommitStorage
-	gitalyRepositoryService *repository.RepositoryService
-	gitalyOperationService  *operation.OperationService
-	authorization           *authorization.Server
-	blobStorage             *blob.BlobService
-	logger                  *log.LoggerWrapper
+	moduleDBStorage moduledb.Storage
+	commitDBStorage commitdb.Storage
+	gitStorage      gitstorage.Storage
+	authorization   *authorization.Server
+	logger          *log.LoggerWrapper
 }
 
 func NewServer(deps *server.Dependencies) *Server {
 	return &Server{
-		logger:                  deps.Logger,
-		moduleDBStorage:         deps.ModuleDB,
-		commitDBStorage:         deps.CommitDB,
-		gitalyRepositoryService: deps.GitalyRepositoryStorage,
-		gitalyOperationService:  deps.GitalyOperationStorage,
-		authorization:           deps.Authorization,
-		blobStorage:             deps.GitalyBlobStorage,
+		logger:          deps.Logger,
+		moduleDBStorage: deps.ModuleDB,
+		commitDBStorage: deps.CommitDB,
+		gitStorage:      deps.GitStorage,
+		authorization:   deps.Authorization,
 	}
 }
 
@@ -122,14 +116,14 @@ func (s *Server) Upload(ctx context.Context, req *connect.Request[modulev1.Uploa
 		if !emptyCommit {
 
 			// get the blobs of the last commits
-			blobs, err := s.blobStorage.ListBlobs(ctx, moduleCommit[0])
+			gitBlobs, err := s.gitStorage.ListBlobs(ctx, module[0].Name, moduleCommit[0].CommitHash)
 			if err != nil {
 				return nil, err
 			}
 
 			uploadFiles := map[string]*registryv1.File{}
 
-			for _, f := range blobs[0].Files {
+			for _, f := range gitBlobs {
 				uploadFiles[f.Path] = &registryv1.File{
 					Path:    f.Path,
 					Content: f.Content,
@@ -148,9 +142,9 @@ func (s *Server) Upload(ctx context.Context, req *connect.Request[modulev1.Uploa
 				files = append(files, f)
 			}
 
-			// paths are only ones that exists in blob
-			listFiles = make([]string, 0, len(files))
-			for _, f := range blobs[0].Files {
+			// paths are only ones that exist in blob
+			listFiles = make([]string, 0, len(gitBlobs))
+			for _, f := range gitBlobs {
 				listFiles = append(listFiles, f.Path)
 			}
 		} else {
@@ -186,7 +180,11 @@ func (s *Server) Upload(ctx context.Context, req *connect.Request[modulev1.Uploa
 		}
 
 		files = paths.GetPath(files)
-		commitId, err := s.gitalyOperationService.UserCommitFiles(ctx, module[0], files, user, listFiles, dig)
+		gitFiles := make([]*gitstorage.File, len(files))
+		for i, f := range files {
+			gitFiles[i] = &gitstorage.File{Path: f.Path, Content: f.Content}
+		}
+		commitId, err := s.gitStorage.PutFiles(ctx, module[0].Name, module[0].DefaultBranch, gitFiles, user.Username, user.Email, "upload:"+dig, listFiles)
 		if err != nil {
 			return nil, err
 		}

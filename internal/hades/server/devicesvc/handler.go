@@ -23,7 +23,7 @@ import (
 	utilscrypto "github.com/alipourhabibi/Hades/utils/crypto"
 	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
-	"github.com/alipourhabibi/Hades/utils/ratelimit"
+	"github.com/alipourhabibi/Hades/internal/hades/cache"
 	"github.com/google/uuid"
 )
 
@@ -37,9 +37,9 @@ type Handler struct {
 	v1connect.DeviceServiceHandler
 
 	logger        *log.LoggerWrapper
-	deviceGrantDB *devicegrant.DeviceGrantStorage
-	apiTokenDB    *apitoken.APITokenStorage
-	rateLimiter   *ratelimit.Limiter
+	deviceGrantDB devicegrant.Storage
+	apiTokenDB    apitoken.Storage
+	cache         cache.Cache
 }
 
 func NewHandler(deps *server.Dependencies) *Handler {
@@ -47,7 +47,7 @@ func NewHandler(deps *server.Dependencies) *Handler {
 		logger:        deps.Logger,
 		deviceGrantDB: deps.DeviceGrantDB,
 		apiTokenDB:    deps.APITokenDB,
-		rateLimiter:   deps.RateLimiter,
+		cache:         deps.Cache,
 	}
 }
 
@@ -101,8 +101,8 @@ func (h *Handler) PollDeviceToken(ctx context.Context, in *connect.Request[v1.Po
 	if err != nil {
 		host = in.Peer().Addr
 	}
-	if h.rateLimiter != nil {
-		allowed, err := h.rateLimiter.Allow(ctx, fmt.Sprintf("devpoll:ip:%s", host), 20, time.Minute)
+	if h.cache != nil {
+		allowed, err := h.cache.Allow(ctx, fmt.Sprintf("devpoll:ip:%s", host), 20, time.Minute)
 		if err == nil && !allowed {
 			return nil, connErr.ResourceExhausted("too many requests")
 		}

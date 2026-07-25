@@ -18,15 +18,10 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db"
 	commitdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/gitalyoplog"
-	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/blob"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/operation"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/repository"
+	gitstorage "github.com/alipourhabibi/Hades/internal/hades/storage/git"
 	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
-	"github.com/alipourhabibi/Hades/utils/shake256"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // moduleStorage is the subset of ModuleStorage used by the Server.
@@ -34,14 +29,13 @@ type moduleStorage interface {
 	GetModulesByRefs(ctx context.Context, refs ...*registrypbv1.ModuleRef) ([]*registrypbv1.Module, error)
 	ListModules(ctx context.Context, ownerUsername string) ([]*registrypbv1.Module, error)
 	GetModuleByOwnerAndName(ctx context.Context, owner, name string) (*registrypbv1.Module, error)
-	WithTx(tx pgx.Tx) *moduledb.ModuleStorage
+	Create(ctx context.Context, name, ownerId string, visibility registrypbv1.ModuleVisibility, state registrypbv1.ModuleState, description, url, defaultLabelName, defaultBranch string) (*registrypbv1.Module, error)
 }
 
 // authService is the subset of the authorization Server used by the Server.
 type authService interface {
 	CheckReadAccess(ctx context.Context, user *registrypbv1.User, modules []*registrypbv1.Module) error
 	Can(ctx context.Context, in *constants.Policy) (*constants.CanResponse, error)
-	AddBasicRolesInTx(ctx context.Context, tx pgx.Tx, userName string) error
 	ReloadPolicy() error
 }
 
@@ -50,11 +44,9 @@ type Server struct {
 
 	logger                  *log.LoggerWrapper
 	moduleDBStorage         moduleStorage
-	commitDBStorage         *commitdb.CommitStorage
-	gitalyRepositoryService *repository.RepositoryService
-	gitalyOperationService  *operation.OperationService
+	commitDBStorage         commitdb.Storage
+	gitStorage              gitstorage.Storage
 	authorization           authService
-	blobStorage             *blob.BlobService
 	uow                     db.UnitOfWork
 	gitalyOpLog             *gitalyoplog.GitalyOpLogStorage
 }
@@ -64,10 +56,8 @@ func NewServer(deps *server.Dependencies) *Server {
 		logger:                  deps.Logger,
 		moduleDBStorage:         deps.ModuleDB,
 		commitDBStorage:         deps.CommitDB,
-		gitalyRepositoryService: deps.GitalyRepositoryStorage,
-		gitalyOperationService:  deps.GitalyOperationStorage,
+		gitStorage:              deps.GitStorage,
 		authorization:           deps.Authorization,
-		blobStorage:             deps.GitalyBlobStorage,
 		uow:                     deps.UoW,
 		gitalyOpLog:             deps.GitalyOpLog,
 	}
@@ -126,7 +116,7 @@ func (s *Server) GetModule(ctx context.Context, in *connect.Request[registrypbv1
 		if user != nil {
 			userID = user.Id
 		}
-		s.logger.Warn("module not found", "procedure", "GetModule", "user_id", userID, "owner", in.Msg.Owner, "name", in.Msg.Name)
+		s.logger.Warn("module not found", "procedure", "GetModule", "user_id", userID, "owner", in.Msg.Owner, "name", in.Msg.Name, "error", err)
 		return nil, connErr.NotFound("module not found")
 	}
 
@@ -169,21 +159,9 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 		return nil, connErr.PermissionDenied("user is not allowed to create this repo")
 	}
 
-	// gitalyModule is a lightweight stub used only for Gitaly RPC calls.
-	gitalyModule := &registrypbv1.Module{
-		OwnerId:       user.Id,
-		Name:          moduleFullName,
-		DefaultBranch: in.Msg.DefaultBranch,
-	}
-
 	initialFiles := []*registrypbv1.File{
 		{Path: "README.md", Content: []byte("")},
 	}
-	digestValue, err := shake256.DigestFiles(initialFiles)
-	if err != nil {
-		return nil, err
-	}
-
 	// Write a 'pending' log entry (auto-committed, outside the UoW) so that the
 	// background cleanup job can compensate if the server crashes mid-operation.
 	var logID uuid.UUID
@@ -199,9 +177,9 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 	// On any error inside the callback:
 	//   - The UoW auto-rolls back all DB writes.
 	//   - Any Gitaly repository created is removed via DeleteRepository.
-	result, err := s.uow.Do(ctx, func(ctx context.Context, tx pgx.Tx) (interface{}, error) {
+	result, err := s.uow.Do(ctx, func(ctx context.Context) (interface{}, error) {
 		// 1. DB first: insert module row.
-		module, err := s.moduleDBStorage.WithTx(tx).Create(
+		module, err := s.moduleDBStorage.Create(
 			ctx,
 			moduleFullName,
 			user.Id,
@@ -216,24 +194,24 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 			return nil, connErr.FromPgx(err)
 		}
 
-		// 2. Gitaly: create repository.
-		// Failure here triggers DB auto-rollback; no Gitaly compensation needed
-		// since CreateRepository itself failed.
-		if err := s.gitalyRepositoryService.CreateRepository(ctx, gitalyModule); err != nil {
+		// 2. Git: create repository.
+		if err := s.gitStorage.CreateRepository(ctx, moduleFullName, in.Msg.DefaultBranch); err != nil {
 			return nil, err
 		}
 
-		// 3. Gitaly: write initial commit.
-		// Compensation: delete the repository just created in step 2.
-		commitHash, err := s.gitalyOperationService.UserCommitFiles(ctx, gitalyModule, initialFiles, user, []string{}, digestValue.String())
+		// 3. Git: write initial commit.
+		gitFiles := make([]*gitstorage.File, len(initialFiles))
+		for i, f := range initialFiles {
+			gitFiles[i] = &gitstorage.File{Path: f.Path, Content: f.Content}
+		}
+		commitHash, err := s.gitStorage.PutFiles(ctx, moduleFullName, in.Msg.DefaultBranch, gitFiles, user.Username, user.Email, "initial commit", nil)
 		if err != nil {
-			_ = s.gitalyRepositoryService.DeleteRepository(ctx, gitalyModule)
+			_ = s.gitStorage.DeleteRepository(ctx, moduleFullName)
 			return nil, err
 		}
 
-		// 4. DB: insert commit row using the Gitaly-returned hash.
-		// Compensation: delete the repository (and its commit) created above.
-		if err := s.commitDBStorage.WithTx(tx).Create(
+		// 4. DB: insert commit row using the git-returned hash.
+		if err := s.commitDBStorage.Create(
 			ctx,
 			uuid.New(),
 			commitHash,
@@ -244,7 +222,7 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 			user.Id,
 			"",
 		); err != nil {
-			_ = s.gitalyRepositoryService.DeleteRepository(ctx, gitalyModule)
+			_ = s.gitStorage.DeleteRepository(ctx, moduleFullName)
 			return nil, connErr.FromPgx(err)
 		}
 

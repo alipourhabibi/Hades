@@ -2,12 +2,18 @@
 
 set -e
 
-DOMAIN="example.com"
-PORT=443
+DOMAIN="${HADES_DOMAIN:-localhost}"
+PORT="${HADES_PORT:-50051}"
+PLAINTEXT="${HADES_PLAINTEXT:-true}"
 GRPC_SERVER="$DOMAIN:$PORT"
 NETRC_FILE="$HOME/.netrc"
 AUTH_SERVICE="hades.api.authentication.v1.AuthenticationService"
 MODULE_SERVICE="hades.api.registry.v1.ModuleService"
+
+GRPCURL_FLAGS=()
+if [[ "$PLAINTEXT" == "true" ]]; then
+    GRPCURL_FLAGS+=("-plaintext")
+fi
 
 USERNAME="googleapis"
 PASSWORD="googleapis!@#123"
@@ -46,11 +52,11 @@ auth_user() {
     local email="$3"
 
     # signup (ignore if exists)
-    grpcurl -d "$(signin_request "$username" "$password" "$email")" \
+    grpcurl "${GRPCURL_FLAGS[@]}" -d "$(signin_request "$username" "$password" "$email")" \
         "$GRPC_SERVER" "$AUTH_SERVICE.Signin" || true
 
     # login
-    grpcurl -d "$(login_request "$username" "$password")" \
+    grpcurl "${GRPCURL_FLAGS[@]}" -d "$(login_request "$username" "$password")" \
         "$GRPC_SERVER" "$AUTH_SERVICE.Login" | jq -r .token
 }
 
@@ -106,7 +112,7 @@ fi
 
 update_netrc $DOMAIN "googleapis" "$GOOGLE_TOKEN"
 
-grpcurl -H "Authorization: Bearer $GOOGLE_TOKEN" -d "$(create_module_request)" "$GRPC_SERVER" "$MODULE_SERVICE.CreateModuleByName"
+grpcurl "${GRPCURL_FLAGS[@]}" -H "Authorization: Bearer $GOOGLE_TOKEN" -d "$(create_module_request)" "$GRPC_SERVER" "$MODULE_SERVICE.CreateModuleByName"
 cd protos/googleapis && buf push; cd -
 
 update_netrc $DOMAIN "someuser" "$USER_TOKEN"

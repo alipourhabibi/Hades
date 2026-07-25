@@ -33,8 +33,8 @@ type Handler struct {
 	registryv1connect.CIServiceHandler
 
 	logger          *log.LoggerWrapper
-	ciRunStorage    *cirun.CIRunStorage
-	moduleDBStorage *moduledb.ModuleStorage
+	ciRunStorage    cirun.Storage
+	moduleDBStorage moduledb.Storage
 	authz           readAccessChecker
 }
 

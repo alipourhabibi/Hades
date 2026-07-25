@@ -13,38 +13,66 @@ import (
 	"github.com/alipourhabibi/Hades/internal/buf/dto"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
 	"github.com/alipourhabibi/Hades/internal/hades/server/download"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
+	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
-// downloadProvider is the interface the Server delegates to.
-// download.Handler satisfies it; tests can provide a fake.
 type downloadProvider interface {
-	Download(ctx context.Context, refs []*registryv1.ModuleRef) ([]*registryv1.DownloadResponseContent, error)
+	Download(ctx context.Context, commitIDs []string, moduleRefs []*registryv1.ModuleRef) ([]*registryv1.DownloadResponseContent, error)
 }
 
-// Server is the buf.build protocol adapter for download.
-// All business logic lives in download.Handler (own handler).
+// resourceResolver resolves a resource UUID to its type.
+type resourceResolver interface {
+	ResolveType(ctx context.Context, id string) (resource.ResourceType, error)
+}
+
 type Server struct {
 	modulev1connect.DownloadServiceHandler
 
-	handler downloadProvider
-	logger  *log.LoggerWrapper
+	handler  downloadProvider
+	resolver resourceResolver
+	logger   *log.LoggerWrapper
 }
 
 func NewServer(deps *server.Dependencies) *Server {
 	return &Server{
-		logger:  deps.Logger,
-		handler: download.New(deps),
+		logger:   deps.Logger,
+		handler:  download.New(deps),
+		resolver: deps.ResourceDB,
 	}
 }
 
 func (s *Server) Download(ctx context.Context, req *connect.Request[modulev1.DownloadRequest]) (*connect.Response[modulev1.DownloadResponse], error) {
-	refs := make([]*registryv1.ModuleRef, 0, len(req.Msg.Values))
-	for _, ref := range req.Msg.Values {
-		refs = append(refs, dto.FromResourceRefPB(ref.GetResourceRef()))
+	var commitIDs []string
+	var moduleRefs []*registryv1.ModuleRef
+
+	for _, v := range req.Msg.Values {
+		r := v.GetResourceRef()
+		if r.GetId() != "" {
+			rt, err := s.resolver.ResolveType(ctx, r.GetId())
+			if err != nil {
+				return nil, err
+			}
+			switch rt {
+			case resource.ResourceTypeCommit:
+				commitIDs = append(commitIDs, r.GetId())
+			case resource.ResourceTypeModule:
+				moduleRefs = append(moduleRefs, &registryv1.ModuleRef{Id: r.GetId()})
+			case resource.ResourceTypeLabel:
+				return nil, connErr.Unimplemented("label refs are not yet supported in Download")
+			default:
+				return nil, connErr.Unimplemented("unknown resource type for id: " + r.GetId())
+			}
+		} else {
+			moduleRefs = append(moduleRefs, &registryv1.ModuleRef{
+				Owner:  r.GetName().GetOwner(),
+				Module: r.GetName().GetModule(),
+			})
+		}
 	}
 
-	contents, err := s.handler.Download(ctx, refs)
+	contents, err := s.handler.Download(ctx, commitIDs, moduleRefs)
 	if err != nil {
 		return nil, err
 	}

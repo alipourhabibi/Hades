@@ -12,6 +12,7 @@ import Section from '@/components/ui/Section';
 import { IconBox, IconSearch, IconGitCommit, IconGlobe, IconLock, IconPlus, IconCode, IconStar, IconPackage } from '@/components/icons';
 import { addRecentModule } from '@/lib/auth';
 import { rpcFetch } from '@/lib/rpc';
+import { useWizardStore } from '@/stores/wizardStore';
 
 interface Module {
   id: string;
@@ -37,6 +38,7 @@ type Filter = 'all' | 'public' | 'private';
 function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { openWizard } = useWizardStore();
   const [modules, setModules] = useState<Module[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +101,7 @@ function HomeContent() {
       <PageHeader
         title="Schema Registry"
         subtitle="Browse and manage Protobuf modules across your organizations."
-        actions={<Btn variant="primary" icon={<IconPlus size={14}/>} onClick={() => {}}>New Module</Btn>}
+        actions={<Btn variant="primary" icon={<IconPlus size={14}/>} onClick={openWizard}>New Module</Btn>}
       />
       <Section>
         <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>

@@ -53,7 +53,7 @@ func IsUniqueViolation(err error) bool {
 }
 
 // IsInvalidInputSyntax reports whether err is a PostgreSQL invalid_text_representation (22P02).
-// This happens when a non-UUID string is passed to a UUID column — treat as not found.
+// This happens when a non-UUID string is passed to a UUID column, treat as not found.
 func IsInvalidInputSyntax(err error) bool {
 	return isPgError(err, "22P02")
 }

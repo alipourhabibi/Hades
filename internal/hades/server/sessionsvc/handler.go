@@ -26,8 +26,8 @@ type Handler struct {
 	v1connect.SessionServiceHandler
 
 	logger         *log.LoggerWrapper
-	sessionStorage *dbsession.SessionStorage
-	auditLogDB     *auditlog.AuditLogStorage
+	sessionStorage dbsession.Storage
+	auditLogDB     auditlog.Storage
 }
 
 func NewHandler(deps *server.Dependencies) *Handler {

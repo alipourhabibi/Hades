@@ -28,6 +28,16 @@ type fakeCommitDB struct {
 	err     error
 }
 
+func (f *fakeCommitDB) GetCommitById(_ context.Context, _ string) (*registryv1.Commit, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if len(f.commits) > 0 {
+		return f.commits[0], nil
+	}
+	return &registryv1.Commit{}, nil
+}
+
 func (f *fakeCommitDB) GetCommitByOwnerModule(_ context.Context, _ []*registryv1.ModuleRef) ([]*registryv1.Commit, error) {
 	return f.commits, f.err
 }
@@ -56,7 +66,7 @@ var testUser = &registryv1.User{Id: "uid-1", Username: "alice"}
 // user in context (anonymous) succeeds - no user is required for public modules.
 func TestGetCommits_AnonymousAccess(t *testing.T) {
 	h := newHandler(&fakeModuleDB{}, &fakeCommitDB{}, &fakeAuthz{})
-	got, err := h.GetCommits(context.Background(), nil)
+	got, err := h.GetCommits(context.Background(), nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }
@@ -68,7 +78,7 @@ func TestGetCommits_ModuleDBError(t *testing.T) {
 		&fakeCommitDB{},
 		&fakeAuthz{},
 	)
-	_, err := h.GetCommits(ctxWithUser(testUser), []*registryv1.ModuleRef{{Owner: "alice", Module: "m"}})
+	_, err := h.GetCommits(ctxWithUser(testUser), nil, []*registryv1.ModuleRef{{Owner: "alice", Module: "m"}})
 	assert.ErrorIs(t, err, dbErr)
 }
 
@@ -79,7 +89,7 @@ func TestGetCommits_AccessDenied(t *testing.T) {
 		&fakeCommitDB{},
 		&fakeAuthz{err: authErr},
 	)
-	_, err := h.GetCommits(ctxWithUser(testUser), []*registryv1.ModuleRef{{Owner: "alice", Module: "m"}})
+	_, err := h.GetCommits(ctxWithUser(testUser), nil, []*registryv1.ModuleRef{{Owner: "alice", Module: "m"}})
 	assert.ErrorIs(t, err, authErr)
 }
 
@@ -90,7 +100,7 @@ func TestGetCommits_CommitDBError(t *testing.T) {
 		&fakeCommitDB{err: dbErr},
 		&fakeAuthz{},
 	)
-	_, err := h.GetCommits(ctxWithUser(testUser), []*registryv1.ModuleRef{{Owner: "alice", Module: "m"}})
+	_, err := h.GetCommits(ctxWithUser(testUser), nil, []*registryv1.ModuleRef{{Owner: "alice", Module: "m"}})
 	assert.ErrorIs(t, err, dbErr)
 }
 
@@ -101,7 +111,7 @@ func TestGetCommits_Success(t *testing.T) {
 		&fakeCommitDB{commits: want},
 		&fakeAuthz{},
 	)
-	got, err := h.GetCommits(ctxWithUser(testUser), []*registryv1.ModuleRef{{Owner: "alice", Module: "m"}})
+	got, err := h.GetCommits(ctxWithUser(testUser), nil, []*registryv1.ModuleRef{{Owner: "alice", Module: "m"}})
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
 }
@@ -112,7 +122,7 @@ func TestGetCommits_EmptyRefs(t *testing.T) {
 		&fakeCommitDB{commits: nil},
 		&fakeAuthz{},
 	)
-	got, err := h.GetCommits(ctxWithUser(testUser), nil)
+	got, err := h.GetCommits(ctxWithUser(testUser), nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }

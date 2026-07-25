@@ -22,6 +22,12 @@ type Config struct {
 	OAuth     OAuthConfig     `json:"oauth" yaml:"oauth"`
 	Redis     RedisConfig     `json:"redis" yaml:"redis"`
 	TOTP      TOTPConfig      `json:"totp" yaml:"totp"`
+
+	// Pluggable backend selectors and their per-backend configs.
+	Backends    BackendsConfig    `json:"backends" yaml:"backends"`
+	SQLite      SQLiteConfig      `json:"sqlite" yaml:"sqlite"`
+	GitStorage  GitStorageConfig  `json:"gitStorage" yaml:"gitStorage"`
+	DiskStorage DiskStorageConfig `json:"diskStorage" yaml:"diskStorage"`
 }
 
 // LoadFile reads and parses a YAML config file from the given path.
@@ -36,10 +42,16 @@ func LoadFile(filename string) (*Config, error) {
 
 func loadYaml(content []byte) (*Config, error) {
 	cfg := &Config{}
-	err := yaml.Unmarshal(content, cfg)
-	if err != nil {
+	if err := yaml.Unmarshal(content, cfg); err != nil {
 		return nil, err
 	}
-
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	return cfg, nil
+}
+
+// Validate returns an error if any config field holds an unrecognised value.
+func (c *Config) Validate() error {
+	return c.Backends.Validate()
 }

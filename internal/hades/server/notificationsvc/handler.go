@@ -26,7 +26,7 @@ type Handler struct {
 	registryv1connect.NotificationServiceHandler
 
 	logger              *log.LoggerWrapper
-	notificationStorage *notification.NotificationStorage
+	notificationStorage notification.Storage
 }
 
 // NewHandler constructs a Handler wired to the notification storage from the

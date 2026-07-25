@@ -37,14 +37,3 @@ func FromModuleRefPB(in *modulev1.ModuleRef) *registryv1.ModuleRef {
 	}
 }
 
-// FromResourceRefPB converts a buf.build ResourceRef to the internal ModuleRef type.
-func FromResourceRefPB(in *modulev1.ResourceRef) *registryv1.ModuleRef {
-	if in == nil {
-		return &registryv1.ModuleRef{}
-	}
-	return &registryv1.ModuleRef{
-		Id:     in.GetId(),
-		Owner:  in.GetName().GetOwner(),
-		Module: in.GetName().GetModule(),
-	}
-}

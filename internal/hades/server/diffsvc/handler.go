@@ -9,8 +9,6 @@ package diffsvc
 
 import (
 	"context"
-	"strings"
-
 	"connectrpc.com/connect"
 
 	registrypbv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
@@ -19,7 +17,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/server"
 	commitdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
 	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
-	gitaly_diff "github.com/alipourhabibi/Hades/internal/hades/storage/gitaly/diff"
+	gitstorage "github.com/alipourhabibi/Hades/internal/hades/storage/git"
 	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
@@ -34,9 +32,9 @@ type Handler struct {
 	registryv1connect.DiffServiceHandler
 
 	logger          *log.LoggerWrapper
-	commitDBStorage *commitdb.CommitStorage
-	moduleDBStorage *moduledb.ModuleStorage
-	gitalyDiff      *gitaly_diff.DiffService
+	commitDBStorage commitdb.Storage
+	moduleDBStorage moduledb.Storage
+	gitStorage      gitstorage.Storage
 	authz           readAccessChecker
 }
 
@@ -47,7 +45,7 @@ func NewHandler(deps *server.Dependencies) *Handler {
 		logger:          deps.Logger,
 		commitDBStorage: deps.CommitDB,
 		moduleDBStorage: deps.ModuleDB,
-		gitalyDiff:      deps.GitalyDiffStorage,
+		gitStorage:      deps.GitStorage,
 		authz:           deps.Authorization,
 	}
 }
@@ -80,15 +78,7 @@ func (h *Handler) GetCommitDiff(ctx context.Context, in *connect.Request[registr
 		return nil, err
 	}
 
-	// Module name is stored as "{owner}/{module}".
-	parts := strings.SplitN(modules[0].Name, "/", 2)
-	if len(parts) != 2 {
-		h.logger.Error("unexpected module name format", "procedure", "GetCommitDiff", "name", modules[0].Name)
-		return nil, connErr.Internal("unexpected module name format")
-	}
-	owner, moduleName := parts[0], parts[1]
-
-	fileDiffs, err := h.gitalyDiff.GetCommitDiff(ctx, owner, moduleName, in.Msg.CommitHash)
+	fileDiffs, err := h.gitStorage.GetCommitDiff(ctx, modules[0].Name, in.Msg.CommitHash)
 	if err != nil {
 		h.logger.Error("failed to get commit diff", "error", err, "procedure", "GetCommitDiff", "user_id", userID, "commit_hash", in.Msg.CommitHash)
 		return nil, connErr.Internal("failed to get commit diff")
