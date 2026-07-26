@@ -68,7 +68,7 @@ func (s *SQLiteOAuthIdentityStorage) GetByUserID(ctx context.Context, userID str
 }
 
 func (s *SQLiteOAuthIdentityStorage) Delete(ctx context.Context, id uuid.UUID) error {
-	_, err := s.q(ctx).ExecContext(ctx, `DELETE FROM oauth_identities WHERE id = ?`, id.String())
+	_, err := s.q(ctx).ExecContext(ctx, `DELETE FROM oauth_identities WHERE id = ?`, sqliteUUID(id))
 	return err
 }
 

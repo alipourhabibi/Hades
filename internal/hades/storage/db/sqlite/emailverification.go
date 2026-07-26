@@ -51,7 +51,7 @@ func (s *SQLiteEmailVerificationStorage) GetByTokenHash(ctx context.Context, tok
 
 func (s *SQLiteEmailVerificationStorage) MarkUsed(ctx context.Context, id uuid.UUID) error {
 	_, err := s.q(ctx).ExecContext(ctx,
-		`UPDATE email_verifications SET used_at = datetime('now') WHERE id = ?`, id.String())
+		`UPDATE email_verifications SET used_at = datetime('now') WHERE id = ?`, sqliteUUID(id))
 	return err
 }
 

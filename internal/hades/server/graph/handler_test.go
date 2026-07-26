@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -72,7 +71,7 @@ func TestGetGraph_AnonymousAccess(t *testing.T) {
 }
 
 func TestGetGraph_ModuleDBError(t *testing.T) {
-	dbErr := pkgerr.New("not found", pkgerr.NotFound)
+	dbErr := errors.New("not found")
 	h := newHandler(
 		&fakeModuleDB{err: dbErr},
 		&fakeCommitDB{},
@@ -83,7 +82,7 @@ func TestGetGraph_ModuleDBError(t *testing.T) {
 }
 
 func TestGetGraph_AccessDenied(t *testing.T) {
-	authErr := pkgerr.New("denied", pkgerr.PermissionDenied)
+	authErr := errors.New("denied")
 	h := newHandler(
 		&fakeModuleDB{modules: []*registryv1.Module{{Id: "m1"}}},
 		&fakeCommitDB{},

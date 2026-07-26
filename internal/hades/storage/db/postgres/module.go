@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
@@ -127,7 +126,7 @@ WHERE users.username = $1 AND modules.name = $2`
 	defer rows.Close()
 
 	if !rows.Next() {
-		return nil, fmt.Errorf("module not found")
+		return nil, connErr.NotFound("module not found")
 	}
 	return scanModuleRow(rows)
 }

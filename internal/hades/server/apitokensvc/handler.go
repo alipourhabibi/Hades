@@ -6,6 +6,7 @@ package apitokensvc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -102,6 +103,7 @@ func (h *Handler) ListAPITokens(ctx context.Context, in *connect.Request[v1.List
 		return nil, connErr.FromPgx(err)
 	}
 
+	now := time.Now()
 	tokens := make([]*v1.APIToken, 0, len(rows))
 	for _, row := range rows {
 		t := &v1.APIToken{
@@ -110,6 +112,7 @@ func (h *Handler) ListAPITokens(ctx context.Context, in *connect.Request[v1.List
 			Prefix:    row.Prefix,
 			Scopes:    row.Scopes,
 			CreatedAt: timestamppb.New(row.CreatedAt),
+			Status:    tokenStatus(row, now),
 		}
 		if row.LastUsedAt != nil {
 			t.LastUsedAt = timestamppb.New(*row.LastUsedAt)
@@ -137,14 +140,10 @@ func (h *Handler) RevokeAPIToken(ctx context.Context, in *connect.Request[v1.Rev
 		return nil, connErr.InvalidArgument("invalid token ID")
 	}
 
-	// Verify ownership.
-	row, err := h.apiTokenDB.GetByID(ctx, id)
-	if err != nil || row.UserID != user.Id {
-		h.logger.Warn("token not found or not owned by user", "procedure", "RevokeAPIToken", "user_id", user.Id, "token_id", in.Msg.Id)
-		return nil, connErr.NotFound("token not found")
-	}
-
-	if err := h.apiTokenDB.Revoke(ctx, id); err != nil {
+	if err := h.apiTokenDB.RevokeByOwner(ctx, id, user.Id); err != nil {
+		if errors.Is(err, apitoken.ErrNotFound) {
+			return nil, connErr.NotFound("token not found")
+		}
 		h.logger.Error("failed to revoke API token", "error", err, "procedure", "RevokeAPIToken", "user_id", user.Id, "token_id", in.Msg.Id)
 		return nil, connErr.FromPgx(err)
 	}
@@ -154,4 +153,15 @@ func (h *Handler) RevokeAPIToken(ctx context.Context, in *connect.Request[v1.Rev
 
 	h.logger.Info("API token revoked", "procedure", "RevokeAPIToken", "user_id", user.Id, "token_id", in.Msg.Id)
 	return &connect.Response[v1.RevokeAPITokenResponse]{Msg: &v1.RevokeAPITokenResponse{}}, nil
+}
+
+// tokenStatus computes the APITokenStatus from the stored row fields.
+func tokenStatus(row *apitoken.Row, now time.Time) v1.APITokenStatus {
+	if row.RevokedAt != nil {
+		return v1.APITokenStatus_API_TOKEN_STATUS_REVOKED
+	}
+	if row.ExpiresAt != nil && now.After(*row.ExpiresAt) {
+		return v1.APITokenStatus_API_TOKEN_STATUS_EXPIRED
+	}
+	return v1.APITokenStatus_API_TOKEN_STATUS_ACTIVE
 }

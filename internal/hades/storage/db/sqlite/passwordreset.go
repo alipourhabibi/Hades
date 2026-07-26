@@ -51,7 +51,7 @@ func (s *SQLitePasswordResetStorage) GetByTokenHash(ctx context.Context, tokenHa
 
 func (s *SQLitePasswordResetStorage) MarkUsed(ctx context.Context, id uuid.UUID) error {
 	_, err := s.q(ctx).ExecContext(ctx,
-		`UPDATE password_resets SET used_at = datetime('now') WHERE id = ?`, id.String())
+		`UPDATE password_resets SET used_at = datetime('now') WHERE id = ?`, sqliteUUID(id))
 	return err
 }
 

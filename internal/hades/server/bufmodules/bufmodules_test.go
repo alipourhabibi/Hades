@@ -8,7 +8,6 @@ import (
 	modulev1 "buf.build/gen/go/bufbuild/registry/protocolbuffers/go/buf/registry/module/v1"
 	"connectrpc.com/connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,7 +38,7 @@ func moduleRef(owner, module string) *modulev1.ModuleRef {
 }
 
 func TestGetModules_HandlerError(t *testing.T) {
-	handlerErr := pkgerr.New("denied", pkgerr.PermissionDenied)
+	handlerErr := errors.New("denied")
 	s := newServer(&fakeModulesProvider{err: handlerErr})
 	req := connect.NewRequest(&modulev1.GetModulesRequest{
 		ModuleRefs: []*modulev1.ModuleRef{moduleRef("alice", "m")},

@@ -69,7 +69,7 @@ func (s *SQLiteDeviceGrantStorage) GetByUserCode(ctx context.Context, userCode s
 func (s *SQLiteDeviceGrantStorage) Approve(ctx context.Context, id uuid.UUID, userID string, apiTokenID *uuid.UUID) error {
 	_, err := s.q(ctx).ExecContext(ctx,
 		`UPDATE device_grants SET user_id = ?, api_token_id = ?, approved_at = datetime('now') WHERE id = ?`,
-		userID, apiTokenID, id.String())
+		userID, apiTokenID, sqliteUUID(id))
 	return err
 }
 

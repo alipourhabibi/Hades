@@ -10,7 +10,17 @@ import { IconKey, IconPlus, IconX, IconCheck, IconAlert } from '@/components/ico
 import { formatError } from '@/lib/connectError';
 import { rpcFetch } from '@/lib/rpc';
 
-interface APIToken { id: string; name: string; prefix: string; scopes: string[]; last_used_at?: string; expires_at?: string; created_at?: string; }
+type APITokenStatus = 'API_TOKEN_STATUS_ACTIVE' | 'API_TOKEN_STATUS_REVOKED' | 'API_TOKEN_STATUS_EXPIRED' | 'API_TOKEN_STATUS_UNSPECIFIED';
+interface APIToken { id: string; name: string; prefix: string; scopes: string[]; last_used_at?: string; expires_at?: string; created_at?: string; status?: APITokenStatus; }
+
+function statusBadge(status?: APITokenStatus) {
+  switch (status) {
+    case 'API_TOKEN_STATUS_ACTIVE':    return <Badge variant="green">Active</Badge>;
+    case 'API_TOKEN_STATUS_REVOKED':   return <Badge variant="red">Revoked</Badge>;
+    case 'API_TOKEN_STATUS_EXPIRED':   return <Badge variant="yellow">Expired</Badge>;
+    default:                           return <Badge variant="default">Unknown</Badge>;
+  }
+}
 
 export default function PageTokens() {
   const [tokens, setTokens] = useState<APIToken[]>([]);
@@ -90,7 +100,7 @@ export default function PageTokens() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--c-border)', background: 'var(--c-bg-overlay)' }}>
-                  {['Name', 'Token', 'Scopes', 'Last Used', 'Expires'].map(h => <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--c-fg-muted)', letterSpacing: 0.5, textTransform: 'uppercase' }}>{h}</th>)}
+                  {['Name', 'Token', 'Scopes', 'Last Used', 'Expires', 'Status', ''].map(h => <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--c-fg-muted)', letterSpacing: 0.5, textTransform: 'uppercase' }}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -100,8 +110,10 @@ export default function PageTokens() {
                     <td style={{ padding: '12px 16px' }}><code style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--c-accent)', background: 'var(--c-accent-bg)', padding: '2px 8px', borderRadius: 4 }}>{tok.prefix}</code></td>
                     <td style={{ padding: '12px 16px' }}><div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{(tok.scopes || []).map(s => <Badge key={s} variant="default">{s}</Badge>)}{(tok.scopes || []).length === 0 && <span style={{ fontSize: 12, color: 'var(--c-fg-subtle)' }}>full access</span>}</div></td>
 
+
                     <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--c-fg-subtle)' }}>{tok.expires_at ? new Date(tok.expires_at).toLocaleDateString() : 'Never'}</td>
-                    <td style={{ padding: '12px 16px' }}><Btn size="sm" variant="danger" onClick={() => revokeToken(tok.id)} disabled={revoking === tok.id}>{revoking === tok.id ? '…' : 'Revoke'}</Btn></td>
+                    <td style={{ padding: '12px 16px' }}>{statusBadge(tok.status)}</td>
+                    <td style={{ padding: '12px 16px' }}>{tok.status !== 'API_TOKEN_STATUS_REVOKED' && <Btn size="sm" variant="danger" onClick={() => revokeToken(tok.id)} disabled={revoking === tok.id}>{revoking === tok.id ? '…' : 'Revoke'}</Btn>}</td>
                   </tr>
                 ))}
               </tbody>

@@ -14,10 +14,11 @@ import Table from '@/components/ui/Table';
 import { useAuthStore } from '@/stores/authStore';
 import {
   IconBox, IconUser, IconBuilding, IconGlobe, IconLock,
-  IconGitCommit, IconClock, IconShield, IconLink, IconMail, IconGear,
+  IconGitCommit, IconClock, IconShield, IconLink, IconMail, IconGear, IconAlert,
 } from '@/components/icons';
 import { rpcFetch } from '@/lib/rpc';
 import { getToken } from '@/lib/auth';
+import { isNotFound, formatError } from '@/lib/connectError';
 
 interface User { id: string; username: string; email?: string; description?: string; url?: string; type?: number | string; createTime?: string; updateTime?: string; }
 interface OrgMember { user: { id: string; username: string }; role: string; }
@@ -80,6 +81,7 @@ function ProfileContent() {
   const [userModules, setUserModules] = useState<Module[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
   const activeTab = searchParams.get('tab') ?? '';
   const setTab = (tab: string, replace = false) => {
@@ -106,7 +108,7 @@ function ProfileContent() {
   useEffect(() => {
     if (!getToken()) { router.replace('/login'); return; }
     if (!owner) return;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setNotFound(false);
     rpcFetch<{ user: User; moduleCount: number; organizations: User[] }>('/hades.api.registry.v1.UserService/GetUser', { username: owner })
       .then(res => {
         setIsOrg(false); setUser(res.user); setUserModuleCount(res.moduleCount || 0); setUserOrgs(res.organizations || []);
@@ -125,13 +127,36 @@ function ProfileContent() {
             ]);
           })
           .then(([modRes, memRes]) => { setOrgModules(modRes.modules || []); setMembers(memRes.members || []); setLoading(false); })
-          .catch(e => { setError(e.message); setLoading(false); });
+          .catch(e => {
+            if (isNotFound(e)) setNotFound(true);
+            else setError(formatError(e));
+            setLoading(false);
+          });
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [owner]);
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}><div className="status-loading">Loading profile…</div></div>;
-  if (error || (!org && !user)) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}><div className="status-error">{error || 'Profile not found'}</div></div>;
+  if (notFound || (!loading && !org && !user && !error)) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 400 }}>
+      <EmptyState
+        icon={<IconUser size={48}/>}
+        title={`"${owner}" not found`}
+        subtitle={`No user or organization with this name exists on this registry.`}
+        action={<Btn variant="ghost" onClick={() => router.push('/')}>Return home</Btn>}
+      />
+    </div>
+  );
+  if (error) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 400 }}>
+      <EmptyState
+        icon={<IconAlert size={48}/>}
+        title="Something went wrong"
+        subtitle={error}
+        action={<Btn variant="ghost" onClick={() => router.back()}>Go back</Btn>}
+      />
+    </div>
+  );
 
   if (isOrg && org) {
     type MemberRow = { username: string; role: string; _member: OrgMember };

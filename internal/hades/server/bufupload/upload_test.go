@@ -8,7 +8,6 @@ import (
 	modulev1 "buf.build/gen/go/bufbuild/registry/protocolbuffers/go/buf/registry/module/v1"
 	"connectrpc.com/connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,7 +39,7 @@ func uploadContent(owner, module string) *modulev1.UploadRequest_Content {
 }
 
 func TestUpload_HandlerError(t *testing.T) {
-	handlerErr := pkgerr.New("permission denied", pkgerr.PermissionDenied)
+	handlerErr := errors.New("permission denied")
 	s := newServer(&fakeUploadProvider{err: handlerErr})
 	req := connect.NewRequest(&modulev1.UploadRequest{
 		Contents: []*modulev1.UploadRequest_Content{uploadContent("alice", "m")},

@@ -14,6 +14,17 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "gen/api/authentication/v1";
 
+// APITokenStatus indicates the lifecycle state of an API token.
+enum APITokenStatus {
+  API_TOKEN_STATUS_UNSPECIFIED = 0;
+  // Token is valid and can be used to authenticate.
+  API_TOKEN_STATUS_ACTIVE = 1;
+  // Token was explicitly revoked and can no longer be used.
+  API_TOKEN_STATUS_REVOKED = 2;
+  // Token has passed its expiry time and can no longer be used.
+  API_TOKEN_STATUS_EXPIRED = 3;
+}
+
 // APIToken describes a personal API token record. The plaintext value is
 // never returned after creation; only the prefix is shown for identification.
 message APIToken {
@@ -33,6 +44,8 @@ message APIToken {
   google.protobuf.Timestamp expires_at = 6;
   // When the token was created.
   google.protobuf.Timestamp created_at = 7;
+  // Lifecycle status of the token.
+  APITokenStatus status = 8;
 }
 
 // CreateAPITokenRequest creates a new API token for the authenticated user.

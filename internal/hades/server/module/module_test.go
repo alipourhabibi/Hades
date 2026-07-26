@@ -2,10 +2,10 @@ package module
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	registrypbv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/utils/log"
 	"github.com/stretchr/testify/assert"
@@ -72,14 +72,14 @@ func TestGetModules_AnonymousAccess(t *testing.T) {
 }
 
 func TestGetModules_StorageError(t *testing.T) {
-	dbErr := pkgerr.New("not found", pkgerr.NotFound)
+	dbErr := errors.New("not found")
 	s := newGetModulesServer(&fakeModuleStorage{err: dbErr}, &fakeAuth{})
 	_, err := s.GetModules(ctxWithUser(testUser), []*registrypbv1.ModuleRef{{Owner: "alice", Module: "m"}})
 	assert.ErrorIs(t, err, dbErr)
 }
 
 func TestGetModules_AccessDenied(t *testing.T) {
-	authErr := pkgerr.New("denied", pkgerr.PermissionDenied)
+	authErr := errors.New("denied")
 	s := newGetModulesServer(
 		&fakeModuleStorage{modules: []*registrypbv1.Module{{Id: "m1"}}},
 		&fakeAuth{err: authErr},

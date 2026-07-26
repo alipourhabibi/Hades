@@ -94,7 +94,7 @@ func (s *SQLiteSessionStorage) GetByOldTokenHash(ctx context.Context, hash strin
 }
 
 func (s *SQLiteSessionStorage) GetByID(ctx context.Context, id uuid.UUID) (*session.SessionRow, error) {
-	return scanSQLiteSession(s.q(ctx).QueryRowContext(ctx, `SELECT `+sqliteSessionCols+` WHERE id = ?`, id.String()))
+	return scanSQLiteSession(s.q(ctx).QueryRowContext(ctx, `SELECT `+sqliteSessionCols+` WHERE id = ?`, sqliteUUID(id)))
 }
 
 func (s *SQLiteSessionStorage) UpdateActivity(ctx context.Context, id, newTokenHash, oldTokenHash string, oldTokenExpires, newIdleExpires time.Time) error {

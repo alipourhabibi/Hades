@@ -78,7 +78,7 @@ func (s *SQLiteBackupCodeStorage) ListByUserID(ctx context.Context, userID strin
 
 func (s *SQLiteBackupCodeStorage) MarkUsed(ctx context.Context, id uuid.UUID) error {
 	_, err := s.q(ctx).ExecContext(ctx,
-		`UPDATE totp_backup_codes SET used_at = datetime('now') WHERE id = ?`, id.String())
+		`UPDATE totp_backup_codes SET used_at = datetime('now') WHERE id = ?`, sqliteUUID(id))
 	return err
 }
 

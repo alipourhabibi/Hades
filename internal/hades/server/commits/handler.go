@@ -55,11 +55,9 @@ func (h *Handler) GetCommits(ctx context.Context, commitIDs []string, moduleRefs
 		if err != nil {
 			return nil, err
 		}
-		modules, err := h.moduleDB.GetModulesByRefs(ctx, &registryv1.ModuleRef{Id: cmt.ModuleId})
-		if err != nil {
-			return nil, err
-		}
-		if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
+		// GetCommitById already JOINs the modules table; use the embedded
+		// module directly rather than making a second round-trip to the DB.
+		if err := h.authz.CheckReadAccess(ctx, user, []*registryv1.Module{cmt.Module}); err != nil {
 			return nil, err
 		}
 		result = append(result, cmt)

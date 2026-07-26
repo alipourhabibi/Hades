@@ -81,6 +81,20 @@ func (s *APITokenStorage) Revoke(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+func (s *APITokenStorage) RevokeByOwner(ctx context.Context, id uuid.UUID, userID string) error {
+	ct, err := s.q(ctx).Exec(ctx,
+		`UPDATE api_tokens SET revoked_at = NOW() WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL`,
+		id, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return apitoken.ErrNotFound
+	}
+	return nil
+}
+
 func (s *APITokenStorage) UpdateLastUsed(ctx context.Context, id uuid.UUID) error {
 	_, err := s.q(ctx).Exec(ctx, `UPDATE api_tokens SET last_used_at = NOW() WHERE id = $1`, id)
 	return err

@@ -2,12 +2,12 @@ package bufcommits
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	modulev1 "buf.build/gen/go/bufbuild/registry/protocolbuffers/go/buf/registry/module/v1"
 	"connectrpc.com/connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -83,7 +83,7 @@ func TestGetCommits_LabelRefRejected(t *testing.T) {
 }
 
 func TestGetCommits_HandlerError(t *testing.T) {
-	handlerErr := pkgerr.New("not found", pkgerr.NotFound)
+	handlerErr := errors.New("not found")
 	s := newServer(&fakeCommitsProvider{err: handlerErr})
 	req := connect.NewRequest(&modulev1.GetCommitsRequest{
 		ResourceRefs: []*modulev1.ResourceRef{nameRef("alice", "m")},

@@ -30,6 +30,62 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// APITokenStatus indicates the lifecycle state of an API token.
+type APITokenStatus int32
+
+const (
+	APITokenStatus_API_TOKEN_STATUS_UNSPECIFIED APITokenStatus = 0
+	// Token is valid and can be used to authenticate.
+	APITokenStatus_API_TOKEN_STATUS_ACTIVE APITokenStatus = 1
+	// Token was explicitly revoked and can no longer be used.
+	APITokenStatus_API_TOKEN_STATUS_REVOKED APITokenStatus = 2
+	// Token has passed its expiry time and can no longer be used.
+	APITokenStatus_API_TOKEN_STATUS_EXPIRED APITokenStatus = 3
+)
+
+// Enum value maps for APITokenStatus.
+var (
+	APITokenStatus_name = map[int32]string{
+		0: "API_TOKEN_STATUS_UNSPECIFIED",
+		1: "API_TOKEN_STATUS_ACTIVE",
+		2: "API_TOKEN_STATUS_REVOKED",
+		3: "API_TOKEN_STATUS_EXPIRED",
+	}
+	APITokenStatus_value = map[string]int32{
+		"API_TOKEN_STATUS_UNSPECIFIED": 0,
+		"API_TOKEN_STATUS_ACTIVE":      1,
+		"API_TOKEN_STATUS_REVOKED":     2,
+		"API_TOKEN_STATUS_EXPIRED":     3,
+	}
+)
+
+func (x APITokenStatus) Enum() *APITokenStatus {
+	p := new(APITokenStatus)
+	*p = x
+	return p
+}
+
+func (x APITokenStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (APITokenStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_authentication_v1_apitoken_proto_enumTypes[0].Descriptor()
+}
+
+func (APITokenStatus) Type() protoreflect.EnumType {
+	return &file_api_authentication_v1_apitoken_proto_enumTypes[0]
+}
+
+func (x APITokenStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use APITokenStatus.Descriptor instead.
+func (APITokenStatus) EnumDescriptor() ([]byte, []int) {
+	return file_api_authentication_v1_apitoken_proto_rawDescGZIP(), []int{0}
+}
+
 // APIToken describes a personal API token record. The plaintext value is
 // never returned after creation; only the prefix is shown for identification.
 type APIToken struct {
@@ -49,7 +105,9 @@ type APIToken struct {
 	// When the token expires. Null means the token does not expire.
 	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	// When the token was created.
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Lifecycle status of the token.
+	Status        APITokenStatus `protobuf:"varint,8,opt,name=status,proto3,enum=hades.api.authentication.v1.APITokenStatus" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -131,6 +189,13 @@ func (x *APIToken) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *APIToken) GetStatus() APITokenStatus {
+	if x != nil {
+		return x.Status
+	}
+	return APITokenStatus_API_TOKEN_STATUS_UNSPECIFIED
 }
 
 // CreateAPITokenRequest creates a new API token for the authenticated user.
@@ -440,7 +505,7 @@ var File_api_authentication_v1_apitoken_proto protoreflect.FileDescriptor
 
 const file_api_authentication_v1_apitoken_proto_rawDesc = "" +
 	"\n" +
-	"$api/authentication/v1/apitoken.proto\x12\x1bhades.api.authentication.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x92\x02\n" +
+	"$api/authentication/v1/apitoken.proto\x12\x1bhades.api.authentication.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd7\x02\n" +
 	"\bAPIToken\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -451,7 +516,8 @@ const file_api_authentication_v1_apitoken_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x129\n" +
 	"\n" +
-	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x86\x01\n" +
+	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12C\n" +
+	"\x06status\x18\b \x01(\x0e2+.hades.api.authentication.v1.APITokenStatusR\x06status\"\x86\x01\n" +
 	"\x15CreateAPITokenRequest\x12\x1a\n" +
 	"\x04name\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x04name\x12\x16\n" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x129\n" +
@@ -468,7 +534,12 @@ const file_api_authentication_v1_apitoken_proto_rawDesc = "" +
 	"\x06tokens\x18\x01 \x03(\v2%.hades.api.authentication.v1.APITokenR\x06tokens\"1\n" +
 	"\x15RevokeAPITokenRequest\x12\x18\n" +
 	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\"\x18\n" +
-	"\x16RevokeAPITokenResponse2\xff\x02\n" +
+	"\x16RevokeAPITokenResponse*\x8b\x01\n" +
+	"\x0eAPITokenStatus\x12 \n" +
+	"\x1cAPI_TOKEN_STATUS_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17API_TOKEN_STATUS_ACTIVE\x10\x01\x12\x1c\n" +
+	"\x18API_TOKEN_STATUS_REVOKED\x10\x02\x12\x1c\n" +
+	"\x18API_TOKEN_STATUS_EXPIRED\x10\x032\xff\x02\n" +
 	"\x0fAPITokenService\x12y\n" +
 	"\x0eCreateAPIToken\x122.hades.api.authentication.v1.CreateAPITokenRequest\x1a3.hades.api.authentication.v1.CreateAPITokenResponse\x12v\n" +
 	"\rListAPITokens\x121.hades.api.authentication.v1.ListAPITokensRequest\x1a2.hades.api.authentication.v1.ListAPITokensResponse\x12y\n" +
@@ -487,35 +558,38 @@ func file_api_authentication_v1_apitoken_proto_rawDescGZIP() []byte {
 	return file_api_authentication_v1_apitoken_proto_rawDescData
 }
 
+var file_api_authentication_v1_apitoken_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_api_authentication_v1_apitoken_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_api_authentication_v1_apitoken_proto_goTypes = []any{
-	(*APIToken)(nil),               // 0: hades.api.authentication.v1.APIToken
-	(*CreateAPITokenRequest)(nil),  // 1: hades.api.authentication.v1.CreateAPITokenRequest
-	(*CreateAPITokenResponse)(nil), // 2: hades.api.authentication.v1.CreateAPITokenResponse
-	(*ListAPITokensRequest)(nil),   // 3: hades.api.authentication.v1.ListAPITokensRequest
-	(*ListAPITokensResponse)(nil),  // 4: hades.api.authentication.v1.ListAPITokensResponse
-	(*RevokeAPITokenRequest)(nil),  // 5: hades.api.authentication.v1.RevokeAPITokenRequest
-	(*RevokeAPITokenResponse)(nil), // 6: hades.api.authentication.v1.RevokeAPITokenResponse
-	(*timestamppb.Timestamp)(nil),  // 7: google.protobuf.Timestamp
+	(APITokenStatus)(0),            // 0: hades.api.authentication.v1.APITokenStatus
+	(*APIToken)(nil),               // 1: hades.api.authentication.v1.APIToken
+	(*CreateAPITokenRequest)(nil),  // 2: hades.api.authentication.v1.CreateAPITokenRequest
+	(*CreateAPITokenResponse)(nil), // 3: hades.api.authentication.v1.CreateAPITokenResponse
+	(*ListAPITokensRequest)(nil),   // 4: hades.api.authentication.v1.ListAPITokensRequest
+	(*ListAPITokensResponse)(nil),  // 5: hades.api.authentication.v1.ListAPITokensResponse
+	(*RevokeAPITokenRequest)(nil),  // 6: hades.api.authentication.v1.RevokeAPITokenRequest
+	(*RevokeAPITokenResponse)(nil), // 7: hades.api.authentication.v1.RevokeAPITokenResponse
+	(*timestamppb.Timestamp)(nil),  // 8: google.protobuf.Timestamp
 }
 var file_api_authentication_v1_apitoken_proto_depIdxs = []int32{
-	7, // 0: hades.api.authentication.v1.APIToken.last_used_at:type_name -> google.protobuf.Timestamp
-	7, // 1: hades.api.authentication.v1.APIToken.expires_at:type_name -> google.protobuf.Timestamp
-	7, // 2: hades.api.authentication.v1.APIToken.created_at:type_name -> google.protobuf.Timestamp
-	7, // 3: hades.api.authentication.v1.CreateAPITokenRequest.expires_at:type_name -> google.protobuf.Timestamp
-	7, // 4: hades.api.authentication.v1.CreateAPITokenResponse.created_at:type_name -> google.protobuf.Timestamp
-	0, // 5: hades.api.authentication.v1.ListAPITokensResponse.tokens:type_name -> hades.api.authentication.v1.APIToken
-	1, // 6: hades.api.authentication.v1.APITokenService.CreateAPIToken:input_type -> hades.api.authentication.v1.CreateAPITokenRequest
-	3, // 7: hades.api.authentication.v1.APITokenService.ListAPITokens:input_type -> hades.api.authentication.v1.ListAPITokensRequest
-	5, // 8: hades.api.authentication.v1.APITokenService.RevokeAPIToken:input_type -> hades.api.authentication.v1.RevokeAPITokenRequest
-	2, // 9: hades.api.authentication.v1.APITokenService.CreateAPIToken:output_type -> hades.api.authentication.v1.CreateAPITokenResponse
-	4, // 10: hades.api.authentication.v1.APITokenService.ListAPITokens:output_type -> hades.api.authentication.v1.ListAPITokensResponse
-	6, // 11: hades.api.authentication.v1.APITokenService.RevokeAPIToken:output_type -> hades.api.authentication.v1.RevokeAPITokenResponse
-	9, // [9:12] is the sub-list for method output_type
-	6, // [6:9] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	8,  // 0: hades.api.authentication.v1.APIToken.last_used_at:type_name -> google.protobuf.Timestamp
+	8,  // 1: hades.api.authentication.v1.APIToken.expires_at:type_name -> google.protobuf.Timestamp
+	8,  // 2: hades.api.authentication.v1.APIToken.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 3: hades.api.authentication.v1.APIToken.status:type_name -> hades.api.authentication.v1.APITokenStatus
+	8,  // 4: hades.api.authentication.v1.CreateAPITokenRequest.expires_at:type_name -> google.protobuf.Timestamp
+	8,  // 5: hades.api.authentication.v1.CreateAPITokenResponse.created_at:type_name -> google.protobuf.Timestamp
+	1,  // 6: hades.api.authentication.v1.ListAPITokensResponse.tokens:type_name -> hades.api.authentication.v1.APIToken
+	2,  // 7: hades.api.authentication.v1.APITokenService.CreateAPIToken:input_type -> hades.api.authentication.v1.CreateAPITokenRequest
+	4,  // 8: hades.api.authentication.v1.APITokenService.ListAPITokens:input_type -> hades.api.authentication.v1.ListAPITokensRequest
+	6,  // 9: hades.api.authentication.v1.APITokenService.RevokeAPIToken:input_type -> hades.api.authentication.v1.RevokeAPITokenRequest
+	3,  // 10: hades.api.authentication.v1.APITokenService.CreateAPIToken:output_type -> hades.api.authentication.v1.CreateAPITokenResponse
+	5,  // 11: hades.api.authentication.v1.APITokenService.ListAPITokens:output_type -> hades.api.authentication.v1.ListAPITokensResponse
+	7,  // 12: hades.api.authentication.v1.APITokenService.RevokeAPIToken:output_type -> hades.api.authentication.v1.RevokeAPITokenResponse
+	10, // [10:13] is the sub-list for method output_type
+	7,  // [7:10] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_api_authentication_v1_apitoken_proto_init() }
@@ -528,13 +602,14 @@ func file_api_authentication_v1_apitoken_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_authentication_v1_apitoken_proto_rawDesc), len(file_api_authentication_v1_apitoken_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_api_authentication_v1_apitoken_proto_goTypes,
 		DependencyIndexes: file_api_authentication_v1_apitoken_proto_depIdxs,
+		EnumInfos:         file_api_authentication_v1_apitoken_proto_enumTypes,
 		MessageInfos:      file_api_authentication_v1_apitoken_proto_msgTypes,
 	}.Build()
 	File_api_authentication_v1_apitoken_proto = out.File

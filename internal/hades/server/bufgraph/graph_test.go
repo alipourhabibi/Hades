@@ -8,7 +8,6 @@ import (
 	modulev1 "buf.build/gen/go/bufbuild/registry/protocolbuffers/go/buf/registry/module/v1"
 	"connectrpc.com/connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -58,7 +57,7 @@ func idRef(id string) *modulev1.ResourceRef {
 }
 
 func TestGetGraph_HandlerError(t *testing.T) {
-	handlerErr := pkgerr.New("not found", pkgerr.NotFound)
+	handlerErr := errors.New("not found")
 	s := newServer(&fakeGraphProvider{err: handlerErr})
 	req := connect.NewRequest(&modulev1.GetGraphRequest{
 		ResourceRefs: []*modulev1.ResourceRef{resourceRef("alice", "m")},
@@ -141,7 +140,7 @@ func TestGetGraph_IDRefLabelType(t *testing.T) {
 }
 
 func TestGetGraph_IDRefResolverError(t *testing.T) {
-	resolverErr := pkgerr.New("resource not found", pkgerr.NotFound)
+	resolverErr := errors.New("resource not found")
 	s := newServerWithResolver(
 		&fakeGraphProvider{},
 		&fakeResourceResolver{err: resolverErr},

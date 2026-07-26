@@ -66,7 +66,7 @@ func (s *SQLiteAPITokenStorage) GetByTokenHash(ctx context.Context, tokenHash st
 
 func (s *SQLiteAPITokenStorage) GetByID(ctx context.Context, id uuid.UUID) (*apitoken.Row, error) {
 	return scanSQLiteAPITokenRow(s.q(ctx).QueryRowContext(ctx,
-		`SELECT `+sqliteAPITokenCols+` FROM api_tokens WHERE id = ?`, id.String()))
+		`SELECT `+sqliteAPITokenCols+` FROM api_tokens WHERE id = ?`, sqliteUUID(id)))
 }
 
 func (s *SQLiteAPITokenStorage) ListByUserID(ctx context.Context, userID string) ([]*apitoken.Row, error) {
@@ -100,13 +100,30 @@ func (s *SQLiteAPITokenStorage) ListByUserID(ctx context.Context, userID string)
 
 func (s *SQLiteAPITokenStorage) Revoke(ctx context.Context, id uuid.UUID) error {
 	_, err := s.q(ctx).ExecContext(ctx,
-		`UPDATE api_tokens SET revoked_at = datetime('now') WHERE id = ?`, id.String())
+		`UPDATE api_tokens SET revoked_at = datetime('now') WHERE id = ?`, sqliteUUID(id))
 	return err
+}
+
+func (s *SQLiteAPITokenStorage) RevokeByOwner(ctx context.Context, id uuid.UUID, userID string) error {
+	res, err := s.q(ctx).ExecContext(ctx,
+		`UPDATE api_tokens SET revoked_at = datetime('now') WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
+		sqliteUUID(id), userID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return apitoken.ErrNotFound
+	}
+	return nil
 }
 
 func (s *SQLiteAPITokenStorage) UpdateLastUsed(ctx context.Context, id uuid.UUID) error {
 	_, err := s.q(ctx).ExecContext(ctx,
-		`UPDATE api_tokens SET last_used_at = datetime('now') WHERE id = ?`, id.String())
+		`UPDATE api_tokens SET last_used_at = datetime('now') WHERE id = ?`, sqliteUUID(id))
 	return err
 }
 

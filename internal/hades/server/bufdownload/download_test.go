@@ -8,7 +8,6 @@ import (
 	modulev1 "buf.build/gen/go/bufbuild/registry/protocolbuffers/go/buf/registry/module/v1"
 	"connectrpc.com/connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,7 +61,7 @@ func downloadIDValue(id string) *modulev1.DownloadRequest_Value {
 }
 
 func TestDownload_HandlerError(t *testing.T) {
-	handlerErr := pkgerr.New("not found", pkgerr.NotFound)
+	handlerErr := errors.New("not found")
 	s := newServer(&fakeDownloadProvider{err: handlerErr})
 	req := connect.NewRequest(&modulev1.DownloadRequest{
 		Values: []*modulev1.DownloadRequest_Value{downloadValue("alice", "m")},

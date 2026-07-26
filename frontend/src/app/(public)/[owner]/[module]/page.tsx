@@ -17,11 +17,12 @@ import Input from '@/components/ui/Input';
 import FileViewer from '@/components/ui/FileViewer';
 import {
   IconBox, IconGitCommit, IconTag, IconCode, IconGlobe, IconLock, IconPackage,
-  IconClock, IconBranch, IconDownload, IconStar, IconFolder, IconFile, IconChevronRight,
+  IconClock, IconBranch, IconDownload, IconStar, IconFolder, IconFile, IconChevronRight, IconAlert,
 } from '@/components/icons';
 import { addRecentModule } from '@/lib/auth';
 import { DOMAIN } from '@/lib/config';
 import { rpcFetch } from '@/lib/rpc';
+import { isNotFound, formatError } from '@/lib/connectError';
 
 interface Module { id: string; name: string; ownerId: string; visibility: string | number; description: string; defaultBranch: string; createTime?: string; updateTime?: string; }
 interface Commit { id: string; commitHash: string; createTime?: string; ownerId?: string; moduleId?: string; }
@@ -97,6 +98,7 @@ function ModuleDetailContent() {
   const [sdkVersionId, setSdkVersionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [settingsDesc, setSettingsDesc] = useState('');
   const [settingsPublic, setSettingsPublic] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
@@ -122,7 +124,7 @@ function ModuleDetailContent() {
 
   useEffect(() => {
     if (!owner || !moduleName) return;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setNotFound(false);
     rpcFetch<{ module: Module }>('/hades.api.registry.v1.ModuleService/GetModule', { owner, name: moduleName })
       .then(modRes => {
         const m = modRes.module;
@@ -140,7 +142,10 @@ function ModuleDetailContent() {
           }
         });
       })
-      .catch(e => setError(e.message))
+      .catch(e => {
+        if (isNotFound(e)) setNotFound(true);
+        else setError(formatError(e));
+      })
       .finally(() => setLoading(false));
   }, [owner, moduleName]);
 
@@ -163,8 +168,28 @@ function ModuleDetailContent() {
   }, [owner, moduleName, openFilePath]);
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}><div className="status-loading">Loading module…</div></div>;
-  if (error || !mod) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}><div className="status-error">{error || 'Module not found'}</div></div>;
+  if (notFound || (!loading && !mod && !error)) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 400 }}>
+      <EmptyState
+        icon={<IconBox size={48}/>}
+        title={`"${owner}/${moduleName}" not found`}
+        subtitle="This module does not exist or you do not have permission to view it."
+        action={<Btn variant="ghost" onClick={() => router.push(`/${owner}`)}>View profile</Btn>}
+      />
+    </div>
+  );
+  if (error) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 400 }}>
+      <EmptyState
+        icon={<IconAlert size={48}/>}
+        title="Something went wrong"
+        subtitle={error}
+        action={<Btn variant="ghost" onClick={() => router.back()}>Go back</Btn>}
+      />
+    </div>
+  );
 
+  if (!mod) return null;
   const pub = isPublic(mod.visibility);
   const latestCommit = commits[0] || null;
   const bufYaml = `version: v2\nmodules:\n  - path: .\n    name: ${DOMAIN}/${owner}/${moduleName}\nlint:\n  use:\n    - DEFAULT\nbreaking:\n  use:\n    - FILE`;

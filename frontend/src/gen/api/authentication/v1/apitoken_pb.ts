@@ -9,8 +9,8 @@
 // @generated from file api/authentication/v1/apitoken.proto (package hades.api.authentication.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv1";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv1";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv1";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv1";
 import { file_buf_validate_validate } from "../../../buf/validate/validate_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
@@ -20,7 +20,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file api/authentication/v1/apitoken.proto.
  */
 export const file_api_authentication_v1_apitoken: GenFile = /*@__PURE__*/
-  fileDesc("CiRhcGkvYXV0aGVudGljYXRpb24vdjEvYXBpdG9rZW4ucHJvdG8SG2hhZGVzLmFwaS5hdXRoZW50aWNhdGlvbi52MSLWAQoIQVBJVG9rZW4SCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRIOCgZwcmVmaXgYAyABKAkSDgoGc2NvcGVzGAQgAygJEjAKDGxhc3RfdXNlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKY3JlYXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAibQoVQ3JlYXRlQVBJVG9rZW5SZXF1ZXN0EhQKBG5hbWUYASABKAlCBrpIA8gBARIOCgZzY29wZXMYAiADKAkSLgoKZXhwaXJlc19hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAicwoWQ3JlYXRlQVBJVG9rZW5SZXNwb25zZRIKCgJpZBgBIAEoCRINCgV0b2tlbhgCIAEoCRIOCgZwcmVmaXgYAyABKAkSLgoKY3JlYXRlZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiFgoUTGlzdEFQSVRva2Vuc1JlcXVlc3QiTgoVTGlzdEFQSVRva2Vuc1Jlc3BvbnNlEjUKBnRva2VucxgBIAMoCzIlLmhhZGVzLmFwaS5hdXRoZW50aWNhdGlvbi52MS5BUElUb2tlbiItChVSZXZva2VBUElUb2tlblJlcXVlc3QSFAoCaWQYASABKAlCCLpIBXIDsAEBIhgKFlJldm9rZUFQSVRva2VuUmVzcG9uc2Uy/wIKD0FQSVRva2VuU2VydmljZRJ5Cg5DcmVhdGVBUElUb2tlbhIyLmhhZGVzLmFwaS5hdXRoZW50aWNhdGlvbi52MS5DcmVhdGVBUElUb2tlblJlcXVlc3QaMy5oYWRlcy5hcGkuYXV0aGVudGljYXRpb24udjEuQ3JlYXRlQVBJVG9rZW5SZXNwb25zZRJ2Cg1MaXN0QVBJVG9rZW5zEjEuaGFkZXMuYXBpLmF1dGhlbnRpY2F0aW9uLnYxLkxpc3RBUElUb2tlbnNSZXF1ZXN0GjIuaGFkZXMuYXBpLmF1dGhlbnRpY2F0aW9uLnYxLkxpc3RBUElUb2tlbnNSZXNwb25zZRJ5Cg5SZXZva2VBUElUb2tlbhIyLmhhZGVzLmFwaS5hdXRoZW50aWNhdGlvbi52MS5SZXZva2VBUElUb2tlblJlcXVlc3QaMy5oYWRlcy5hcGkuYXV0aGVudGljYXRpb24udjEuUmV2b2tlQVBJVG9rZW5SZXNwb25zZUKOAgofY29tLmhhZGVzLmFwaS5hdXRoZW50aWNhdGlvbi52MUINQXBpdG9rZW5Qcm90b1ABWk1naXRodWIuY29tL2FsaXBvdXJoYWJpYmkvSGFkZXMvYXBpL2dlbi9hcGkvYXV0aGVudGljYXRpb24vdjE7YXV0aGVudGljYXRpb252MaICA0hBQaoCG0hhZGVzLkFwaS5BdXRoZW50aWNhdGlvbi5WMcoCG0hhZGVzXEFwaVxBdXRoZW50aWNhdGlvblxWMeICJ0hhZGVzXEFwaVxBdXRoZW50aWNhdGlvblxWMVxHUEJNZXRhZGF0YeoCHkhhZGVzOjpBcGk6OkF1dGhlbnRpY2F0aW9uOjpWMWIGcHJvdG8z", [file_buf_validate_validate, file_google_protobuf_timestamp]);
+  fileDesc("CiRhcGkvYXV0aGVudGljYXRpb24vdjEvYXBpdG9rZW4ucHJvdG8SG2hhZGVzLmFwaS5hdXRoZW50aWNhdGlvbi52MSKTAgoIQVBJVG9rZW4SCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRIOCgZwcmVmaXgYAyABKAkSDgoGc2NvcGVzGAQgAygJEjAKDGxhc3RfdXNlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKY3JlYXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASOwoGc3RhdHVzGAggASgOMisuaGFkZXMuYXBpLmF1dGhlbnRpY2F0aW9uLnYxLkFQSVRva2VuU3RhdHVzIm0KFUNyZWF0ZUFQSVRva2VuUmVxdWVzdBIUCgRuYW1lGAEgASgJQga6SAPIAQESDgoGc2NvcGVzGAIgAygJEi4KCmV4cGlyZXNfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wInMKFkNyZWF0ZUFQSVRva2VuUmVzcG9uc2USCgoCaWQYASABKAkSDQoFdG9rZW4YAiABKAkSDgoGcHJlZml4GAMgASgJEi4KCmNyZWF0ZWRfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhYKFExpc3RBUElUb2tlbnNSZXF1ZXN0Ik4KFUxpc3RBUElUb2tlbnNSZXNwb25zZRI1CgZ0b2tlbnMYASADKAsyJS5oYWRlcy5hcGkuYXV0aGVudGljYXRpb24udjEuQVBJVG9rZW4iLQoVUmV2b2tlQVBJVG9rZW5SZXF1ZXN0EhQKAmlkGAEgASgJQgi6SAVyA7ABASIYChZSZXZva2VBUElUb2tlblJlc3BvbnNlKosBCg5BUElUb2tlblN0YXR1cxIgChxBUElfVE9LRU5fU1RBVFVTX1VOU1BFQ0lGSUVEEAASGwoXQVBJX1RPS0VOX1NUQVRVU19BQ1RJVkUQARIcChhBUElfVE9LRU5fU1RBVFVTX1JFVk9LRUQQAhIcChhBUElfVE9LRU5fU1RBVFVTX0VYUElSRUQQAzL/AgoPQVBJVG9rZW5TZXJ2aWNlEnkKDkNyZWF0ZUFQSVRva2VuEjIuaGFkZXMuYXBpLmF1dGhlbnRpY2F0aW9uLnYxLkNyZWF0ZUFQSVRva2VuUmVxdWVzdBozLmhhZGVzLmFwaS5hdXRoZW50aWNhdGlvbi52MS5DcmVhdGVBUElUb2tlblJlc3BvbnNlEnYKDUxpc3RBUElUb2tlbnMSMS5oYWRlcy5hcGkuYXV0aGVudGljYXRpb24udjEuTGlzdEFQSVRva2Vuc1JlcXVlc3QaMi5oYWRlcy5hcGkuYXV0aGVudGljYXRpb24udjEuTGlzdEFQSVRva2Vuc1Jlc3BvbnNlEnkKDlJldm9rZUFQSVRva2VuEjIuaGFkZXMuYXBpLmF1dGhlbnRpY2F0aW9uLnYxLlJldm9rZUFQSVRva2VuUmVxdWVzdBozLmhhZGVzLmFwaS5hdXRoZW50aWNhdGlvbi52MS5SZXZva2VBUElUb2tlblJlc3BvbnNlQo4CCh9jb20uaGFkZXMuYXBpLmF1dGhlbnRpY2F0aW9uLnYxQg1BcGl0b2tlblByb3RvUAFaTWdpdGh1Yi5jb20vYWxpcG91cmhhYmliaS9IYWRlcy9hcGkvZ2VuL2FwaS9hdXRoZW50aWNhdGlvbi92MTthdXRoZW50aWNhdGlvbnYxogIDSEFBqgIbSGFkZXMuQXBpLkF1dGhlbnRpY2F0aW9uLlYxygIbSGFkZXNcQXBpXEF1dGhlbnRpY2F0aW9uXFYx4gInSGFkZXNcQXBpXEF1dGhlbnRpY2F0aW9uXFYxXEdQQk1ldGFkYXRh6gIeSGFkZXM6OkFwaTo6QXV0aGVudGljYXRpb246OlYxYgZwcm90bzM", [file_buf_validate_validate, file_google_protobuf_timestamp]);
 
 /**
  * APIToken describes a personal API token record. The plaintext value is
@@ -79,6 +79,13 @@ export type APIToken = Message<"hades.api.authentication.v1.APIToken"> & {
    * @generated from field: google.protobuf.Timestamp created_at = 7;
    */
   createdAt?: Timestamp;
+
+  /**
+   * Lifecycle status of the token.
+   *
+   * @generated from field: hades.api.authentication.v1.APITokenStatus status = 8;
+   */
+  status: APITokenStatus;
 };
 
 /**
@@ -235,6 +242,45 @@ export type RevokeAPITokenResponse = Message<"hades.api.authentication.v1.Revoke
  */
 export const RevokeAPITokenResponseSchema: GenMessage<RevokeAPITokenResponse> = /*@__PURE__*/
   messageDesc(file_api_authentication_v1_apitoken, 6);
+
+/**
+ * APITokenStatus indicates the lifecycle state of an API token.
+ *
+ * @generated from enum hades.api.authentication.v1.APITokenStatus
+ */
+export enum APITokenStatus {
+  /**
+   * @generated from enum value: API_TOKEN_STATUS_UNSPECIFIED = 0;
+   */
+  API_TOKEN_STATUS_UNSPECIFIED = 0,
+
+  /**
+   * Token is valid and can be used to authenticate.
+   *
+   * @generated from enum value: API_TOKEN_STATUS_ACTIVE = 1;
+   */
+  API_TOKEN_STATUS_ACTIVE = 1,
+
+  /**
+   * Token was explicitly revoked and can no longer be used.
+   *
+   * @generated from enum value: API_TOKEN_STATUS_REVOKED = 2;
+   */
+  API_TOKEN_STATUS_REVOKED = 2,
+
+  /**
+   * Token has passed its expiry time and can no longer be used.
+   *
+   * @generated from enum value: API_TOKEN_STATUS_EXPIRED = 3;
+   */
+  API_TOKEN_STATUS_EXPIRED = 3,
+}
+
+/**
+ * Describes the enum hades.api.authentication.v1.APITokenStatus.
+ */
+export const APITokenStatusSchema: GenEnum<APITokenStatus> = /*@__PURE__*/
+  enumDesc(file_api_authentication_v1_apitoken, 0);
 
 /**
  * APITokenService manages personal API tokens for authenticated users.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
@@ -127,7 +126,7 @@ WHERE users.username = ? AND modules.name = ?`, owner, owner+"/"+name)
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, fmt.Errorf("module not found")
+		return nil, connErr.NotFound("module not found")
 	}
 	return scanSQLiteModuleRow(rows)
 }
