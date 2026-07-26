@@ -64,7 +64,7 @@ func (s *Server) WithTOTPSecretStorage(ts totpsecret.Storage) *Server {
 func (s *Server) UserBySession(ctx context.Context, in *connect.Request[v1.UserBySessionRequest]) (*connect.Response[v1.UserBySessionResponse], error) {
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	return &connect.Response[v1.UserBySessionResponse]{
@@ -99,22 +99,12 @@ func (s *Server) ReloadPolicy() error {
 	return s.engine.Reload(context.Background())
 }
 
-// normalizeResource maps legacy object names to OPA resource types.
-// Handlers historically used "repository" (constants.REPOSITORY); the Rego
-// policy uses "module" (constants.ResourceModule).
-func normalizeResource(obj string) string {
-	if obj == string(constants.REPOSITORY) {
-		return string(constants.ResourceModule)
-	}
-	return obj
-}
-
 // Can checks a single authorization policy via the OPA engine.
 func (s *Server) Can(ctx context.Context, in *constants.Policy) (*constants.CanResponse, error) {
 	input := authorization.Input{
 		Subject:      in.Subject,
 		Domain:       in.Domain,
-		ResourceType: normalizeResource(in.Object),
+		ResourceType: in.Object,
 		Action:       in.Action,
 		Visibility:   constants.VisibilityPrivate,
 	}
@@ -153,10 +143,12 @@ func (s *Server) BatchCan(ctx context.Context, policies []*constants.Policy) (*c
 // existence of private modules is never revealed to unauthenticated callers.
 func (s *Server) CheckReadAccess(ctx context.Context, user *registryv1.User, modules []*registryv1.Module) error {
 	for _, m := range modules {
-		if m.Visibility != registryv1.EVisibility_E_VISIBILITY_PRIVATE {
+		if m.Visibility != registryv1.ModuleVisibility_MODULE_VISIBILITY_PRIVATE {
 			continue // public: always accessible
 		}
-		// Private module - must be authenticated.
+		// Private module - must be authenticated and authorised.
+		// Return NOT_FOUND regardless of whether the user is anonymous or
+		// authenticated-but-unauthorised, to avoid revealing that the module exists.
 		if user == nil {
 			return connErr.NotFound("not found")
 		}
@@ -172,7 +164,7 @@ func (s *Server) CheckReadAccess(ctx context.Context, user *registryv1.User, mod
 			return err
 		}
 		if !allowed {
-			return connErr.PermissionDenied("permission denied reading module " + m.Name)
+			return connErr.NotFound("not found")
 		}
 	}
 	return nil

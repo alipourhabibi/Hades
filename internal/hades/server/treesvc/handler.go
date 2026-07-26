@@ -10,11 +10,18 @@ import (
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	registryv1connect "github.com/alipourhabibi/Hades/api/gen/api/registry/v1/registryv1connect"
+	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
+	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	gitstorage "github.com/alipourhabibi/Hades/internal/hades/storage/git"
 	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
+
+// readAccessChecker is the subset of the authorization Server used by Handler.
+type readAccessChecker interface {
+	CheckReadAccess(ctx context.Context, user *registryv1.User, modules []*registryv1.Module) error
+}
 
 // Handler implements the TreeService ConnectRPC handler.
 type Handler struct {
@@ -22,6 +29,8 @@ type Handler struct {
 
 	logger     *log.LoggerWrapper
 	gitStorage gitstorage.Storage
+	moduleDB   moduledb.Storage
+	authz      readAccessChecker
 }
 
 // NewHandler constructs a Handler from the shared dependency bag.
@@ -29,17 +38,34 @@ func NewHandler(deps *server.Dependencies) *Handler {
 	return &Handler{
 		logger:     deps.Logger,
 		gitStorage: deps.GitStorage,
+		moduleDB:   deps.ModuleDB,
+		authz:      deps.Authorization,
 	}
 }
 
 // ListModuleFiles returns the depth-1 directory listing of a path inside the
 // latest commit of the given owner/module repository.
+// Returns NOT_FOUND if the module is private and the caller lacks read access,
+// to avoid leaking the existence of private modules.
 func (h *Handler) ListModuleFiles(ctx context.Context, req *connect.Request[registryv1.ListModuleFilesRequest]) (*connect.Response[registryv1.ListModuleFilesResponse], error) {
+	user, _ := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
+
+	modules, err := h.moduleDB.GetModulesByRefs(ctx, &registryv1.ModuleRef{
+		Owner:  req.Msg.Owner,
+		Module: req.Msg.Module,
+	})
+	if err != nil || len(modules) == 0 {
+		return nil, connErr.NotFound("module not found")
+	}
+	if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
+		return nil, err
+	}
+
 	repoPath := req.Msg.Owner + "/" + req.Msg.Module
 	gitEntries, err := h.gitStorage.GetTreeEntries(ctx, repoPath, "HEAD", req.Msg.Path)
 	if err != nil {
 		h.logger.Error("GetTreeEntries failed", "error", err, "owner", req.Msg.Owner, "module", req.Msg.Module, "path", req.Msg.Path)
-		return nil, connErr.Internal(err.Error())
+		return nil, connErr.Internal("failed to list files")
 	}
 
 	entries := make([]*registryv1.FileEntry, len(gitEntries))
@@ -64,12 +90,26 @@ func (h *Handler) ListModuleFiles(ctx context.Context, req *connect.Request[regi
 
 // GetFileContent returns the raw content of a single file identified by its
 // path in the latest commit of the given owner/module repository.
+// Returns NOT_FOUND if the module is private and the caller lacks read access.
 func (h *Handler) GetFileContent(ctx context.Context, req *connect.Request[registryv1.GetFileContentRequest]) (*connect.Response[registryv1.GetFileContentResponse], error) {
+	user, _ := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
+
+	modules, err := h.moduleDB.GetModulesByRefs(ctx, &registryv1.ModuleRef{
+		Owner:  req.Msg.Owner,
+		Module: req.Msg.Module,
+	})
+	if err != nil || len(modules) == 0 {
+		return nil, connErr.NotFound("module not found")
+	}
+	if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
+		return nil, err
+	}
+
 	repoPath := req.Msg.Owner + "/" + req.Msg.Module
 	content, size, err := h.gitStorage.GetFile(ctx, repoPath, "HEAD", req.Msg.Path)
 	if err != nil {
 		h.logger.Error("GetFileContent failed", "error", err, "owner", req.Msg.Owner, "module", req.Msg.Module, "path", req.Msg.Path)
-		return nil, connErr.NotFound(err.Error())
+		return nil, connErr.NotFound("file not found")
 	}
 
 	return &connect.Response[registryv1.GetFileContentResponse]{

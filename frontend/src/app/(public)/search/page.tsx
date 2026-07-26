@@ -24,7 +24,7 @@ const TYPE_FILTERS: { id: TypeFilter; label: string }[] = [
 ];
 
 function isPublic(v: string | number): boolean {
-  return v === 'E_VISIBILITY_PUBLIC' || v === 1;
+  return v === 'MODULE_VISIBILITY_PUBLIC' || v === 1;
 }
 
 function SearchContent() {

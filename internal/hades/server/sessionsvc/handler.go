@@ -42,7 +42,7 @@ func (h *Handler) ListSessions(ctx context.Context, in *connect.Request[v1.ListS
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "ListSessions")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	// Determine current session ID from the bearer token.
@@ -81,7 +81,7 @@ func (h *Handler) RevokeSession(ctx context.Context, in *connect.Request[v1.Revo
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "RevokeSession")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	sessionID, err := uuid.Parse(in.Msg.SessionId)
@@ -113,7 +113,7 @@ func (h *Handler) RevokeAllOtherSessions(ctx context.Context, in *connect.Reques
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "RevokeAllOtherSessions")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	rawToken, _ := ctx.Value(constants.ContextKeyAuthorization).(string)

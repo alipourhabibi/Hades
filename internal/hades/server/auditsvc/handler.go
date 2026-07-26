@@ -39,7 +39,7 @@ func (h *Handler) ListAuditLog(ctx context.Context, in *connect.Request[v1.ListA
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "ListAuditLog")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	pageSize := int(in.Msg.PageSize)

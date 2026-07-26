@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
@@ -10,6 +11,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
+	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -143,6 +145,9 @@ func (m *SQLiteModuleStorage) GetModulesByRefs(ctx context.Context, refs ...*reg
 		}
 		mod, err := scanSQLiteModule(row)
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, connErr.NotFound("module not found")
+			}
 			return nil, err
 		}
 		modules = append(modules, mod)

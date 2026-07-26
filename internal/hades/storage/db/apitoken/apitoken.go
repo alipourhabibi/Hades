@@ -10,7 +10,7 @@ import (
 
 // Storage is the domain interface for API token persistence.
 type Storage interface {
-	Create(ctx context.Context, userID, name, prefix, tokenHash string, scopes []string, expiresAt *time.Time) (uuid.UUID, error)
+	Create(ctx context.Context, userID, name, prefix, tokenHash string, scopes []string, expiresAt *time.Time) (*Row, error)
 	GetByTokenHash(ctx context.Context, tokenHash string) (*Row, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Row, error)
 	ListByUserID(ctx context.Context, userID string) ([]*Row, error)

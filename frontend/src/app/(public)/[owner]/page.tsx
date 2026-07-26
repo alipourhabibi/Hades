@@ -27,7 +27,7 @@ const ORG_TABS = [{ id: 'overview', label: 'Overview' }, { id: 'modules', label:
 const USER_TABS = [{ id: 'modules', label: 'Modules' }, { id: 'orgs', label: 'Organizations' }, { id: 'activity', label: 'Activity' }];
 
 function isPublic(v: string | number | undefined): boolean {
-  return v === 'E_VISIBILITY_PUBLIC' || v === 1;
+  return v === 'MODULE_VISIBILITY_PUBLIC' || v === 1;
 }
 
 const ModuleList: React.FC<{ modules: Module[]; navigate: (path: string) => void }> = ({ modules, navigate }) => {

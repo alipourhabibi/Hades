@@ -325,7 +325,7 @@ func (s *Server) Logout(ctx context.Context, in *connect.Request[v1.LogoutReques
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "Logout")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 	rawToken, _ := ctx.Value(constants.ContextKeyAuthorization).(string)
 	if rawToken != "" {
@@ -379,7 +379,7 @@ func (s *Server) ResendVerificationEmail(ctx context.Context, in *connect.Reques
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "ResendVerificationEmail")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	// Guard: do not allow re-sending if email is already verified.
@@ -500,7 +500,7 @@ func (s *Server) ChangePassword(ctx context.Context, in *connect.Request[v1.Chan
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "ChangePassword")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 	af, err := s.userStorage.GetAuthFieldsByUsername(ctx, strings.ToLower(user.Username))
 	if err != nil {

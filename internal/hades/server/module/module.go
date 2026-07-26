@@ -140,14 +140,14 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "CreateModuleByName")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	moduleFullName := user.Username + "/" + in.Msg.Name
 
 	can, err := s.authorization.Can(ctx, &constants.Policy{
 		Subject: user.Username,
-		Object:  string(constants.REPOSITORY),
+		Object:  string(constants.ResourceModule),
 		Action:  string(constants.CREATE),
 		Domain:  moduleFullName,
 	})
@@ -183,8 +183,8 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 			ctx,
 			moduleFullName,
 			user.Id,
-			registrypbv1.ModuleVisibility(in.Msg.Visibility),
-			registrypbv1.ModuleState(registrypbv1.EState_E_STATE_ACTIVE),
+			in.Msg.Visibility,
+			registrypbv1.ModuleState_MODULE_STATE_ACTIVE,
 			in.Msg.Description,
 			"",
 			"",

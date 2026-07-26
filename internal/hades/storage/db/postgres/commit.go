@@ -3,13 +3,13 @@ package postgres
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
+	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -86,6 +86,9 @@ WHERE c.id = $1`
 		&cmt.Module.Url, &cmt.Module.DefaultLabelName,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, connErr.NotFound("commit not found")
+		}
 		return nil, err
 	}
 	cmt.CreateTime = timestamppb.New(createTime)
@@ -99,31 +102,18 @@ WHERE c.id = $1`
 	return cmt, nil
 }
 
-func (c *CommitStorage) GetCommitByQuery(ctx context.Context, queryMap map[string]any) (*registryv1.Commit, error) {
-	baseQuery := `
+func (c *CommitStorage) GetCommitByDigest(ctx context.Context, moduleID, digestValue string) (*registryv1.Commit, error) {
+	q := `
 SELECT id, commit_hash, create_time, update_time,
   owner_id, module_id, digest_type, digest_value,
   created_by_user_id, source_control_url
-FROM commits`
-
-	var conditions []string
-	var values []interface{}
-	i := 1
-	for key, value := range queryMap {
-		conditions = append(conditions, fmt.Sprintf("%s = $%d", key, i))
-		values = append(values, value)
-		i++
-	}
-	if len(conditions) > 0 {
-		baseQuery += " WHERE " + conditions[0]
-		for _, cond := range conditions[1:] {
-			baseQuery += " AND " + cond
-		}
-	}
+FROM commits
+WHERE module_id = $1 AND digest_value = $2
+LIMIT 1`
 
 	cmt := &registryv1.Commit{Digest: &registryv1.Digest{}}
 	var createTime, updateTime time.Time
-	err := c.q(ctx).QueryRow(ctx, baseQuery, values...).Scan(
+	err := c.q(ctx).QueryRow(ctx, q, moduleID, digestValue).Scan(
 		&cmt.Id, &cmt.CommitHash, &createTime, &updateTime,
 		&cmt.OwnerId, &cmt.ModuleId,
 		&cmt.Digest.Type, &cmt.Digest.Value,
@@ -280,7 +270,7 @@ WHERE c.commit_hash = $1`
 		return nil, err
 	}
 	if len(commits) == 0 {
-		return nil, pgx.ErrNoRows
+		return nil, connErr.NotFound("commit not found")
 	}
 	return commits[0], nil
 }
@@ -308,7 +298,7 @@ LIMIT 1`
 		return nil, err
 	}
 	if len(commits) == 0 {
-		return nil, pgx.ErrNoRows
+		return nil, connErr.NotFound("commit not found")
 	}
 	return commits[0], nil
 }

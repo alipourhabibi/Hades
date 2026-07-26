@@ -43,6 +43,12 @@ func (l *Linter) Lint(ctx context.Context, protoDir string) error {
 	return nil
 }
 
+// writeBufYAML writes the default buf.yaml only when the directory does not
+// already contain one (i.e. the module did not upload its own buf.yaml).
 func writeBufYAML(dir string) error {
-	return os.WriteFile(filepath.Join(dir, "buf.yaml"), []byte(bufYAML), 0o644)
+	path := filepath.Join(dir, "buf.yaml")
+	if _, err := os.Stat(path); err == nil {
+		return nil // module has its own buf.yaml; honour it
+	}
+	return os.WriteFile(path, []byte(bufYAML), 0o644)
 }

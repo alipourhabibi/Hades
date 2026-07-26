@@ -3,10 +3,6 @@
 // A module is the primary unit of versioning in Hades. It maps to a Git
 // repository in Gitaly and holds one or more .proto files. Each push creates
 // a new commit record under the module.
-//
-// Note: EVisibility and EState are legacy aliases for ModuleVisibility and
-// ModuleState defined in user.proto. New fields should use ModuleVisibility
-// and ModuleState; these aliases remain to avoid breaking generated code.
 
 syntax = "proto3";
 
@@ -14,23 +10,9 @@ package hades.api.registry.v1;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
+import "api/registry/v1/user.proto";
 
 option go_package = "gen/api/registry/v1";
-
-// EVisibility is a legacy alias for ModuleVisibility. Use ModuleVisibility
-// in new definitions.
-enum EVisibility {
-  E_VISIBILITY_UNSPECIFIED = 0;
-  E_VISIBILITY_PUBLIC = 1;
-  E_VISIBILITY_PRIVATE = 2;
-}
-
-// EState is a legacy alias for ModuleState. Use ModuleState in new definitions.
-enum EState {
-  E_STATE_UNSPECIFIED = 0;
-  E_STATE_ACTIVE = 1;
-  E_STATE_DEPRECATED = 2;
-}
 
 // Module is the metadata record for a Hades schema repository.
 message Module {
@@ -46,13 +28,13 @@ message Module {
   // UUID of the user or organization that owns this module.
   string owner_id = 5;
   // Whether the module is publicly readable or restricted to members.
-  EVisibility visibility = 6;
+  ModuleVisibility visibility = 6;
   // Optional human-readable description.
   string description = 7;
   // Default branch name in the underlying Git repository.
   string default_branch = 8;
   // Lifecycle state: active or deprecated.
-  EState state = 9;
+  ModuleState state = 9;
   // Optional URL associated with the module (e.g. upstream project).
   string url = 10;
   // Default label used when a commit is pushed without an explicit label.
@@ -74,7 +56,7 @@ message CreateModuleByNameRequest {
   // Short module name. Must be unique within the owner's namespace.
   string name = 1 [(buf.validate.field).required = true];
   // Visibility for the new module. Defaults to PUBLIC when unspecified.
-  EVisibility visibility = 2;
+  ModuleVisibility visibility = 2;
   // Optional human-readable description.
   string description = 3;
   // Default branch name. Defaults to "main" when empty.

@@ -30,7 +30,7 @@ type FileEntryType = number | string;
 interface FileEntry { name: string; path: string; type: FileEntryType; oid: string; mode: number; }
 
 function isEntryDir(type: FileEntryType): boolean { return type === 2 || type === 'FILE_ENTRY_TYPE_DIR'; }
-function isPublic(v: string | number): boolean { return v === 'E_VISIBILITY_PUBLIC' || v === 1; }
+function isPublic(v: string | number): boolean { return v === 'MODULE_VISIBILITY_PUBLIC' || v === 1; }
 function fmtDate(ts?: string): string { if (!ts) return '-'; try { return new Date(ts).toLocaleDateString(); } catch { return ts; } }
 
 const LANG_EMOJIS: Record<string, string> = { go: '🐹', typescript: '🔷', python: '🐍', java: '☕', rust: '🦀', swift: '🦅' };

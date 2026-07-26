@@ -51,9 +51,9 @@ func NewHandler(deps *server.Dependencies) *Handler {
 
 // GetCIRun returns the CI run result for the module commit identified by
 // owner, module name, and commit hash.  Returns NOT_FOUND if the module does
-// not exist or no CI run has been recorded for that commit.  Returns
-// PERMISSION_DENIED (via CheckReadAccess) if the module is private and the
-// caller is not authorised to read it.
+// not exist, no CI run has been recorded for that commit, or the module is
+// private and the caller is not authorised to read it (NOT_FOUND rather than
+// PERMISSION_DENIED to avoid leaking the existence of private modules).
 func (h *Handler) GetCIRun(ctx context.Context, in *connect.Request[registrypbv1.GetCIRunRequest]) (*connect.Response[registrypbv1.GetCIRunResponse], error) {
 	// user may be nil for anonymous access; CheckReadAccess handles the nil case.
 	user, _ := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)

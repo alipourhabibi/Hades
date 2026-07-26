@@ -26,14 +26,12 @@ func (s *APITokenStorage) q(ctx context.Context) txkeys.PgxQuerier {
 	return s.pool
 }
 
-func (s *APITokenStorage) Create(ctx context.Context, userID, name, prefix, tokenHash string, scopes []string, expiresAt *time.Time) (uuid.UUID, error) {
-	var id uuid.UUID
-	err := s.q(ctx).QueryRow(ctx,
+func (s *APITokenStorage) Create(ctx context.Context, userID, name, prefix, tokenHash string, scopes []string, expiresAt *time.Time) (*apitoken.Row, error) {
+	return scanAPITokenRow(s.q(ctx).QueryRow(ctx,
 		`INSERT INTO api_tokens (user_id, name, prefix, token_hash, scopes, expires_at)
-		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING `+apiTokenColumns,
 		userID, name, prefix, tokenHash, scopes, expiresAt,
-	).Scan(&id)
-	return id, err
+	))
 }
 
 const apiTokenColumns = `id, user_id, name, prefix, token_hash, COALESCE(scopes, '{}'),

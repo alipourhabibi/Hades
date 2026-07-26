@@ -6,14 +6,12 @@ package upload
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/config"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
@@ -101,7 +99,7 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
-		err := connErr.Internal("missing user in context")
+		err := connErr.Unauthenticated("not authenticated")
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "no user in context")
 		telemetry.UploadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
@@ -115,7 +113,7 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 		moduleFullName := content.ModuleRef.Owner + "/" + content.ModuleRef.Module
 		policies = append(policies, &constants.Policy{
 			Subject: user.Username,
-			Object:  string(constants.REPOSITORY),
+			Object:  string(constants.ResourceModule),
 			Action:  string(constants.PUSH),
 			Domain:  moduleFullName,
 		})
@@ -153,18 +151,15 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 			return nil, connErr.NotFound("module not found")
 		}
 
-		var emptyCommit bool
-		var previousHead string
 		moduleCommit, err := h.commitDB.GetCommitByOwnerModule(ctx, []*registryv1.ModuleRef{content.ModuleRef})
 		if err != nil {
-			// Not found means the module has no commits yet - treat as empty.
-			var ce *connect.Error
-			if errors.As(connErr.FromPgx(err), &ce) && ce.Code() == connect.CodeNotFound {
-				emptyCommit = true
-			} else {
-				return nil, connErr.FromPgx(err)
-			}
-		} else if len(moduleCommit) > 0 {
+			return nil, connErr.FromPgx(err)
+		}
+		// GetCommitByOwnerModule returns an empty slice (not ErrNoRows) when the
+		// module has no commits yet.
+		emptyCommit := len(moduleCommit) == 0
+		var previousHead string
+		if !emptyCommit {
 			previousHead = moduleCommit[0].CommitHash
 		}
 
@@ -207,18 +202,11 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 		}
 
 		dig, _ := strings.CutPrefix(digest.String(), "shake256:")
-		commit, err := h.commitDB.GetCommitByQuery(ctx, map[string]any{
-			"digest_value": dig,
-			"module_id":    module[0].Id,
-		})
+		commit, err := h.commitDB.GetCommitByDigest(ctx, module[0].Id, dig)
 		if err != nil {
-			// Not found is expected - not a dedup hit.
-			var ce *connect.Error
-			if errors.As(connErr.FromPgx(err), &ce) && ce.Code() != connect.CodeNotFound {
-				return nil, connErr.FromPgx(err)
-			}
+			return nil, connErr.FromPgx(err)
 		}
-		if err == nil && commit != nil {
+		if commit != nil {
 			dedupCommits = append(dedupCommits, commit)
 			continue
 		}
@@ -259,10 +247,10 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 		})
 	}
 
-	// Phase 2: per-content UoW - Gitaly write + DB insert.
-	// Each content is committed atomically: the UoW callback opens the DB
-	// transaction, then fires the Gitaly write. If the DB insert fails after
-	// the Gitaly write, RollbackCommit is called as compensation.
+	// Phase 2: per-content Gitaly write then short DB transaction.
+	// Gitaly write completes before the DB transaction opens so we never hold
+	// an open connection-pool slot during a remote gRPC call. If the DB insert
+	// fails after the Gitaly write, RollbackCommit is called as compensation.
 	// Auth is already enforced above; direct storage access is intentional.
 	var newCommits []*registryv1.Commit
 	var totalGitalyAllocBytes int64
@@ -279,24 +267,39 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 		_, gitalySpan := tracer.Start(ctx, "upload.gitaly_write")
 
 		wCopy := w // capture for closure
-		result, err := h.uow.Do(ctx, func(ctx context.Context) (interface{}, error) {
-			// Git write inside the UoW so the DB transaction is already open.
-			commitId, err := h.gitStorage.PutFiles(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, wCopy.files, user.Username, user.Email, "upload:"+wCopy.dig, wCopy.listFiles)
-			if err != nil {
-				return nil, err
-			}
-			if len(commitId) < 32 {
-				_ = h.gitStorage.RollbackCommit(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, commitId, wCopy.previousHead)
-				return nil, connErr.Internal("commit ID is less than 32 characters")
-			}
-			id, err := uuid.Parse(commitId[:32])
-			if err != nil {
-				_ = h.gitStorage.RollbackCommit(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, commitId, wCopy.previousHead)
-				return nil, connErr.Internal("cannot parse commit UUID")
-			}
 
+		// Gitaly write happens BEFORE opening the DB transaction.
+		commitId, err := h.gitStorage.PutFiles(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, wCopy.files, user.Username, user.Email, "upload:"+wCopy.dig, wCopy.listFiles)
+		if err != nil {
+			gitalySpan.RecordError(err)
+			gitalySpan.SetStatus(codes.Error, "gitaly write")
+			gitalySpan.End()
+			if h.gitalyOpLog != nil && logID != uuid.Nil {
+				_ = h.gitalyOpLog.UpdateStatus(ctx, logID, gitalyoplog.StatusFailed, "", err.Error())
+			}
+			return nil, err
+		}
+		if len(commitId) < 32 {
+			_ = h.gitStorage.RollbackCommit(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, commitId, wCopy.previousHead)
+			gitalySpan.End()
+			return nil, connErr.Internal("commit ID is less than 32 characters")
+		}
+		id, err := uuid.Parse(commitId[:32])
+		if err != nil {
+			_ = h.gitStorage.RollbackCommit(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, commitId, wCopy.previousHead)
+			gitalySpan.End()
+			return nil, connErr.Internal("cannot parse commit UUID")
+		}
+
+		var gitalyMemAfter runtime.MemStats
+		runtime.ReadMemStats(&gitalyMemAfter)
+		totalGitalyAllocBytes += int64(gitalyMemAfter.TotalAlloc - gitalyMemBefore.TotalAlloc)
+		gitalySpan.End()
+
+		// Short DB transaction: only record the commit; Gitaly write already done.
+		result, err := h.uow.Do(ctx, func(txCtx context.Context) (interface{}, error) {
 			if err := h.commitDB.Create(
-				ctx,
+				txCtx,
 				id, commitId, wCopy.userId, wCopy.moduleId,
 				registryv1.DigestType_DIGEST_TYPE_B5,
 				wCopy.digestStr, wCopy.userId, "",
@@ -306,7 +309,7 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 			}
 
 			if h.sdkConfig.Enabled && len(h.sdkConfig.Generators) > 0 {
-				if err := h.sdkJobDB.CreateBatch(ctx, id.String(), wCopy.moduleId, h.sdkConfig.Generators); err != nil {
+				if err := h.sdkJobDB.CreateBatch(txCtx, id.String(), wCopy.moduleId, h.sdkConfig.Generators); err != nil {
 					_ = h.gitStorage.RollbackCommit(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, commitId, wCopy.previousHead)
 					return nil, connErr.FromPgx(err)
 				}
@@ -327,20 +330,12 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 			}, nil
 		}, 30*time.Second)
 
-		var gitalyMemAfter runtime.MemStats
-		runtime.ReadMemStats(&gitalyMemAfter)
-		totalGitalyAllocBytes += int64(gitalyMemAfter.TotalAlloc - gitalyMemBefore.TotalAlloc)
-
 		if err != nil {
-			gitalySpan.RecordError(err)
-			gitalySpan.SetStatus(codes.Error, "gitaly write or db commit")
-			gitalySpan.End()
 			if h.gitalyOpLog != nil && logID != uuid.Nil {
 				_ = h.gitalyOpLog.UpdateStatus(ctx, logID, gitalyoplog.StatusFailed, "", err.Error())
 			}
 			return nil, err
 		}
-		gitalySpan.End()
 
 		newCommit := result.(*registryv1.Commit)
 		if h.gitalyOpLog != nil && logID != uuid.Nil {

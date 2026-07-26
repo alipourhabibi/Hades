@@ -51,8 +51,9 @@ func NewHandler(deps *server.Dependencies) *Handler {
 
 // ListCommits returns all commits for the module identified by owner and
 // module name, ordered newest first.  Returns NOT_FOUND if the module does
-// not exist.  Returns PERMISSION_DENIED (via CheckReadAccess) if the module
-// is private and the caller is not authorised to read it.
+// not exist or is private and the caller is not authorised to read it
+// (NOT_FOUND rather than PERMISSION_DENIED so that private modules are not
+// revealed to unauthenticated callers).
 func (h *Handler) ListCommits(ctx context.Context, in *connect.Request[registrypbv1.ListCommitsRequest]) (*connect.Response[registrypbv1.ListCommitsResponse], error) {
 	// user may be nil for anonymous access; CheckReadAccess handles the nil case.
 	user, _ := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)

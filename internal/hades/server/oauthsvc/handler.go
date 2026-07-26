@@ -235,7 +235,7 @@ func (h *Handler) ListLinkedProviders(ctx context.Context, in *connect.Request[v
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "ListLinkedProviders")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	rows, err := h.oauthIdentityDB.GetByUserID(ctx, user.Id)
@@ -266,7 +266,7 @@ func (h *Handler) UnlinkProvider(ctx context.Context, in *connect.Request[v1.Unl
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "UnlinkProvider")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	pName := providerName(in.Msg.Provider)

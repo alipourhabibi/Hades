@@ -9,6 +9,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
+	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -144,7 +145,7 @@ func (m *ModuleStorage) GetModulesByRefs(ctx context.Context, refs ...*registryv
 		}
 		mod, err := scanModuleRow(row)
 		if err != nil {
-			return nil, err
+			return nil, connErr.FromPgx(err)
 		}
 		modules = append(modules, mod)
 	}

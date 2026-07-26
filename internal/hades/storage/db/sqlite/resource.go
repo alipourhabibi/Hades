@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
+	"connectrpc.com/connect"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 )
@@ -33,7 +33,7 @@ func (r *SQLiteResourceStorage) ResolveType(ctx context.Context, id string) (res
 		"SELECT resource_type FROM resources WHERE REPLACE(id,'-','') = REPLACE(?1,'-','')", id,
 	).Scan(&rt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", pkgerr.New("resource not found: "+id, pkgerr.NotFound)
+		return "", connect.NewError(connect.CodeNotFound, errors.New("resource not found"))
 	}
 	if err != nil {
 		return "", err

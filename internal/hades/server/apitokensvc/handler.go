@@ -45,7 +45,7 @@ func (h *Handler) CreateAPIToken(ctx context.Context, in *connect.Request[v1.Cre
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "CreateAPIToken")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	raw, _, err := utilscrypto.GenerateToken()
@@ -68,23 +68,23 @@ func (h *Handler) CreateAPIToken(ctx context.Context, in *connect.Request[v1.Cre
 		expiresAt = &t
 	}
 
-	id, err := h.apiTokenDB.Create(ctx, user.Id, in.Msg.Name, prefix, tokenHash, in.Msg.Scopes, expiresAt)
+	row, err := h.apiTokenDB.Create(ctx, user.Id, in.Msg.Name, prefix, tokenHash, in.Msg.Scopes, expiresAt)
 	if err != nil {
 		h.logger.Error("failed to create API token", "error", err, "procedure", "CreateAPIToken", "user_id", user.Id)
 		return nil, connErr.FromPgx(err)
 	}
 
 	if h.auditLogDB != nil {
-		_ = h.auditLogDB.Create(ctx, &user.Id, "api_token_created", "", "", map[string]any{"token_id": id.String()})
+		_ = h.auditLogDB.Create(ctx, &user.Id, "api_token_created", "", "", map[string]any{"token_id": row.ID.String()})
 	}
 
-	h.logger.Info("API token created", "procedure", "CreateAPIToken", "user_id", user.Id, "token_id", id.String())
+	h.logger.Info("API token created", "procedure", "CreateAPIToken", "user_id", user.Id, "token_id", row.ID.String())
 	return &connect.Response[v1.CreateAPITokenResponse]{
 		Msg: &v1.CreateAPITokenResponse{
-			Id:        id.String(),
+			Id:        row.ID.String(),
 			Token:     fullToken,
 			Prefix:    prefix,
-			CreatedAt: timestamppb.Now(),
+			CreatedAt: timestamppb.New(row.CreatedAt),
 		},
 	}, nil
 }
@@ -93,7 +93,7 @@ func (h *Handler) ListAPITokens(ctx context.Context, in *connect.Request[v1.List
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "ListAPITokens")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	rows, err := h.apiTokenDB.ListByUserID(ctx, user.Id)
@@ -128,7 +128,7 @@ func (h *Handler) RevokeAPIToken(ctx context.Context, in *connect.Request[v1.Rev
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "RevokeAPIToken")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	id, err := uuid.Parse(in.Msg.Id)

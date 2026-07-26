@@ -33,7 +33,7 @@ func FromPgx(err error) error {
 		return New("already exists", AlreadyExists)
 
 	default:
-		return New("unknown error: "+err.Error(), Unknown)
+		return New("internal error", Unknown)
 	}
 }
 

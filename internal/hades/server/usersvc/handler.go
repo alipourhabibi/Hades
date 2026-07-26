@@ -41,7 +41,6 @@ func NewHandler(deps *server.Dependencies) *Handler {
 // GetUser returns an enriched profile for the user with the given username.
 // Returns NOT_FOUND if the username belongs to an organization (use GetOrg)
 // or if it does not exist at all.
-// TODO should not return the org data and say also this is org? or return error it is org? or some similar thing instead of not found
 func (h *Handler) GetUser(ctx context.Context, in *connect.Request[registrypbv1.GetUserRequest]) (*connect.Response[registrypbv1.GetUserResponse], error) {
 	user, err := h.userDB.GetByUsername(ctx, in.Msg.Username)
 	if err != nil {

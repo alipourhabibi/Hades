@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
+	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 )
@@ -34,7 +34,7 @@ func (r *ResourceStorage) ResolveType(ctx context.Context, id string) (resource.
 		"SELECT resource_type FROM resources WHERE id = $1", id,
 	).Scan(&rt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", pkgerr.New("resource not found: "+id, pkgerr.NotFound)
+		return "", connect.NewError(connect.CodeNotFound, errors.New("resource not found"))
 	}
 	if err != nil {
 		return "", err

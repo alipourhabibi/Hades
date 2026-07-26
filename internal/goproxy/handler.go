@@ -21,6 +21,8 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
+
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	hserver "github.com/alipourhabibi/Hades/internal/hades/server"
 	commitdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
@@ -28,7 +30,6 @@ import (
 	sdkjobdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/sdkjob"
 	sdkstorage "github.com/alipourhabibi/Hades/internal/sdk/storage"
 	"github.com/alipourhabibi/Hades/utils/log"
-	"github.com/jackc/pgx/v5"
 )
 
 // Handler implements the GOPROXY protocol for generated Go SDKs.
@@ -44,7 +45,8 @@ type Handler struct {
 // NewHandler creates a Handler from server Dependencies.
 // registryHostFallback is used when the DOMAIN environment variable is not set.
 func NewHandler(deps *hserver.Dependencies, registryHostFallback string) *Handler {
-	// TODO add to config
+	// DOMAIN env var overrides the config-supplied fallback so the same binary
+	// works in all environments without recompilation.
 	host := strings.TrimRight(os.Getenv("DOMAIN"), "/")
 	if host == "" {
 		host = strings.TrimRight(registryHostFallback, "/")
@@ -80,7 +82,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var modulePath, query string
 	if idx := strings.Index(stripped, "/@v/"); idx != -1 {
-		// TODO is it memory safe; i mean the index
 		modulePath = stripped[:idx]
 		query = stripped[idx+4:] // "list", "v0.0.0-ts-hash.zip", …
 	} else if strings.HasSuffix(stripped, "/@latest") {
@@ -161,7 +162,8 @@ func (h *Handler) resolveCommit(r *http.Request, ver string) (*registryv1.Commit
 	}
 	commit, err := h.commitDB.GetByHashPrefix(r.Context(), hashPfx)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		var ce *connect.Error
+		if errors.As(err, &ce) && ce.Code() == connect.CodeNotFound {
 			return nil, http.StatusNotFound
 		}
 		h.logger.Error("goproxy: GetByHashPrefix", "err", err)
@@ -282,8 +284,9 @@ func (h *Handler) handleMod(w http.ResponseWriter, r *http.Request, modulePath, 
 }
 
 // handleZip serves /@v/{version}.zip - the module zip consumed by `go get`.
-// Files are streamed from MinIO and written into the zip on the fly.
-// TODO is it good for memory? I mean the stream from minio or gitaly to user without extra memory creation and etc...
+// Files are loaded from MinIO and written into the zip on the fly.
+// Large modules hold the full file set in memory; a streaming approach would
+// require the backend to expose a per-file reader instead of []byte slices.
 func (h *Handler) handleZip(w http.ResponseWriter, r *http.Request, modulePath, ver string) {
 	ctx := r.Context()
 

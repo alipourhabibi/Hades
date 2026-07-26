@@ -44,7 +44,7 @@ func (h *Handler) ListNotifications(ctx context.Context, in *connect.Request[reg
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "ListNotifications")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	notifications, err := h.notificationStorage.ListForUser(ctx, user.Id)
@@ -66,7 +66,7 @@ func (h *Handler) MarkNotificationRead(ctx context.Context, in *connect.Request[
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "MarkNotificationRead")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	if err := h.notificationStorage.MarkRead(ctx, in.Msg.Id, user.Id); err != nil {

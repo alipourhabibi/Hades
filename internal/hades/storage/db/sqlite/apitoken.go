@@ -28,18 +28,13 @@ func (s *SQLiteAPITokenStorage) q(ctx context.Context) txkeys.SQLQuerier {
 	return s.db
 }
 
-func (s *SQLiteAPITokenStorage) Create(ctx context.Context, userID, name, prefix, tokenHash string, scopes []string, expiresAt *time.Time) (uuid.UUID, error) {
+func (s *SQLiteAPITokenStorage) Create(ctx context.Context, userID, name, prefix, tokenHash string, scopes []string, expiresAt *time.Time) (*apitoken.Row, error) {
 	scopeStr := strings.Join(scopes, ",")
-	var id string
-	err := s.q(ctx).QueryRowContext(ctx,
+	return scanSQLiteAPITokenRow(s.q(ctx).QueryRowContext(ctx,
 		`INSERT INTO api_tokens (user_id, name, prefix, token_hash, scopes, expires_at)
-		 VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+		 VALUES (?, ?, ?, ?, ?, ?) RETURNING `+sqliteAPITokenCols,
 		userID, name, prefix, tokenHash, scopeStr, expiresAt,
-	).Scan(&id)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	return uuid.Parse(id)
+	))
 }
 
 func scanSQLiteAPITokenRow(row *sql.Row) (*apitoken.Row, error) {

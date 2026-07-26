@@ -115,20 +115,11 @@ WHERE REPLACE(c.id, '-', '') = REPLACE(?, '-', '')`, id).Scan(
 	return cmt, nil
 }
 
-func (c *SQLiteCommitStorage) GetCommitByQuery(ctx context.Context, queryMap map[string]any) (*registryv1.Commit, error) {
-	baseQuery := `SELECT id, commit_hash, create_time, update_time, owner_id, module_id, digest_type, digest_value, created_by_user_id, source_control_url FROM commits`
-	var conditions []string
-	var values []interface{}
-	for key, value := range queryMap {
-		conditions = append(conditions, key+" = ?")
-		values = append(values, value)
-	}
-	if len(conditions) > 0 {
-		baseQuery += " WHERE " + strings.Join(conditions, " AND ")
-	}
+func (c *SQLiteCommitStorage) GetCommitByDigest(ctx context.Context, moduleID, digestValue string) (*registryv1.Commit, error) {
+	q := `SELECT id, commit_hash, create_time, update_time, owner_id, module_id, digest_type, digest_value, created_by_user_id, source_control_url FROM commits WHERE module_id = ? AND digest_value = ? LIMIT 1`
 	cmt := &registryv1.Commit{Digest: &registryv1.Digest{}}
 	var createTime, updateTime sqltypes.Time
-	err := c.q(ctx).QueryRowContext(ctx, baseQuery, values...).Scan(
+	err := c.q(ctx).QueryRowContext(ctx, q, moduleID, digestValue).Scan(
 		&cmt.Id, &cmt.CommitHash, &createTime, &updateTime,
 		&cmt.OwnerId, &cmt.ModuleId,
 		&cmt.Digest.Type, &cmt.Digest.Value,

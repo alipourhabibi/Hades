@@ -51,9 +51,9 @@ func NewHandler(deps *server.Dependencies) *Handler {
 }
 
 // GetCommitDiff returns the per-file diffs for the commit identified by
-// CommitHash.  Returns NOT_FOUND if the commit or its module do not exist.
-// Returns PERMISSION_DENIED (via CheckReadAccess) if the module is private and
-// the caller is not authorised to read it.
+// CommitHash.  Returns NOT_FOUND if the commit or its module do not exist,
+// or if the module is private and the caller is not authorised to read it
+// (NOT_FOUND rather than PERMISSION_DENIED to avoid leaking existence).
 func (h *Handler) GetCommitDiff(ctx context.Context, in *connect.Request[registrypbv1.GetCommitDiffRequest]) (*connect.Response[registrypbv1.GetCommitDiffResponse], error) {
 	user, _ := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
 

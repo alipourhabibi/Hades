@@ -135,12 +135,12 @@ func (h *Handler) PollDeviceToken(ctx context.Context, in *connect.Request[v1.Po
 	}
 	prefix := fmt.Sprintf("hades1_%s", raw[:8])
 	fullToken := prefix + "_" + raw
-	tokenID, err := h.apiTokenDB.Create(ctx, *grant.UserID, "device-flow", prefix, hash, nil, nil)
+	tokenRow, err := h.apiTokenDB.Create(ctx, *grant.UserID, "device-flow", prefix, hash, nil, nil)
 	if err != nil {
 		h.logger.Error("failed to create API token for device flow", "error", err, "procedure", "PollDeviceToken")
 		return nil, connErr.FromPgx(err)
 	}
-	if err := h.deviceGrantDB.Approve(ctx, grant.ID, *grant.UserID, &tokenID); err != nil {
+	if err := h.deviceGrantDB.Approve(ctx, grant.ID, *grant.UserID, &tokenRow.ID); err != nil {
 		h.logger.Error("failed to approve device grant", "error", err, "procedure", "PollDeviceToken")
 		return nil, connErr.FromPgx(err)
 	}
@@ -153,7 +153,7 @@ func (h *Handler) ApproveDeviceGrant(ctx context.Context, in *connect.Request[v1
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "ApproveDeviceGrant")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	grant, err := h.deviceGrantDB.GetByUserCode(ctx, in.Msg.UserCode)

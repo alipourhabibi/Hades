@@ -9,7 +9,6 @@ import (
 	"connectrpc.com/connect"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	utilscrypto "github.com/alipourhabibi/Hades/utils/crypto"
-	utilserr "github.com/alipourhabibi/Hades/utils/errors"
 )
 
 // noAuthProcedures lists Connect-RPC procedures that are always reachable
@@ -186,8 +185,8 @@ func (s *Server) NewAuthorizationInterceptor() connect.UnaryInterceptorFunc {
 			s.logger.Debug("auth interceptor: all token lookups failed, trying legacy session ID", "procedure", procedure)
 			user, err := s.UserFromSessionID(ctx, rawToken)
 			if err != nil {
-				s.logger.Debug("auth interceptor: legacy session lookup failed", "procedure", procedure, "error", err)
-				return nil, utilserr.ToConnectError(err)
+				s.logger.Debug("auth interceptor: legacy session lookup failed, token invalid", "procedure", procedure, "error", err)
+				return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token"))
 			}
 			ctx = context.WithValue(ctx, constants.ContextKeyUser, user)
 			ctx = context.WithValue(ctx, constants.ContextKeyAuthorization, rawToken)

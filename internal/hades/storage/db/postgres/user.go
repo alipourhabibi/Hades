@@ -6,7 +6,6 @@ import (
 	"time"
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
-	pkgerrors "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -264,7 +263,7 @@ WHERE u.id = (
 	usr.CreateTime = timestamppb.New(createTime)
 	usr.UpdateTime = timestamppb.New(updateTime)
 	if err != nil {
-		return nil, pkgerrors.FromPgx(err)
+		return nil, err
 	}
 	return usr, nil
 }

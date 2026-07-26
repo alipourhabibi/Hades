@@ -7,8 +7,8 @@ import (
 	"errors"
 	"time"
 
+	"connectrpc.com/connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
-	pkgerrors "github.com/alipourhabibi/Hades/internal/errors"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
@@ -42,7 +42,7 @@ func scanSQLiteUser(row *sql.Row) (*registryv1.User, error) {
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, pkgerrors.New("not found", pkgerrors.NotFound)
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("not found"))
 		}
 		return nil, err
 	}

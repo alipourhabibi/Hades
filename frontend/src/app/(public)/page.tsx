@@ -26,11 +26,11 @@ interface Module {
 }
 
 function isPublic(v: string | number): boolean {
-  return v === 'E_VISIBILITY_PUBLIC' || v === 1;
+  return v === 'MODULE_VISIBILITY_PUBLIC' || v === 1;
 }
 
 function isPrivate(v: string | number): boolean {
-  return v === 'E_VISIBILITY_PRIVATE' || v === 2;
+  return v === 'MODULE_VISIBILITY_PRIVATE' || v === 2;
 }
 
 type Filter = 'all' | 'public' | 'private';

@@ -60,7 +60,7 @@ func (h *Handler) BeginEnrollTOTP(ctx context.Context, in *connect.Request[v1.Be
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "BeginEnrollTOTP")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	issuer := h.totpCfg.Issuer
@@ -117,7 +117,7 @@ func (h *Handler) ConfirmEnrollTOTP(ctx context.Context, in *connect.Request[v1.
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "ConfirmEnrollTOTP")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	row, err := h.totpSecretDB.GetByUserID(ctx, user.Id)
@@ -152,7 +152,7 @@ func (h *Handler) VerifyTOTP(ctx context.Context, in *connect.Request[v1.VerifyT
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "VerifyTOTP")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	row, err := h.totpSecretDB.GetByUserID(ctx, user.Id)
@@ -217,7 +217,7 @@ func (h *Handler) DisableTOTP(ctx context.Context, in *connect.Request[v1.Disabl
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "DisableTOTP")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	af, err := h.userStorage.GetAuthFieldsByUsername(ctx, user.Username)
@@ -247,7 +247,7 @@ func (h *Handler) ListBackupCodes(ctx context.Context, in *connect.Request[v1.Li
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "ListBackupCodes")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	rows, err := h.backupCodeDB.ListByUserID(ctx, user.Id)
@@ -273,7 +273,7 @@ func (h *Handler) RegenerateBackupCodes(ctx context.Context, in *connect.Request
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "RegenerateBackupCodes")
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	af, err := h.userStorage.GetAuthFieldsByUsername(ctx, user.Username)

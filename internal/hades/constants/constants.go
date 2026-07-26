@@ -10,18 +10,6 @@ const (
 	ContextKeyAuthorization contextKey = "Authorization"
 )
 
-type Subject string
-
-const (
-	OWNER Subject = "owner"
-)
-
-type Object string
-
-const (
-	REPOSITORY Object = "repository"
-)
-
 type Action string
 
 const (

@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -167,9 +166,6 @@ func (s *SDKJobStorage) GetByCommitAndLang(ctx context.Context, commitID, langua
 		return nil, err
 	}
 	if len(jobs) == 0 {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
-		}
 		return nil, nil
 	}
 	return jobs[0], nil
