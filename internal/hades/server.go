@@ -48,7 +48,7 @@ import (
 // SchemaRegistryServer is the top-level server. Constructed by NewServer; started by Run.
 type SchemaRegistryServer struct {
 	logger     *log.LoggerWrapper
-	db         *db.DBs
+	db         db.Store
 	gitStorage git.Storage
 	config     *config.Config
 	serverSet  *SchemaRegistryServerSet
@@ -118,15 +118,15 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 		ss.listenPort = c.Server.ListenPort
 	}
 
-	opaEngine, err := authorizationengine.New(ctx, ss.db.OPABindingStorage)
+	opaEngine, err := authorizationengine.New(ctx, ss.db.OPABinding())
 	if err != nil {
 		return nil, fmt.Errorf("server: opa engine: %w", err)
 	}
 
-	authorizationServer := authorization.NewServer(ss.logger, ss.db.UserStorage, ss.db.SessionStorage, opaEngine)
+	authorizationServer := authorization.NewServer(ss.logger, ss.db.User(), ss.db.Session(), opaEngine)
 	authorizationServer.
-		WithAPITokenStorage(ss.db.APITokenStorage).
-		WithTOTPSecretStorage(ss.db.TOTPSecretStorage)
+		WithAPITokenStorage(ss.db.APIToken()).
+		WithTOTPSecretStorage(ss.db.TOTPSecret())
 
 	sdkBackend, err := storagefactory.New(*c, ss.gitStorage)
 	if err != nil {
@@ -142,30 +142,30 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 		Logger:              ss.logger,
 		OPAEngine:           opaEngine,
 		Authorization:       authorizationServer,
-		ModuleDB:            ss.db.ModuleStorage,
-		CommitDB:            ss.db.CommitStorage,
-		ResourceDB:          ss.db.ResourceStorage,
-		SDKJobDB:            ss.db.SDKJobStorage,
+		ModuleDB:            ss.db.Module(),
+		CommitDB:            ss.db.Commit(),
+		ResourceDB:          ss.db.Resource(),
+		SDKJobDB:            ss.db.SDKJob(),
 		SDKStorageBackend:   sdkBackend,
-		OrgDB:               ss.db.OrgStorage,
-		CIRunDB:             ss.db.CIRunStorage,
-		NotificationDB:      ss.db.NotificationStorage,
+		OrgDB:               ss.db.Org(),
+		CIRunDB:             ss.db.CIRun(),
+		NotificationDB:      ss.db.Notification(),
 		GitStorage:          ss.gitStorage,
-		GitalyOpLog:         ss.db.GitalyOpLogStorage,
-		UserDB:              ss.db.UserStorage,
-		SessionDB:           ss.db.SessionStorage,
-		UoW:                 ss.db.UOW,
+		GitalyOpLog:         ss.db.GitalyOpLog(),
+		UserDB:              ss.db.User(),
+		SessionDB:           ss.db.Session(),
+		UoW:                 ss.db,
 		SDKConfig:           c.SDK,
 		ProtoLinter:         lint.New(c.SDK.BufBin),
 		BreakingChk:         breaking.New(c.SDK.BufBin),
-		EmailVerificationDB: ss.db.EmailVerificationStorage,
-		PasswordResetDB:     ss.db.PasswordResetStorage,
-		OAuthIdentityDB:     ss.db.OAuthIdentityStorage,
-		APITokenDB:          ss.db.APITokenStorage,
-		DeviceGrantDB:       ss.db.DeviceGrantStorage,
-		TOTPSecretDB:        ss.db.TOTPSecretStorage,
-		BackupCodeDB:        ss.db.BackupCodeStorage,
-		AuditLogDB:          ss.db.AuditLogStorage,
+		EmailVerificationDB: ss.db.EmailVerification(),
+		PasswordResetDB:     ss.db.PasswordReset(),
+		OAuthIdentityDB:     ss.db.OAuthIdentity(),
+		APITokenDB:          ss.db.APIToken(),
+		DeviceGrantDB:       ss.db.DeviceGrant(),
+		TOTPSecretDB:        ss.db.TOTPSecret(),
+		BackupCodeDB:        ss.db.BackupCode(),
+		AuditLogDB:          ss.db.AuditLog(),
 		Cache:               cacheBackend,
 		EmailSender:         emailutils.New(c.Email, ss.logger),
 		AuthConfig:          c.Auth,
