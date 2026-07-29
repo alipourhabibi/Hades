@@ -1,15 +1,18 @@
-// Commit history API for the Hades schema registry.
+// Commit, diff, and tree API for the Hades schema registry.
 //
 // A commit represents a single push of .proto files to a module. Each commit
 // stores a content digest (B5 format) so clients can verify integrity after
 // download. Commits are immutable once created.
+//
+// This file also covers file-level diffs and repository tree browsing, which
+// are logically part of the commit history domain.
 
 syntax = "proto3";
 
 package hades.api.registry.v1;
 
+import "api/identity/v1/user.proto";
 import "api/registry/v1/module.proto";
-import "api/registry/v1/user.proto";
 import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -43,7 +46,7 @@ message Commit {
   // UUID of the user or organization that owns the module.
   string owner_id = 5;
   // Full owner record, populated in read responses.
-  hades.api.registry.v1.User owner = 6;
+  hades.api.identity.v1.User owner = 6;
   // UUID of the module this commit belongs to.
   string module_id = 7;
   // Full module record, populated in read responses.
@@ -82,7 +85,104 @@ message GetCommitResponse {
   Commit commit = 1;
 }
 
-// CommitService exposes commit history for schema modules.
+// FileDiff represents the diff for a single file between a commit and its parent.
+message FileDiff {
+  // Path of the file in the parent commit. Empty for new files.
+  string from_path = 1;
+  // Path of the file in this commit. Empty for deleted files.
+  string to_path = 2;
+  // True when this file was added in this commit.
+  bool is_new_file = 3;
+  // True when this file was removed in this commit.
+  bool is_deleted_file = 4;
+  // True when the file was moved or renamed.
+  bool is_renamed_file = 5;
+  // Number of lines added.
+  int32 additions = 6;
+  // Number of lines removed.
+  int32 deletions = 7;
+  // Unified diff text. Empty for binary files or files exceeding the size limit.
+  string patch = 8;
+  // True when the file is binary (no text diff available).
+  bool binary = 9;
+  // True when the file exceeds the diff size limit and the patch was omitted.
+  bool too_large = 10;
+}
+
+// GetCommitDiffRequest is the input for CommitService.GetCommitDiff.
+message GetCommitDiffRequest {
+  // Git commit hash to diff against its parent.
+  string commit_hash = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetCommitDiffResponse carries the file-level diff for the requested commit.
+message GetCommitDiffResponse {
+  // Per-file diff entries.
+  repeated FileDiff diffs = 1;
+  // Total lines added across all files.
+  int32 total_additions = 2;
+  // Total lines removed across all files.
+  int32 total_deletions = 3;
+}
+
+// FileEntryType distinguishes files from directories in a tree listing.
+enum FileEntryType {
+  FILE_ENTRY_TYPE_UNSPECIFIED = 0;
+  // A regular file (blob).
+  FILE_ENTRY_TYPE_FILE = 1;
+  // A directory (tree).
+  FILE_ENTRY_TYPE_DIR = 2;
+}
+
+// FileEntry is one item returned by ListModuleFiles.
+message FileEntry {
+  // Base name of the entry (no leading path component).
+  string name = 1;
+  // Full path from the repository root (e.g. "proto/foo/bar.proto").
+  string path = 2;
+  // Whether this entry is a file or directory.
+  FileEntryType type = 3;
+  // Git object ID of the blob or sub-tree.
+  string oid = 4;
+  // Raw git mode bits (e.g. 0100644 for regular files, 0040000 for trees).
+  int32 mode = 5;
+}
+
+// ListModuleFilesRequest requests the depth-1 contents of a path inside a
+// module repository.
+message ListModuleFilesRequest {
+  // Username of the module owner.
+  string owner = 1 [(buf.validate.field).string.min_len = 1];
+  // Module name (without the owner prefix).
+  string module = 2 [(buf.validate.field).string.min_len = 1];
+  // Directory to list. Empty string or "." means the repository root.
+  string path = 3;
+}
+
+// ListModuleFilesResponse carries the entries at the requested path.
+message ListModuleFilesResponse {
+  repeated FileEntry entries = 1;
+}
+
+// GetFileContentRequest fetches the raw content of a single file.
+message GetFileContentRequest {
+  // Username of the module owner.
+  string owner = 1 [(buf.validate.field).string.min_len = 1];
+  // Module name (without the owner prefix).
+  string module = 2 [(buf.validate.field).string.min_len = 1];
+  // Full file path from the repository root.
+  string path = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetFileContentResponse carries the raw content of the requested file.
+message GetFileContentResponse {
+  // Raw file bytes.
+  bytes content = 1;
+  // Total size of the file in bytes.
+  int64 size = 2;
+}
+
+// CommitService exposes commit history, file diffs, and tree browsing for schema modules.
 //
 // Commits are immutable once created. The digest field allows clients to
 // verify content integrity independent of the transport layer.
@@ -95,4 +195,18 @@ service CommitService {
   // Returns NOT_FOUND if the commit does not exist or the caller cannot read
   // the module it belongs to.
   rpc GetCommit(GetCommitRequest) returns (GetCommitResponse);
+
+  // GetCommitDiff returns the file-level diff for a commit vs its parent.
+  // The initial commit is diffed against an empty tree so all files appear
+  // as additions. Returns NOT_FOUND if the commit hash does not exist.
+  rpc GetCommitDiff(GetCommitDiffRequest) returns (GetCommitDiffResponse);
+
+  // ListModuleFiles returns the depth-1 contents of a directory inside the
+  // latest commit of a module repository.
+  // Returns NOT_FOUND if the module or path does not exist.
+  rpc ListModuleFiles(ListModuleFilesRequest) returns (ListModuleFilesResponse);
+
+  // GetFileContent returns the raw content of a single file by its path.
+  // Returns NOT_FOUND if the module or file path does not exist.
+  rpc GetFileContent(GetFileContentRequest) returns (GetFileContentResponse);
 }

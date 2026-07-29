@@ -31,7 +31,7 @@ export default function PageLogin() {
     if (!username || !password) { setError('Please fill in all fields.'); return; }
     setError(''); setLoading(true);
     try {
-      const data = await rpcFetch<{ token: string }>('/hades.api.authentication.v1.AuthenticationService/Login', { username, password });
+      const data = await rpcFetch<{ token: string }>('/hades.api.auth.v1.AuthenticationService/Login', { username, password });
       if (!data.token) throw new Error('No token returned');
       setAuth(data.token, username);
       router.push('/');

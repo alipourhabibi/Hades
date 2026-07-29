@@ -126,7 +126,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   };
 
   const doLogout = () => {
-    rpcFetch('/hades.api.authentication.v1.AuthenticationService/Logout', {}).catch(() => {});
+    rpcFetch('/hades.api.auth.v1.AuthenticationService/Logout', {}).catch(() => {});
     clearAuth();
     setIsAuthenticated(false);
     router.push('/login');

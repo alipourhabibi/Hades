@@ -11,29 +11,20 @@ import (
 	authorizationengine "github.com/alipourhabibi/Hades/internal/hades/authorization"
 	"github.com/alipourhabibi/Hades/internal/hades/cache"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
-	"github.com/alipourhabibi/Hades/internal/hades/server/apitokensvc"
-	"github.com/alipourhabibi/Hades/internal/hades/server/auditsvc"
-	"github.com/alipourhabibi/Hades/internal/hades/server/authentication"
+	authsvc "github.com/alipourhabibi/Hades/internal/hades/server/auth"
 	"github.com/alipourhabibi/Hades/internal/hades/server/authorization"
-	bufcommits "github.com/alipourhabibi/Hades/internal/hades/server/bufcommits"
-	"github.com/alipourhabibi/Hades/internal/hades/server/bufdownload"
-	"github.com/alipourhabibi/Hades/internal/hades/server/bufgraph"
-	"github.com/alipourhabibi/Hades/internal/hades/server/bufauthn"
-	bufmodules "github.com/alipourhabibi/Hades/internal/hades/server/bufmodules"
-	"github.com/alipourhabibi/Hades/internal/hades/server/bufupload"
-	"github.com/alipourhabibi/Hades/internal/hades/server/cisvc"
-	"github.com/alipourhabibi/Hades/internal/hades/server/commitsvc"
-	"github.com/alipourhabibi/Hades/internal/hades/server/devicesvc"
-	"github.com/alipourhabibi/Hades/internal/hades/server/diffsvc"
+	"github.com/alipourhabibi/Hades/internal/hades/server/buf/authn"
+	bufcommits "github.com/alipourhabibi/Hades/internal/hades/server/buf/commits"
+	"github.com/alipourhabibi/Hades/internal/hades/server/buf/download"
+	"github.com/alipourhabibi/Hades/internal/hades/server/buf/graph"
+	bufmodules "github.com/alipourhabibi/Hades/internal/hades/server/buf/modules"
+	"github.com/alipourhabibi/Hades/internal/hades/server/buf/upload"
+	commitsvc "github.com/alipourhabibi/Hades/internal/hades/server/commit"
+	contentsvc "github.com/alipourhabibi/Hades/internal/hades/server/content"
+	identitysvc "github.com/alipourhabibi/Hades/internal/hades/server/identity"
+	metasvc "github.com/alipourhabibi/Hades/internal/hades/server/meta"
 	"github.com/alipourhabibi/Hades/internal/hades/server/module"
-	"github.com/alipourhabibi/Hades/internal/hades/server/notificationsvc"
-	"github.com/alipourhabibi/Hades/internal/hades/server/oauthsvc"
-	"github.com/alipourhabibi/Hades/internal/hades/server/orgsvc"
-	"github.com/alipourhabibi/Hades/internal/hades/server/sdksvc"
-	"github.com/alipourhabibi/Hades/internal/hades/server/sessionsvc"
-	"github.com/alipourhabibi/Hades/internal/hades/server/totpsvc"
-	"github.com/alipourhabibi/Hades/internal/hades/server/treesvc"
-	"github.com/alipourhabibi/Hades/internal/hades/server/usersvc"
+	notificationsvc "github.com/alipourhabibi/Hades/internal/hades/server/notification"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/git"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/git/gitfactory"
@@ -48,7 +39,7 @@ import (
 // SchemaRegistryServer is the top-level server. Constructed by NewServer; started by Run.
 type SchemaRegistryServer struct {
 	logger     *log.LoggerWrapper
-	db         *db.DBs
+	db         db.Store
 	gitStorage git.Storage
 	config     *config.Config
 	serverSet  *SchemaRegistryServerSet
@@ -59,36 +50,25 @@ type SchemaRegistryServer struct {
 
 // SchemaRegistryServerSet holds all Connect-RPC service handlers.
 type SchemaRegistryServerSet struct {
-	AuthenticationServer *authentication.Server
-	AuthorizationServer  *authorization.Server
-	ModuleServer         *module.Server
-	BufModuleServer      *bufmodules.Server
-	BufCommitServer      *bufcommits.Server
-	BufUploadServer      *bufupload.Server
-	BufGraphServer       *bufgraph.Server
+	AuthServer          *authsvc.Server
+	AuthorizationServer *authorization.Server
+	ModuleServer        *module.Server
+	CommitHandler       *commitsvc.Handler
+	ContentHandler      *contentsvc.Handler
+	MetaHandler         *metasvc.Handler
+	IdentityHandler     *identitysvc.Handler
+	NotifHandler        *notificationsvc.Handler
+	BufModuleServer     *bufmodules.Server
+	BufCommitServer     *bufcommits.Server
+	BufUploadServer     *bufupload.Server
+	BufGraphServer      *bufgraph.Server
 	BufDownloadServer   *bufdownload.Server
 	BufAlphaAuthnServer *bufauthn.Server
-	SessionHandler      *sessionsvc.Handler
-	OAuthHandler        *oauthsvc.Handler
-	APITokenHandler     *apitokensvc.Handler
-	DeviceHandler       *devicesvc.Handler
-	TOTPHandler         *totpsvc.Handler
-	AuditHandler        *auditsvc.Handler
-	CommitHandler       *commitsvc.Handler
-	DiffHandler         *diffsvc.Handler
-	UserHandler         *usersvc.Handler
-	SDKHandler          *sdksvc.Handler
-	OrgHandler          *orgsvc.Handler
-	CIHandler           *cisvc.Handler
-	NotificationHandler *notificationsvc.Handler
-	TreeHandler         *treesvc.Handler
 	GoProxyHandler      *goproxy.Handler
 	SDKBackend          sdkstorage.Backend
 }
 
 // NewServer constructs a fully wired SchemaRegistryServer from config.
-// All backends, service handlers, and routing are initialised here.
-// Call Run to start listening.
 func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, error) {
 	logger, err := newLogger(c.Logger)
 	if err != nil {
@@ -118,15 +98,15 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 		ss.listenPort = c.Server.ListenPort
 	}
 
-	opaEngine, err := authorizationengine.New(ctx, ss.db.OPABindingStorage)
+	opaEngine, err := authorizationengine.New(ctx, ss.db.OPABinding())
 	if err != nil {
 		return nil, fmt.Errorf("server: opa engine: %w", err)
 	}
 
-	authorizationServer := authorization.NewServer(ss.logger, ss.db.UserStorage, ss.db.SessionStorage, opaEngine)
+	authorizationServer := authorization.NewServer(ss.logger, ss.db.User(), ss.db.Session(), opaEngine)
 	authorizationServer.
-		WithAPITokenStorage(ss.db.APITokenStorage).
-		WithTOTPSecretStorage(ss.db.TOTPSecretStorage)
+		WithAPITokenStorage(ss.db.APIToken()).
+		WithTOTPSecretStorage(ss.db.TOTPSecret())
 
 	sdkBackend, err := storagefactory.New(*c, ss.gitStorage)
 	if err != nil {
@@ -142,30 +122,30 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 		Logger:              ss.logger,
 		OPAEngine:           opaEngine,
 		Authorization:       authorizationServer,
-		ModuleDB:            ss.db.ModuleStorage,
-		CommitDB:            ss.db.CommitStorage,
-		ResourceDB:          ss.db.ResourceStorage,
-		SDKJobDB:            ss.db.SDKJobStorage,
+		ModuleDB:            ss.db.Module(),
+		CommitDB:            ss.db.Commit(),
+		ResourceDB:          ss.db.Resource(),
+		SDKJobDB:            ss.db.SDKJob(),
 		SDKStorageBackend:   sdkBackend,
-		OrgDB:               ss.db.OrgStorage,
-		CIRunDB:             ss.db.CIRunStorage,
-		NotificationDB:      ss.db.NotificationStorage,
+		OrgDB:               ss.db.Org(),
+		CIRunDB:             ss.db.CIRun(),
+		NotificationDB:      ss.db.Notification(),
 		GitStorage:          ss.gitStorage,
-		GitalyOpLog:         ss.db.GitalyOpLogStorage,
-		UserDB:              ss.db.UserStorage,
-		SessionDB:           ss.db.SessionStorage,
-		UoW:                 ss.db.UOW,
+		GitalyOpLog:         ss.db.GitalyOpLog(),
+		UserDB:              ss.db.User(),
+		SessionDB:           ss.db.Session(),
+		UoW:                 ss.db,
 		SDKConfig:           c.SDK,
 		ProtoLinter:         lint.New(c.SDK.BufBin),
 		BreakingChk:         breaking.New(c.SDK.BufBin),
-		EmailVerificationDB: ss.db.EmailVerificationStorage,
-		PasswordResetDB:     ss.db.PasswordResetStorage,
-		OAuthIdentityDB:     ss.db.OAuthIdentityStorage,
-		APITokenDB:          ss.db.APITokenStorage,
-		DeviceGrantDB:       ss.db.DeviceGrantStorage,
-		TOTPSecretDB:        ss.db.TOTPSecretStorage,
-		BackupCodeDB:        ss.db.BackupCodeStorage,
-		AuditLogDB:          ss.db.AuditLogStorage,
+		EmailVerificationDB: ss.db.EmailVerification(),
+		PasswordResetDB:     ss.db.PasswordReset(),
+		OAuthIdentityDB:     ss.db.OAuthIdentity(),
+		APITokenDB:          ss.db.APIToken(),
+		DeviceGrantDB:       ss.db.DeviceGrant(),
+		TOTPSecretDB:        ss.db.TOTPSecret(),
+		BackupCodeDB:        ss.db.BackupCode(),
+		AuditLogDB:          ss.db.AuditLog(),
 		Cache:               cacheBackend,
 		EmailSender:         emailutils.New(c.Email, ss.logger),
 		AuthConfig:          c.Auth,
@@ -176,28 +156,19 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 
 	ss.serverSet = &SchemaRegistryServerSet{
 		AuthorizationServer: authorizationServer,
-		AuthenticationServer: authentication.NewServer(deps),
+		AuthServer:          authsvc.NewServer(deps),
 		ModuleServer:        module.NewServer(deps),
+		CommitHandler:       commitsvc.NewHandler(deps),
+		ContentHandler:      contentsvc.NewHandler(deps),
+		MetaHandler:         metasvc.NewHandler(deps),
+		IdentityHandler:     identitysvc.NewHandler(deps),
+		NotifHandler:        notificationsvc.NewHandler(deps),
 		BufModuleServer:     bufmodules.NewServer(deps),
 		BufCommitServer:     bufcommits.NewServer(deps),
 		BufUploadServer:     bufupload.NewServer(deps),
 		BufGraphServer:      bufgraph.NewServer(deps),
 		BufDownloadServer:   bufdownload.NewServer(deps),
 		BufAlphaAuthnServer: bufauthn.NewServer(deps),
-		SessionHandler:      sessionsvc.NewHandler(deps),
-		OAuthHandler:        oauthsvc.NewHandler(deps),
-		APITokenHandler:     apitokensvc.NewHandler(deps),
-		DeviceHandler:       devicesvc.NewHandler(deps),
-		TOTPHandler:         totpsvc.NewHandler(deps),
-		AuditHandler:        auditsvc.NewHandler(deps),
-		CommitHandler:       commitsvc.NewHandler(deps),
-		DiffHandler:         diffsvc.NewHandler(deps),
-		UserHandler:         usersvc.NewHandler(deps),
-		SDKHandler:          sdksvc.NewHandler(deps),
-		OrgHandler:          orgsvc.NewHandler(deps),
-		CIHandler:           cisvc.NewHandler(deps),
-		NotificationHandler: notificationsvc.NewHandler(deps),
-		TreeHandler:         treesvc.NewHandler(deps),
 		GoProxyHandler:      goproxy.NewHandler(deps, c.Server.RegistryHost),
 		SDKBackend:          sdkBackend,
 	}

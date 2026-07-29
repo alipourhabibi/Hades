@@ -83,7 +83,7 @@ function CommitDetailContent() {
   useEffect(() => {
     if (!hash) return;
     setDiffLoading(true); setDiffError(null);
-    rpcFetch<DiffResult>('/hades.api.registry.v1.DiffService/GetCommitDiff', { commitHash: hash })
+    rpcFetch<DiffResult>('/hades.api.registry.v1.CommitService/GetCommitDiff', { commitHash: hash })
       .then(res => setDiff(res))
       .catch(e => setDiffError(e.message))
       .finally(() => setDiffLoading(false));

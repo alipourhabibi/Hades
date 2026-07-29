@@ -14,7 +14,7 @@ package authorizationv1
 
 import (
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
-	v1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	v1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -116,10 +116,10 @@ var File_api_authorization_v1_authorization_proto protoreflect.FileDescriptor
 
 const file_api_authorization_v1_authorization_proto_rawDesc = "" +
 	"\n" +
-	"(api/authorization/v1/authorization.proto\x12\x1ahades.api.authorization.v1\x1a\x1aapi/registry/v1/user.proto\x1a\x1bbuf/validate/validate.proto\"\x16\n" +
+	"(api/authorization/v1/authorization.proto\x12\x1ahades.api.authorization.v1\x1a\x1aapi/identity/v1/user.proto\x1a\x1bbuf/validate/validate.proto\"\x16\n" +
 	"\x14UserBySessionRequest\"H\n" +
 	"\x15UserBySessionResponse\x12/\n" +
-	"\x04user\x18\x01 \x01(\v2\x1b.hades.api.registry.v1.UserR\x04user2\x85\x01\n" +
+	"\x04user\x18\x01 \x01(\v2\x1b.hades.api.identity.v1.UserR\x04user2\x85\x01\n" +
 	"\rAuthorization\x12t\n" +
 	"\rUserBySession\x120.hades.api.authorization.v1.UserBySessionRequest\x1a1.hades.api.authorization.v1.UserBySessionResponseB\x8c\x02\n" +
 	"\x1ecom.hades.api.authorization.v1B\x12AuthorizationProtoP\x01ZKgithub.com/alipourhabibi/Hades/api/gen/api/authorization/v1;authorizationv1\xa2\x02\x03HAA\xaa\x02\x1aHades.Api.Authorization.V1\xca\x02\x1aHades\\Api\\Authorization\\V1\xe2\x02&Hades\\Api\\Authorization\\V1\\GPBMetadata\xea\x02\x1dHades::Api::Authorization::V1b\x06proto3"
@@ -140,10 +140,10 @@ var file_api_authorization_v1_authorization_proto_msgTypes = make([]protoimpl.Me
 var file_api_authorization_v1_authorization_proto_goTypes = []any{
 	(*UserBySessionRequest)(nil),  // 0: hades.api.authorization.v1.UserBySessionRequest
 	(*UserBySessionResponse)(nil), // 1: hades.api.authorization.v1.UserBySessionResponse
-	(*v1.User)(nil),               // 2: hades.api.registry.v1.User
+	(*v1.User)(nil),               // 2: hades.api.identity.v1.User
 }
 var file_api_authorization_v1_authorization_proto_depIdxs = []int32{
-	2, // 0: hades.api.authorization.v1.UserBySessionResponse.user:type_name -> hades.api.registry.v1.User
+	2, // 0: hades.api.authorization.v1.UserBySessionResponse.user:type_name -> hades.api.identity.v1.User
 	0, // 1: hades.api.authorization.v1.Authorization.UserBySession:input_type -> hades.api.authorization.v1.UserBySessionRequest
 	1, // 2: hades.api.authorization.v1.Authorization.UserBySession:output_type -> hades.api.authorization.v1.UserBySessionResponse
 	2, // [2:3] is the sub-list for method output_type

@@ -26,6 +26,8 @@ func FromPgx(err error) error {
 			return connect.NewError(connect.CodeAlreadyExists, errors.New(pgErr.Detail))
 		case "23503": // foreign_key_violation
 			return connect.NewError(connect.CodeFailedPrecondition, errors.New(pgErr.Detail))
+		case "22P02": // invalid_text_representation (e.g. non-UUID in UUID column)
+			return connect.NewError(connect.CodeNotFound, errors.New("not found"))
 		}
 	}
 	if errors.Is(err, context.Canceled) {

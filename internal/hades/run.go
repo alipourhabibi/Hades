@@ -81,8 +81,8 @@ func newSDKWorker(s *SchemaRegistryServer, backend sdkstorage.Backend) (*worker.
 		generators[g.Plugin] = generate.New(cfg.ProtocBin, g)
 	}
 	return worker.New(
-		s.db.SDKJobStorage,
-		s.db.CommitStorage,
+		s.db.SDKJob(),
+		s.db.Commit(),
 		s.gitStorage,
 		generators,
 		backend,

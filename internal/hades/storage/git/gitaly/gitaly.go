@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/git"
 )
 
@@ -59,7 +60,7 @@ func (g *GitalyStorage) DeleteRepository(ctx context.Context, repoPath string) e
 }
 
 func (g *GitalyStorage) PutFiles(ctx context.Context, repoPath, branch string, files []*git.File, authorName, authorEmail, commitMsg string, existingPaths []string) (string, error) {
-	user := &registryv1.User{
+	user := &identityv1.User{
 		Id:       authorEmail,
 		Username: authorName,
 		Email:    authorEmail,

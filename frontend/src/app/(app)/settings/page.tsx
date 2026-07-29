@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import PageHeader from '@/components/ui/PageHeader';
 import Card from '@/components/ui/Card';
@@ -7,20 +7,29 @@ import Btn from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Toggle from '@/components/ui/Toggle';
 import Divider from '@/components/ui/Divider';
-import { IconUser, IconShield, IconBell, IconAlert } from '@/components/icons';
+import Badge from '@/components/ui/Badge';
+import { IconUser, IconShield, IconBell, IconAlert, IconCreditCard, IconCheck } from '@/components/icons';
 import { useAuthStore } from '@/stores/authStore';
 import { formatError } from '@/lib/connectError';
 import { rpcFetch } from '@/lib/rpc';
+
+const NOTIF_KEY = 'hades:notification-prefs';
 
 const NAV = [
   { id: 'general', label: 'General', icon: <IconUser size={14}/> },
   { id: 'notifications', label: 'Notifications', icon: <IconBell size={14}/> },
   { id: 'security', label: 'Security', icon: <IconShield size={14}/> },
+  { id: 'billing', label: 'Billing', icon: <IconCreditCard size={14}/> },
 ];
 
 export default function PageSettings() {
   const { username } = useAuthStore();
   const [active, setActive] = useState('general');
+  const [profileDesc, setProfileDesc] = useState('');
+  const [profileUrl, setProfileUrl] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState(false);
   const [oldPass, setOldPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
@@ -31,13 +40,37 @@ export default function PageSettings() {
   const [notifBreaking, setNotifBreaking] = useState(true);
   const [notifCommits, setNotifCommits] = useState(true);
   const [notifSDKs, setNotifSDKs] = useState(false);
+  const [notifSaved, setNotifSaved] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(NOTIF_KEY) || '{}');
+      if ('breaking' in saved) setNotifBreaking(saved.breaking);
+      if ('commits' in saved) setNotifCommits(saved.commits);
+      if ('sdks' in saved) setNotifSDKs(saved.sdks);
+    } catch { /* ignore */ }
+  }, []);
+
+  const saveProfile = async () => {
+    setProfileSaving(true); setProfileError(''); setProfileSuccess(false);
+    try {
+      await rpcFetch('/hades.api.identity.v1.UserService/UpdateUser', { description: profileDesc, url: profileUrl });
+      setProfileSuccess(true);
+    } catch (e) { setProfileError(formatError(e)); } finally { setProfileSaving(false); }
+  };
+
+  const saveNotifications = () => {
+    localStorage.setItem(NOTIF_KEY, JSON.stringify({ breaking: notifBreaking, commits: notifCommits, sdks: notifSDKs }));
+    setNotifSaved(true);
+    setTimeout(() => setNotifSaved(false), 2000);
+  };
 
   const changePassword = async () => {
     if (!oldPass || !newPass) { setPassError('Fill in all fields.'); return; }
     if (newPass !== confirmPass) { setPassError('New passwords do not match.'); return; }
     setPassLoading(true); setPassError(''); setPassSuccess(false);
     try {
-      await rpcFetch('/hades.api.authentication.v1.AuthenticationService/ChangePassword', { oldPassword: oldPass, newPassword: newPass, revokeOtherSessions });
+      await rpcFetch('/hades.api.auth.v1.AuthenticationService/ChangePassword', { oldPassword: oldPass, newPassword: newPass, revokeOtherSessions });
       setPassSuccess(true); setOldPass(''); setNewPass(''); setConfirmPass('');
     } catch (e) { setPassError(formatError(e)); } finally { setPassLoading(false); }
   };
@@ -69,9 +102,17 @@ export default function PageSettings() {
                   <Input value={username || ''} onChange={() => {}} disabled style={{ color: 'var(--c-fg-subtle)' }}/>
                   <div style={{ fontSize: 11, color: 'var(--c-fg-subtle)', marginTop: 4 }}>Username cannot be changed.</div>
                 </div>
-                <div style={{ padding: '16px', borderRadius: 8, background: 'var(--c-bg-overlay)', fontSize: 13, color: 'var(--c-fg-muted)' }}>
-                  Profile editing (display name, bio, avatar) is coming soon.
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)', display: 'block', marginBottom: 6 }}>Bio</label>
+                  <Input value={profileDesc} onChange={setProfileDesc} placeholder="Tell others about yourself…"/>
                 </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)', display: 'block', marginBottom: 6 }}>Website</label>
+                  <Input value={profileUrl} onChange={setProfileUrl} placeholder="https://example.com"/>
+                </div>
+                {profileError && <div style={{ padding: '10px 14px', borderRadius: 6, background: 'var(--c-danger-bg)', border: '1px solid var(--c-danger)', color: 'var(--c-danger)', fontSize: 13, display: 'flex', gap: 8 }}><IconAlert size={14}/>{profileError}</div>}
+                {profileSuccess && <div style={{ padding: '10px 14px', borderRadius: 6, background: 'var(--c-success-bg)', border: '1px solid var(--c-success)', color: 'var(--c-success)', fontSize: 13 }}>Profile updated.</div>}
+                <Btn variant="primary" onClick={saveProfile} disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save profile'}</Btn>
               </div>
             </Card>
           )}
@@ -97,7 +138,43 @@ export default function PageSettings() {
                   </React.Fragment>
                 ))}
               </div>
+              <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Btn variant="primary" onClick={saveNotifications}>{notifSaved ? <><IconCheck size={12}/> Saved</> : 'Save preferences'}</Btn>
+                {notifSaved && <span style={{ fontSize: 12, color: 'var(--c-success)' }}>Preferences saved locally.</span>}
+              </div>
             </Card>
+          )}
+
+          {active === 'billing' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <Card style={{ padding: 24 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--c-fg)', marginBottom: 4 }}>Current plan</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                  <span style={{ fontSize: 28, fontWeight: 700, color: 'var(--c-accent)' }}>Free</span>
+                  <Badge variant="green">Active</Badge>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {[
+                    ['Public modules', 'Unlimited'],
+                    ['Private modules', 'Unlimited'],
+                    ['Storage', 'Unlimited'],
+                    ['SDK generation', 'Included'],
+                    ['Team members', 'Unlimited'],
+                  ].map(([feat, val]) => (
+                    <div key={feat} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '8px 0', borderBottom: '1px solid var(--c-border-muted)' }}>
+                      <span style={{ color: 'var(--c-fg-muted)' }}>{feat}</span>
+                      <span style={{ fontWeight: 500, color: 'var(--c-fg)' }}>{val}</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+              <Card style={{ padding: 24, background: 'var(--c-bg-overlay)' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-fg)', marginBottom: 8 }}>Paid plans coming soon</div>
+                <div style={{ fontSize: 13, color: 'var(--c-fg-muted)', lineHeight: 1.6 }}>
+                  Hades is currently free for all users. Paid plans with additional features (priority support, SLA guarantees, advanced analytics) are planned for a future release.
+                </div>
+              </Card>
+            </div>
           )}
 
           {active === 'security' && (

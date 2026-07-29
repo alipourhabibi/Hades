@@ -120,7 +120,7 @@ const ModuleWizard: React.FC<ModuleWizardProps> = ({ onClose, onCreated }) => {
         '/hades.api.registry.v1.ModuleService/CreateModuleByName',
         {
           name,
-          visibility: visibility === 'private' ? 'E_VISIBILITY_PRIVATE' : 'E_VISIBILITY_PUBLIC',
+          visibility: visibility === 'private' ? 'MODULE_VISIBILITY_PRIVATE' : 'MODULE_VISIBILITY_PUBLIC',
           description,
         }
       );

@@ -12,7 +12,9 @@ import (
 type Storage interface {
 	Create(ctx context.Context, id uuid.UUID, commitHash, ownerId, moduleId string, digestType registryv1.DigestType, digestValue, createdByUserId, sourceControlUrl string) error
 	GetCommitById(ctx context.Context, id string) (*registryv1.Commit, error)
-	GetCommitByQuery(ctx context.Context, query map[string]any) (*registryv1.Commit, error)
+	// GetCommitByDigest looks up a commit by digest value + module ID for dedup checks.
+	// Returns (nil, nil) when no matching commit exists.
+	GetCommitByDigest(ctx context.Context, moduleID, digestValue string) (*registryv1.Commit, error)
 	GetCommitByOwnerModule(ctx context.Context, moduleRefs []*registryv1.ModuleRef) ([]*registryv1.Commit, error)
 	ListByModule(ctx context.Context, moduleID string) ([]*registryv1.Commit, error)
 	GetByHash(ctx context.Context, commitHash string) (*registryv1.Commit, error)

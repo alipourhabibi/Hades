@@ -67,7 +67,7 @@ export default function PageSessions() {
 
   const loadSessions = async () => {
     try {
-      const data = await rpcFetch<{ sessions: Session[] }>('/hades.api.authentication.v1.SessionService/ListSessions', {});
+      const data = await rpcFetch<{ sessions: Session[] }>('/hades.api.auth.v1.SessionService/ListSessions', {});
       setSessions(data.sessions || []);
     } catch (e) { setError(formatError(e)); } finally { setLoading(false); }
   };
@@ -76,12 +76,12 @@ export default function PageSessions() {
 
   const revoke = async (id: string) => {
     setRevoking(id);
-    try { await rpcFetch('/hades.api.authentication.v1.SessionService/RevokeSession', { sessionId: id }); setSessions(s => s.filter(x => x.id !== id)); }
+    try { await rpcFetch('/hades.api.auth.v1.SessionService/RevokeSession', { sessionId: id }); setSessions(s => s.filter(x => x.id !== id)); }
     catch (e) { setError(formatError(e)); } finally { setRevoking(null); }
   };
 
   const revokeAll = async () => {
-    try { await rpcFetch('/hades.api.authentication.v1.SessionService/RevokeAllOtherSessions', {}); await loadSessions(); }
+    try { await rpcFetch('/hades.api.auth.v1.SessionService/RevokeAllOtherSessions', {}); await loadSessions(); }
     catch (e) { setError(formatError(e)); }
   };
 

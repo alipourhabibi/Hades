@@ -2,10 +2,11 @@ package module
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	registrypbv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
-	pkgerr "github.com/alipourhabibi/Hades/internal/errors"
+	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/utils/log"
 	"github.com/stretchr/testify/assert"
@@ -40,7 +41,7 @@ func (f *fakeModuleStorage) Create(_ context.Context, _, _ string, _ registrypbv
 
 type fakeAuth struct{ err error }
 
-func (f *fakeAuth) CheckReadAccess(_ context.Context, _ *registrypbv1.User, _ []*registrypbv1.Module) error {
+func (f *fakeAuth) CheckReadAccess(_ context.Context, _ *identityv1.User, _ []*registrypbv1.Module) error {
 	return f.err
 }
 
@@ -56,11 +57,11 @@ func newGetModulesServer(ms moduleStorage, auth authService) *Server {
 	return &Server{moduleDBStorage: ms, authorization: auth, logger: log.DefaultLogger()}
 }
 
-func ctxWithUser(user *registrypbv1.User) context.Context {
+func ctxWithUser(user *identityv1.User) context.Context {
 	return context.WithValue(context.Background(), constants.ContextKeyUser, user)
 }
 
-var testUser = &registrypbv1.User{Id: "uid-1", Username: "alice"}
+var testUser = &identityv1.User{Id: "uid-1", Username: "alice"}
 
 // --- tests ---
 
@@ -72,14 +73,14 @@ func TestGetModules_AnonymousAccess(t *testing.T) {
 }
 
 func TestGetModules_StorageError(t *testing.T) {
-	dbErr := pkgerr.New("not found", pkgerr.NotFound)
+	dbErr := errors.New("not found")
 	s := newGetModulesServer(&fakeModuleStorage{err: dbErr}, &fakeAuth{})
 	_, err := s.GetModules(ctxWithUser(testUser), []*registrypbv1.ModuleRef{{Owner: "alice", Module: "m"}})
 	assert.ErrorIs(t, err, dbErr)
 }
 
 func TestGetModules_AccessDenied(t *testing.T) {
-	authErr := pkgerr.New("denied", pkgerr.PermissionDenied)
+	authErr := errors.New("denied")
 	s := newGetModulesServer(
 		&fakeModuleStorage{modules: []*registrypbv1.Module{{Id: "m1"}}},
 		&fakeAuth{err: authErr},

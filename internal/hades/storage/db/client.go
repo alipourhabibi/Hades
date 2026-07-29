@@ -1,6 +1,5 @@
-// Package db provides the metadata storage layer. Each domain entity
-// has its own storage struct. The factory functions construct the appropriate
-// backend (PostgreSQL or SQLite) based on config.
+// Package db provides the metadata storage layer. Use NewFromConfig to select
+// the backend (PostgreSQL or SQLite) based on config.
 package db
 
 import (
@@ -8,73 +7,132 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
+	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib" // pgx driver for database/sql
-	_ "modernc.org/sqlite"              // SQLite driver for database/sql
+	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "modernc.org/sqlite"
 
 	"github.com/alipourhabibi/Hades/config"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/apitoken"
+	apitokenpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/apitoken/postgres"
+	apitokensq "github.com/alipourhabibi/Hades/internal/hades/storage/db/apitoken/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/auditlog"
+	auditlogpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/auditlog/postgres"
+	auditlogsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/auditlog/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/backupcode"
+	backupcodepg "github.com/alipourhabibi/Hades/internal/hades/storage/db/backupcode/postgres"
+	backupcodesq "github.com/alipourhabibi/Hades/internal/hades/storage/db/backupcode/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/cirun"
+	cirunpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/cirun/postgres"
+	cirunsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/cirun/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
+	commitpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/commit/postgres"
+	commitsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/commit/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/devicegrant"
+	devicegrantpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/devicegrant/postgres"
+	devicegrantsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/devicegrant/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/emailverification"
+	emailverificationpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/emailverification/postgres"
+	emailverificationsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/emailverification/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/gitalyoplog"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
+	modulepg "github.com/alipourhabibi/Hades/internal/hades/storage/db/module/postgres"
+	modulesq "github.com/alipourhabibi/Hades/internal/hades/storage/db/module/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/notification"
+	notificationpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/notification/postgres"
+	notificationsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/notification/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/oauthidentity"
+	oauthidentitypg "github.com/alipourhabibi/Hades/internal/hades/storage/db/oauthidentity/postgres"
+	oauthidentitysq "github.com/alipourhabibi/Hades/internal/hades/storage/db/oauthidentity/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/opabinding"
+	opabindingpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/opabinding/postgres"
+	opabindingsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/opabinding/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/org"
+	orgpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/org/postgres"
+	orgsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/org/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/passwordreset"
-	pg "github.com/alipourhabibi/Hades/internal/hades/storage/db/postgres"
+	passwordresetpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/passwordreset/postgres"
+	passwordresetsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/passwordreset/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
+	resourcepg "github.com/alipourhabibi/Hades/internal/hades/storage/db/resource/postgres"
+	resourcesq "github.com/alipourhabibi/Hades/internal/hades/storage/db/resource/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sdkjob"
+	sdkjobpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/sdkjob/postgres"
+	sdkjobsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/sdkjob/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/session"
-	sq "github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlite"
+	sessionpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/session/postgres"
+	sessionsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/session/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/totpsecret"
+	totpsecretpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/totpsecret/postgres"
+	totpsecretsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/totpsecret/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
+	userpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/user/postgres"
+	usersq "github.com/alipourhabibi/Hades/internal/hades/storage/db/user/sqlite"
 	"github.com/alipourhabibi/Hades/utils/log"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// DBs aggregates all metadata storage backends, each expressed as the
-// domain interface rather than the concrete pgx struct.
-type DBs struct {
-	UserStorage              user.Storage
-	SessionStorage           session.Storage
-	ModuleStorage            module.Storage
-	OPABindingStorage        opabinding.Storage
-	CommitStorage            commit.Storage
-	ResourceStorage          resource.Storage
-	SDKJobStorage            sdkjob.Storage
-	OrgStorage               org.Storage
-	CIRunStorage             cirun.Storage
-	NotificationStorage      notification.Storage
-	GitalyOpLogStorage       *gitalyoplog.GitalyOpLogStorage
-	EmailVerificationStorage emailverification.Storage
-	PasswordResetStorage     passwordreset.Storage
-	OAuthIdentityStorage     oauthidentity.Storage
-	APITokenStorage          apitoken.Storage
-	DeviceGrantStorage       devicegrant.Storage
-	TOTPSecretStorage        totpsecret.Storage
-	BackupCodeStorage        backupcode.Storage
-	AuditLogStorage          auditlog.Storage
-	UOW                      UnitOfWork
+// concreteStore is the private implementation of Store.
+type concreteStore struct {
+	uow               UnitOfWork
+	userStorage       user.Storage
+	sessionStorage    session.Storage
+	moduleStorage     module.Storage
+	commitStorage     commit.Storage
+	opaBindingStorage opabinding.Storage
+	sdkJobStorage     sdkjob.Storage
+	orgStorage        org.Storage
+	ciRunStorage      cirun.Storage
+	notifStorage      notification.Storage
+	emailVerStorage   emailverification.Storage
+	pwdResetStorage   passwordreset.Storage
+	resourceStorage   resource.Storage
+	oauthStorage      oauthidentity.Storage
+	apiTokenStorage   apitoken.Storage
+	deviceStorage     devicegrant.Storage
+	totpStorage       totpsecret.Storage
+	backupStorage     backupcode.Storage
+	auditStorage      auditlog.Storage
+	gitalyOpLog       *gitalyoplog.GitalyOpLogStorage
 }
 
-// NewFromConfig selects the database backend from cfg.Backends.Database and
-// returns the appropriate DBs instance. This is the preferred entry point;
-// it keeps backend-selection logic out of the CLI layer.
-func NewFromConfig(cfg config.Config, logger *log.LoggerWrapper) (*DBs, error) {
+var _ Store = (*concreteStore)(nil)
+
+func (s *concreteStore) Do(ctx context.Context, fn TransactionFN, timeout time.Duration) (interface{}, error) {
+	return s.uow.Do(ctx, fn, timeout)
+}
+
+// Accessor methods.
+func (s *concreteStore) User() user.Storage                           { return s.userStorage }
+func (s *concreteStore) Session() session.Storage                     { return s.sessionStorage }
+func (s *concreteStore) Module() module.Storage                       { return s.moduleStorage }
+func (s *concreteStore) Commit() commit.Storage                       { return s.commitStorage }
+func (s *concreteStore) OPABinding() opabinding.Storage               { return s.opaBindingStorage }
+func (s *concreteStore) SDKJob() sdkjob.Storage                       { return s.sdkJobStorage }
+func (s *concreteStore) Org() org.Storage                             { return s.orgStorage }
+func (s *concreteStore) CIRun() cirun.Storage                         { return s.ciRunStorage }
+func (s *concreteStore) Notification() notification.Storage           { return s.notifStorage }
+func (s *concreteStore) EmailVerification() emailverification.Storage { return s.emailVerStorage }
+func (s *concreteStore) PasswordReset() passwordreset.Storage         { return s.pwdResetStorage }
+func (s *concreteStore) Resource() resource.Storage                   { return s.resourceStorage }
+func (s *concreteStore) OAuthIdentity() oauthidentity.Storage         { return s.oauthStorage }
+func (s *concreteStore) APIToken() apitoken.Storage                   { return s.apiTokenStorage }
+func (s *concreteStore) DeviceGrant() devicegrant.Storage             { return s.deviceStorage }
+func (s *concreteStore) TOTPSecret() totpsecret.Storage               { return s.totpStorage }
+func (s *concreteStore) BackupCode() backupcode.Storage               { return s.backupStorage }
+func (s *concreteStore) AuditLog() auditlog.Storage                   { return s.auditStorage }
+func (s *concreteStore) GitalyOpLog() *gitalyoplog.GitalyOpLogStorage { return s.gitalyOpLog }
+
+// NewFromConfig selects the database backend from cfg.Backends.Database.
+func NewFromConfig(cfg config.Config, logger *log.LoggerWrapper) (Store, error) {
 	if cfg.Backends.Database == config.DatabaseSQLite || cfg.Backends.Database == "" {
 		return NewSQLite(cfg, logger)
 	}
 	return New(cfg.DB, logger)
 }
 
-// New opens a pgx connection pool and initialises all PostgreSQL storage backends.
-func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
+// New opens a pgx connection pool and returns a Store backed by PostgreSQL.
+func New(c config.DB, logger *log.LoggerWrapper) (Store, error) {
 	ctx := context.Background()
 
 	pgxCfg, err := pgxpool.ParseConfig(c.ConnectionString)
@@ -87,45 +145,40 @@ func New(c config.DB, logger *log.LoggerWrapper) (*DBs, error) {
 		return nil, err
 	}
 
-	resStorage := pg.NewResource(pool)
-	return &DBs{
-		UserStorage:              pg.NewUser(pool),
-		SessionStorage:           pg.NewSession(pool),
-		ModuleStorage:            pg.NewModule(pool, resStorage),
-		OPABindingStorage:        pg.NewOPABinding(pool),
-		CommitStorage:            pg.NewCommit(pool, resStorage),
-		ResourceStorage:          resStorage,
-		SDKJobStorage:            pg.NewSDKJob(pool),
-		OrgStorage:               pg.NewOrg(pool),
-		CIRunStorage:             pg.NewCIRun(pool),
-		NotificationStorage:      pg.NewNotification(pool),
-		GitalyOpLogStorage:       gitalyoplog.New(pool),
-		EmailVerificationStorage: pg.NewEmailVerification(pool),
-		PasswordResetStorage:     pg.NewPasswordReset(pool),
-		OAuthIdentityStorage:     pg.NewOAuthIdentity(pool),
-		APITokenStorage:          pg.NewAPIToken(pool),
-		DeviceGrantStorage:       pg.NewDeviceGrant(pool),
-		TOTPSecretStorage:        pg.NewTOTPSecret(pool),
-		BackupCodeStorage:        pg.NewBackupCode(pool),
-		AuditLogStorage:          pg.NewAuditLog(pool),
-		UOW:                      NewUnitOfWork(pool),
+	pgRes := resourcepg.NewResource(pool)
+	return &concreteStore{
+		uow:               NewUnitOfWork(pool),
+		userStorage:       userpg.New(pool),
+		sessionStorage:    sessionpg.New(pool),
+		moduleStorage:     modulepg.New(pool, pgRes),
+		commitStorage:     commitpg.New(pool, pgRes),
+		resourceStorage:   pgRes,
+		opaBindingStorage: opabindingpg.New(pool),
+		sdkJobStorage:     sdkjobpg.New(pool),
+		orgStorage:        orgpg.New(pool),
+		ciRunStorage:      cirunpg.New(pool),
+		notifStorage:      notificationpg.New(pool),
+		emailVerStorage:   emailverificationpg.New(pool),
+		pwdResetStorage:   passwordresetpg.New(pool),
+		oauthStorage:      oauthidentitypg.New(pool),
+		apiTokenStorage:   apitokenpg.New(pool),
+		deviceStorage:     devicegrantpg.New(pool),
+		totpStorage:       totpsecretpg.New(pool),
+		backupStorage:     backupcodepg.New(pool),
+		auditStorage:      auditlogpg.New(pool),
+		gitalyOpLog:       gitalyoplog.New(pool),
 	}, nil
 }
 
 //go:embed sqlite_schema.sql
 var sqliteMigration string
 
-// NewSQLite opens a SQLite database and initialises all SQLite storage backends.
-// The database file is created at cfg.SQLite.Path; use ":memory:" for tests.
-func NewSQLite(cfg config.Config, logger *log.LoggerWrapper) (*DBs, error) {
+// NewSQLite opens a SQLite database and returns a Store backed by SQLite.
+func NewSQLite(cfg config.Config, logger *log.LoggerWrapper) (Store, error) {
 	path := cfg.SQLite.Path
 	if path == "" {
 		path = ":memory:"
 	}
-	// _time_format=sqlite tells modernc.org/sqlite to parse/encode time.Time
-	// values using SQLite's native datetime format ("2006-01-02 15:04:05").
-	// Without this, datetime columns are returned as raw strings and
-	// database/sql cannot scan them into time.Time.
 	dsn := path + "?_time_format=sqlite"
 	if path == ":memory:" {
 		dsn = "file::memory:?mode=memory&cache=shared&_time_format=sqlite"
@@ -137,38 +190,34 @@ func NewSQLite(cfg config.Config, logger *log.LoggerWrapper) (*DBs, error) {
 	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("db: sqlite: ping: %w", err)
 	}
-
-	// Enable WAL mode for better concurrency.
 	if _, err := sqlDB.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;`); err != nil {
 		return nil, fmt.Errorf("db: sqlite: pragma: %w", err)
 	}
-
-	// Apply embedded schema migration.
 	if _, err := sqlDB.Exec(sqliteMigration); err != nil {
 		return nil, fmt.Errorf("db: sqlite: migrate: %w", err)
 	}
 
-	sqRes := sq.NewResource(sqlDB)
-	return &DBs{
-		UserStorage:              sq.NewUser(sqlDB),
-		SessionStorage:           sq.NewSession(sqlDB),
-		ModuleStorage:            sq.NewModule(sqlDB, sqRes),
-		OPABindingStorage:        sq.NewOPABinding(sqlDB),
-		CommitStorage:            sq.NewCommit(sqlDB, sqRes),
-		ResourceStorage:          sqRes,
-		SDKJobStorage:            sq.NewSDKJob(sqlDB),
-		OrgStorage:               sq.NewOrg(sqlDB),
-		CIRunStorage:             sq.NewCIRun(sqlDB),
-		NotificationStorage:      sq.NewNotification(sqlDB),
-		GitalyOpLogStorage:       nil, // GitalyOpLog is pgx-only; omit for SQLite
-		EmailVerificationStorage: sq.NewEmailVerification(sqlDB),
-		PasswordResetStorage:     sq.NewPasswordReset(sqlDB),
-		OAuthIdentityStorage:     sq.NewOAuthIdentity(sqlDB),
-		APITokenStorage:          sq.NewAPIToken(sqlDB),
-		DeviceGrantStorage:       sq.NewDeviceGrant(sqlDB),
-		TOTPSecretStorage:        sq.NewTOTPSecret(sqlDB),
-		BackupCodeStorage:        sq.NewBackupCode(sqlDB),
-		AuditLogStorage:          sq.NewAuditLog(sqlDB),
-		UOW:                      NewSQLiteUnitOfWork(sqlDB),
+	sqRes := resourcesq.NewResource(sqlDB)
+	return &concreteStore{
+		uow:               NewSQLiteUnitOfWork(sqlDB),
+		userStorage:       usersq.NewUser(sqlDB),
+		sessionStorage:    sessionsq.NewSession(sqlDB),
+		moduleStorage:     modulesq.NewModule(sqlDB, sqRes),
+		commitStorage:     commitsq.NewCommit(sqlDB, sqRes),
+		resourceStorage:   sqRes,
+		opaBindingStorage: opabindingsq.NewOPABinding(sqlDB),
+		sdkJobStorage:     sdkjobsq.NewSDKJob(sqlDB),
+		orgStorage:        orgsq.NewOrg(sqlDB),
+		ciRunStorage:      cirunsq.NewCIRun(sqlDB),
+		notifStorage:      notificationsq.NewNotification(sqlDB),
+		emailVerStorage:   emailverificationsq.NewEmailVerification(sqlDB),
+		pwdResetStorage:   passwordresetsq.NewPasswordReset(sqlDB),
+		oauthStorage:      oauthidentitysq.NewOAuthIdentity(sqlDB),
+		apiTokenStorage:   apitokensq.NewAPIToken(sqlDB),
+		deviceStorage:     devicegrantsq.NewDeviceGrant(sqlDB),
+		totpStorage:       totpsecretsq.NewTOTPSecret(sqlDB),
+		backupStorage:     backupcodesq.NewBackupCode(sqlDB),
+		auditStorage:      auditlogsq.NewAuditLog(sqlDB),
+		gitalyOpLog:       nil, // GitalyOpLog is PostgreSQL-only
 	}, nil
 }

@@ -11,6 +11,7 @@ import (
 	v1 "github.com/alipourhabibi/Hades/api/gen/api/authorization/v1"
 	"github.com/alipourhabibi/Hades/api/gen/api/authorization/v1/authorizationv1connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/authorization"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/apitoken"
@@ -62,9 +63,9 @@ func (s *Server) WithTOTPSecretStorage(ts totpsecret.Storage) *Server {
 }
 
 func (s *Server) UserBySession(ctx context.Context, in *connect.Request[v1.UserBySessionRequest]) (*connect.Response[v1.UserBySessionResponse], error) {
-	user, ok := ctx.Value(constants.ContextKeyUser).(*registryv1.User)
+	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 	if !ok {
-		return nil, connErr.Internal("missing user in context")
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
 	return &connect.Response[v1.UserBySessionResponse]{
@@ -74,7 +75,7 @@ func (s *Server) UserBySession(ctx context.Context, in *connect.Request[v1.UserB
 	}, nil
 }
 
-func (s *Server) UserFromSessionID(ctx context.Context, session string) (*registryv1.User, error) {
+func (s *Server) UserFromSessionID(ctx context.Context, session string) (*identityv1.User, error) {
 	user, err := s.userStorage.GetBySessionId(ctx, session)
 	if err != nil {
 		return nil, err
@@ -99,22 +100,12 @@ func (s *Server) ReloadPolicy() error {
 	return s.engine.Reload(context.Background())
 }
 
-// normalizeResource maps legacy object names to OPA resource types.
-// Handlers historically used "repository" (constants.REPOSITORY); the Rego
-// policy uses "module" (constants.ResourceModule).
-func normalizeResource(obj string) string {
-	if obj == string(constants.REPOSITORY) {
-		return string(constants.ResourceModule)
-	}
-	return obj
-}
-
 // Can checks a single authorization policy via the OPA engine.
 func (s *Server) Can(ctx context.Context, in *constants.Policy) (*constants.CanResponse, error) {
 	input := authorization.Input{
 		Subject:      in.Subject,
 		Domain:       in.Domain,
-		ResourceType: normalizeResource(in.Object),
+		ResourceType: in.Object,
 		Action:       in.Action,
 		Visibility:   constants.VisibilityPrivate,
 	}
@@ -151,12 +142,14 @@ func (s *Server) BatchCan(ctx context.Context, policies []*constants.Policy) (*c
 // user may be nil (anonymous). An anonymous caller can read public modules but
 // cannot access private ones - those are surfaced as NotFound so that the
 // existence of private modules is never revealed to unauthenticated callers.
-func (s *Server) CheckReadAccess(ctx context.Context, user *registryv1.User, modules []*registryv1.Module) error {
+func (s *Server) CheckReadAccess(ctx context.Context, user *identityv1.User, modules []*registryv1.Module) error {
 	for _, m := range modules {
-		if m.Visibility != registryv1.EVisibility_E_VISIBILITY_PRIVATE {
+		if m.Visibility != registryv1.ModuleVisibility_MODULE_VISIBILITY_PRIVATE {
 			continue // public: always accessible
 		}
-		// Private module - must be authenticated.
+		// Private module - must be authenticated and authorised.
+		// Return NOT_FOUND regardless of whether the user is anonymous or
+		// authenticated-but-unauthorised, to avoid revealing that the module exists.
 		if user == nil {
 			return connErr.NotFound("not found")
 		}
@@ -172,7 +165,7 @@ func (s *Server) CheckReadAccess(ctx context.Context, user *registryv1.User, mod
 			return err
 		}
 		if !allowed {
-			return connErr.PermissionDenied("permission denied reading module " + m.Name)
+			return connErr.NotFound("not found")
 		}
 	}
 	return nil

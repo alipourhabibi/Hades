@@ -15,6 +15,7 @@ interface UserResult { id: string; username: string; description?: string; email
 interface OrgResult { id: string; username: string; description?: string; }
 
 type TypeFilter = 'all' | 'modules' | 'users' | 'orgs';
+type VisibilityFilter = 'all' | 'public' | 'private';
 
 const TYPE_FILTERS: { id: TypeFilter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -23,8 +24,14 @@ const TYPE_FILTERS: { id: TypeFilter; label: string }[] = [
   { id: 'orgs', label: 'Organizations' },
 ];
 
+const VIS_FILTERS: { id: VisibilityFilter; label: string }[] = [
+  { id: 'all', label: 'Any visibility' },
+  { id: 'public', label: 'Public' },
+  { id: 'private', label: 'Private' },
+];
+
 function isPublic(v: string | number): boolean {
-  return v === 'E_VISIBILITY_PUBLIC' || v === 1;
+  return v === 'MODULE_VISIBILITY_PUBLIC' || v === 1;
 }
 
 function SearchContent() {
@@ -33,6 +40,7 @@ function SearchContent() {
 
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const typeFilter = (searchParams.get('type') as TypeFilter) ?? 'all';
+  const visFilter = (searchParams.get('vis') as VisibilityFilter) ?? 'all';
   const [modules, setModules] = useState<Module[]>([]);
   const [users, setUsers] = useState<UserResult[]>([]);
   const [orgs, setOrgs] = useState<OrgResult[]>([]);
@@ -52,8 +60,8 @@ function SearchContent() {
     const trimmed = q.trim();
     Promise.all([
       rpcFetch<{ modules: Module[] }>('/hades.api.registry.v1.ModuleService/ListModules', trimmed ? { owner: trimmed } : {}),
-      rpcFetch<{ users: UserResult[] }>('/hades.api.registry.v1.UserService/ListUsers', { query: trimmed }),
-      rpcFetch<{ organizations: OrgResult[] }>('/hades.api.registry.v1.OrgService/ListOrganizations', { query: trimmed }),
+      rpcFetch<{ users: UserResult[] }>('/hades.api.identity.v1.UserService/ListUsers', { query: trimmed }),
+      rpcFetch<{ organizations: OrgResult[] }>('/hades.api.identity.v1.OrgService/ListOrganizations', { query: trimmed }),
     ])
       .then(([modRes, userRes, orgRes]) => {
         setModules(modRes.modules || []);
@@ -86,7 +94,12 @@ function SearchContent() {
   const showModules = typeFilter === 'all' || typeFilter === 'modules';
   const showUsers   = typeFilter === 'all' || typeFilter === 'users';
   const showOrgs    = typeFilter === 'all' || typeFilter === 'orgs';
-  const totalCount = (showModules ? modules.length : 0) + (showUsers ? users.length : 0) + (showOrgs ? orgs.length : 0);
+  const visibleModules = modules.filter(m => {
+    if (visFilter === 'public') return isPublic(m.visibility);
+    if (visFilter === 'private') return !isPublic(m.visibility);
+    return true;
+  });
+  const totalCount = (showModules ? visibleModules.length : 0) + (showUsers ? users.length : 0) + (showOrgs ? orgs.length : 0);
 
   const sectionLabel = (label: string) => (
     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-fg-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10, marginTop: 20 }}>{label}</div>
@@ -100,15 +113,28 @@ function SearchContent() {
           <Input value={query} onChange={handleQueryChange} placeholder="Search modules, users, organizations…" prefix={<IconSearch size={18} style={{ color: 'var(--c-fg-subtle)' }}/>} style={{ fontSize: 15 }}/>
         </form>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
-          {TYPE_FILTERS.map(f => (
-            <button key={f.id} onClick={() => updateParam('type', f.id === 'all' ? null : f.id)} style={{ padding: '5px 14px', fontSize: 13, fontWeight: 500, borderRadius: 20, border: `1px solid ${typeFilter === f.id ? 'var(--c-accent)' : 'var(--c-border)'}`, background: typeFilter === f.id ? 'var(--c-accent-bg)' : 'var(--c-bg-default)', color: typeFilter === f.id ? 'var(--c-accent)' : 'var(--c-fg-muted)', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.1s' }}>
-              {f.id === 'modules' && <IconBox size={12} style={{ marginRight: 4, verticalAlign: 'middle' }}/>}
-              {f.id === 'users' && <IconUser size={12} style={{ marginRight: 4, verticalAlign: 'middle' }}/>}
-              {f.id === 'orgs' && <IconBuilding size={12} style={{ marginRight: 4, verticalAlign: 'middle' }}/>}
-              {f.label}
-            </button>
-          ))}
+        <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {TYPE_FILTERS.map(f => (
+              <button key={f.id} onClick={() => updateParam('type', f.id === 'all' ? null : f.id)} style={{ padding: '5px 14px', fontSize: 13, fontWeight: 500, borderRadius: 20, border: `1px solid ${typeFilter === f.id ? 'var(--c-accent)' : 'var(--c-border)'}`, background: typeFilter === f.id ? 'var(--c-accent-bg)' : 'var(--c-bg-default)', color: typeFilter === f.id ? 'var(--c-accent)' : 'var(--c-fg-muted)', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.1s' }}>
+                {f.id === 'modules' && <IconBox size={12} style={{ marginRight: 4, verticalAlign: 'middle' }}/>}
+                {f.id === 'users' && <IconUser size={12} style={{ marginRight: 4, verticalAlign: 'middle' }}/>}
+                {f.id === 'orgs' && <IconBuilding size={12} style={{ marginRight: 4, verticalAlign: 'middle' }}/>}
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {showModules && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderLeft: '1px solid var(--c-border)', paddingLeft: 16 }}>
+              {VIS_FILTERS.map(f => (
+                <button key={f.id} onClick={() => updateParam('vis', f.id === 'all' ? null : f.id)} style={{ padding: '5px 14px', fontSize: 12, fontWeight: 500, borderRadius: 20, border: `1px solid ${visFilter === f.id ? 'var(--c-accent)' : 'var(--c-border)'}`, background: visFilter === f.id ? 'var(--c-accent-bg)' : 'transparent', color: visFilter === f.id ? 'var(--c-accent)' : 'var(--c-fg-subtle)', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.1s' }}>
+                  {f.id === 'public' && <IconGlobe size={11} style={{ marginRight: 3, verticalAlign: 'middle' }}/>}
+                  {f.id === 'private' && <IconLock size={11} style={{ marginRight: 3, verticalAlign: 'middle' }}/>}
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {searched && !loading && <div style={{ fontSize: 13, color: 'var(--c-fg-muted)', marginBottom: 16 }}>{totalCount} result{totalCount !== 1 ? 's' : ''}{query ? <> for <strong>&quot;{query}&quot;</strong></> : ''}</div>}
@@ -120,11 +146,11 @@ function SearchContent() {
             {!searched && <EmptyState icon={<IconSearch size={40}/>} title="Search the registry" subtitle="Enter a name to find modules, users, or organizations."/>}
             {searched && totalCount === 0 && <EmptyState icon={<IconSearch size={40}/>} title={query ? `No results for "${query}"` : 'No results found'} subtitle="Try a different search term or check your spelling."/>}
 
-            {showModules && modules.length > 0 && (
+            {showModules && visibleModules.length > 0 && (
               <div>
                 {typeFilter === 'all' && sectionLabel('Modules')}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {modules.map(mod => {
+                  {visibleModules.map(mod => {
                     const parts = mod.name.split('/');
                     const ownerName = parts[0];
                     const modName = parts.slice(1).join('/');

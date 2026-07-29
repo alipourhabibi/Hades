@@ -11,7 +11,7 @@ export default function VerifyEmailPage() {
 
   useEffect(() => {
     if (!token) return;
-    rpcFetch('/hades.api.authentication.v1.AuthenticationService/VerifyEmail', { token })
+    rpcFetch('/hades.api.auth.v1.AuthenticationService/VerifyEmail', { token })
       .then(() => {
         setStatus('success');
         setTimeout(() => router.push('/login'), 2500);

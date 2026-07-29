@@ -9,27 +9,26 @@ import (
 	"connectrpc.com/connect"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	utilscrypto "github.com/alipourhabibi/Hades/utils/crypto"
-	utilserr "github.com/alipourhabibi/Hades/utils/errors"
 )
 
 // noAuthProcedures lists Connect-RPC procedures that are always reachable
 // without a valid bearer token, and where no user context is ever set.
 var noAuthProcedures = map[string]bool{
 	// Auth flow - no session exists yet
-	"/hades.api.authentication.v1.AuthenticationService/Login":                true,
-	"/hades.api.authentication.v1.AuthenticationService/Register":             true,
-	"/hades.api.authentication.v1.AuthenticationService/Signin":               true,
-	"/hades.api.authentication.v1.AuthenticationService/VerifyEmail":          true,
-	"/hades.api.authentication.v1.AuthenticationService/RequestPasswordReset": true,
-	"/hades.api.authentication.v1.AuthenticationService/ResetPassword":        true,
+	"/hades.api.auth.v1.AuthenticationService/Login":                true,
+	"/hades.api.auth.v1.AuthenticationService/Register":             true,
+	"/hades.api.auth.v1.AuthenticationService/Signin":               true,
+	"/hades.api.auth.v1.AuthenticationService/VerifyEmail":          true,
+	"/hades.api.auth.v1.AuthenticationService/RequestPasswordReset": true,
+	"/hades.api.auth.v1.AuthenticationService/ResetPassword":        true,
 	// Device/OAuth flows - begin before a session exists
-	"/hades.api.authentication.v1.DeviceService/RequestDeviceCode": true,
-	"/hades.api.authentication.v1.DeviceService/PollDeviceToken":   true,
-	"/hades.api.authentication.v1.OAuthService/GetOAuthURL":        true,
-	"/hades.api.authentication.v1.OAuthService/OAuthCallback":      true,
+	"/hades.api.auth.v1.DeviceService/RequestDeviceCode": true,
+	"/hades.api.auth.v1.DeviceService/PollDeviceToken":   true,
+	"/hades.api.auth.v1.OAuthService/GetOAuthURL":        true,
+	"/hades.api.auth.v1.OAuthService/OAuthCallback":      true,
 	// Org data is always public - no user context needed
-	"/hades.api.registry.v1.OrgService/GetOrg":         true,
-	"/hades.api.registry.v1.OrgService/ListOrgMembers": true,
+	"/hades.api.identity.v1.OrgService/GetOrg":         true,
+	"/hades.api.identity.v1.OrgService/ListOrgMembers": true,
 }
 
 // optionalAuthProcedures lists read-only procedures that serve both public
@@ -39,19 +38,19 @@ var noAuthProcedures = map[string]bool{
 // token still returns Unauthenticated.
 var optionalAuthProcedures = map[string]bool{
 	// Internal Hades registry reads
-	"/hades.api.registry.v1.ModuleService/ListModules":    true,
-	"/hades.api.registry.v1.ModuleService/GetModule":      true,
-	"/hades.api.registry.v1.CommitService/ListCommits":    true,
-	"/hades.api.registry.v1.CommitService/GetCommit":      true,
-	"/hades.api.registry.v1.DiffService/GetCommitDiff":    true,
-	"/hades.api.registry.v1.UserService/GetUser":          true,
-	"/hades.api.registry.v1.UserService/ListUsers":        true,
-	"/hades.api.registry.v1.OrgService/ListOrganizations": true,
-	"/hades.api.registry.v1.OrgService/GetUserOrgs":       true,
-	"/hades.api.registry.v1.TreeService/ListModuleFiles":  true,
-	"/hades.api.registry.v1.TreeService/GetFileContent":   true,
-	"/hades.api.registry.v1.CIService/GetCIRun":           true,
-	"/hades.api.registry.v1.SDKService/ListSDKs":          true,
+	"/hades.api.registry.v1.ModuleService/ListModules":     true,
+	"/hades.api.registry.v1.ModuleService/GetModule":       true,
+	"/hades.api.registry.v1.CommitService/ListCommits":     true,
+	"/hades.api.registry.v1.CommitService/GetCommit":       true,
+	"/hades.api.registry.v1.CommitService/GetCommitDiff":   true,
+	"/hades.api.registry.v1.CommitService/ListModuleFiles": true,
+	"/hades.api.registry.v1.CommitService/GetFileContent":  true,
+	"/hades.api.registry.v1.CIService/GetCIRun":            true,
+	"/hades.api.registry.v1.SDKService/ListSDKs":           true,
+	"/hades.api.identity.v1.UserService/GetUser":           true,
+	"/hades.api.identity.v1.UserService/ListUsers":         true,
+	"/hades.api.identity.v1.OrgService/ListOrganizations":  true,
+	"/hades.api.identity.v1.OrgService/GetUserOrgs":        true,
 	// buf.build registry protocol reads (used by the buf CLI)
 	"/buf.registry.module.v1.ModuleService/GetModules":  true,
 	"/buf.registry.module.v1.ModuleService/ListModules": true,
@@ -63,12 +62,12 @@ var optionalAuthProcedures = map[string]bool{
 
 // totpPendingAllowed may be called when totp_verified = false.
 var totpPendingAllowed = map[string]bool{
-	"/hades.api.authentication.v1.TOTPService/VerifyTOTP": true,
+	"/hades.api.auth.v1.TOTPService/VerifyTOTP": true,
 }
 
 // emailUnverifiedAllowed may be called before email_verified_at is set.
 var emailUnverifiedAllowed = map[string]bool{
-	"/hades.api.authentication.v1.AuthenticationService/ResendVerificationEmail": true,
+	"/hades.api.auth.v1.AuthenticationService/ResendVerificationEmail": true,
 }
 
 func (s *Server) NewAuthorizationInterceptor() connect.UnaryInterceptorFunc {
@@ -186,8 +185,8 @@ func (s *Server) NewAuthorizationInterceptor() connect.UnaryInterceptorFunc {
 			s.logger.Debug("auth interceptor: all token lookups failed, trying legacy session ID", "procedure", procedure)
 			user, err := s.UserFromSessionID(ctx, rawToken)
 			if err != nil {
-				s.logger.Debug("auth interceptor: legacy session lookup failed", "procedure", procedure, "error", err)
-				return nil, utilserr.ToConnectError(err)
+				s.logger.Debug("auth interceptor: legacy session lookup failed, token invalid", "procedure", procedure, "error", err)
+				return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token"))
 			}
 			ctx = context.WithValue(ctx, constants.ContextKeyUser, user)
 			ctx = context.WithValue(ctx, constants.ContextKeyAuthorization, rawToken)

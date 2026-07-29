@@ -7,39 +7,31 @@ import (
 	"time"
 
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// TransactionFN is a callback executed within a database transaction.
-// The active transaction is injected into ctx via txkeys; storage structs
-// can retrieve it using txkeys.PgxTxFromContext or txkeys.SQLTxFromContext.
+// TransactionFN is the function signature for UoW callbacks.
+// The transaction is injected into ctx via txkeys.PgxTxKey{} so that all
+// storage implementations can pick it up with txkeys.PgxTxFromContext.
 type TransactionFN func(ctx context.Context) (interface{}, error)
 
-// UnitOfWork abstracts a transactional boundary.
+// UnitOfWork manages database transactions.
 type UnitOfWork interface {
 	Do(ctx context.Context, fn TransactionFN, timeout time.Duration) (interface{}, error)
 }
 
-// PgxTxFromContext is a convenience re-export for callers that import only package db.
-func PgxTxFromContext(ctx context.Context) (pgx.Tx, bool) {
-	return txkeys.PgxTxFromContext(ctx)
-}
-
-// SQLTxFromContext is a convenience re-export for callers that import only package db.
-func SQLTxFromContext(ctx context.Context) (*sql.Tx, bool) {
-	return txkeys.SQLTxFromContext(ctx)
-}
-
-// PGUnitOfWork implements UnitOfWork on top of a pgx connection pool.
+// PGUnitOfWork implements UnitOfWork for PostgreSQL.
 type PGUnitOfWork struct {
 	Pool *pgxpool.Pool
 }
 
+// NewUnitOfWork creates a PGUnitOfWork backed by the given pool.
 func NewUnitOfWork(pool *pgxpool.Pool) *PGUnitOfWork {
 	return &PGUnitOfWork{Pool: pool}
 }
 
+// Do begins a transaction, injects it into ctx via txkeys, calls fn, then
+// commits or rolls back depending on whether fn returned an error.
 func (uow *PGUnitOfWork) Do(ctx context.Context, fn TransactionFN, timeout time.Duration) (interface{}, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -55,6 +47,8 @@ func (uow *PGUnitOfWork) Do(ctx context.Context, fn TransactionFN, timeout time.
 		return nil, err
 	}
 
+	// Inject the transaction into the context so storage implementations can
+	// use it transparently via txkeys.PgxTxFromContext.
 	txCtx := context.WithValue(ctx, txkeys.PgxTxKey{}, tx)
 
 	result, err := fn(txCtx)
