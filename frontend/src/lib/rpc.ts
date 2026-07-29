@@ -1,6 +1,6 @@
 'use client';
 
-import { getToken } from './auth';
+import { getToken, clearToken } from './auth';
 
 export async function rpcFetch<T>(path: string, body: unknown): Promise<T> {
   const token = getToken();
@@ -17,6 +17,12 @@ export async function rpcFetch<T>(path: string, body: unknown): Promise<T> {
     });
   } catch (err) {
     throw new Error('Backend unreachable. Is the server running?');
+  }
+
+  if (resp.status === 401 && token) {
+    clearToken();
+    window.location.href = '/login';
+    throw new Error('Session expired');
   }
 
   if (!resp.ok) {

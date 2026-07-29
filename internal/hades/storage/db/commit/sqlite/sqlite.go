@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
@@ -61,7 +62,7 @@ func scanSQLiteCommitRows(rows *sql.Rows) ([]*registryv1.Commit, error) {
 		}
 		cmt.CreateTime = timestamppb.New(createTime.V)
 		cmt.UpdateTime = timestamppb.New(updateTime.V)
-		cmt.Owner = &registryv1.User{Username: ownerName}
+		cmt.Owner = &identityv1.User{Username: ownerName}
 		cmt.Module = &registryv1.Module{Name: moduleName}
 		commits = append(commits, cmt)
 	}

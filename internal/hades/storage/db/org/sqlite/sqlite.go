@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/org"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -29,8 +29,8 @@ func (s *SQLiteOrgStorage) q(ctx context.Context) txkeys.SQLQuerier {
 
 const sqliteUserCols = `id, create_time, update_time, username, email, password, type, state, description, url`
 
-func scanSQLiteOrgUser(row *sql.Row) (*registryv1.User, error) {
-	u := &registryv1.User{}
+func scanSQLiteOrgUser(row *sql.Row) (*identityv1.User, error) {
+	u := &identityv1.User{}
 	var createTime, updateTime time.Time
 	var password sql.NullString
 	err := row.Scan(&u.Id, &createTime, &updateTime, &u.Username, &u.Email, &password, &u.Type, &u.State, &u.Description, &u.Url)
@@ -43,12 +43,12 @@ func scanSQLiteOrgUser(row *sql.Row) (*registryv1.User, error) {
 	return u, nil
 }
 
-func (s *SQLiteOrgStorage) GetByName(ctx context.Context, name string) (*registryv1.User, error) {
+func (s *SQLiteOrgStorage) GetByName(ctx context.Context, name string) (*identityv1.User, error) {
 	return scanSQLiteOrgUser(s.q(ctx).QueryRowContext(ctx,
 		`SELECT `+sqliteUserCols+` FROM users WHERE username = ? AND type = 1`, name))
 }
 
-func (s *SQLiteOrgStorage) List(ctx context.Context, query string) ([]*registryv1.User, error) {
+func (s *SQLiteOrgStorage) List(ctx context.Context, query string) ([]*identityv1.User, error) {
 	rows, err := s.q(ctx).QueryContext(ctx,
 		`SELECT `+sqliteUserCols+` FROM users WHERE type = 1 AND (? = '' OR username LIKE '%' || ? || '%') ORDER BY username LIMIT 50`, query, query)
 	if err != nil {
@@ -58,10 +58,10 @@ func (s *SQLiteOrgStorage) List(ctx context.Context, query string) ([]*registryv
 	return scanSQLiteOrgRows(rows)
 }
 
-func scanSQLiteOrgRows(rows *sql.Rows) ([]*registryv1.User, error) {
-	var orgs []*registryv1.User
+func scanSQLiteOrgRows(rows *sql.Rows) ([]*identityv1.User, error) {
+	var orgs []*identityv1.User
 	for rows.Next() {
-		u := &registryv1.User{}
+		u := &identityv1.User{}
 		var createTime, updateTime time.Time
 		var password sql.NullString
 		if err := rows.Scan(&u.Id, &createTime, &updateTime, &u.Username, &u.Email, &password, &u.Type, &u.State, &u.Description, &u.Url); err != nil {
@@ -75,7 +75,7 @@ func scanSQLiteOrgRows(rows *sql.Rows) ([]*registryv1.User, error) {
 	return orgs, rows.Err()
 }
 
-func (s *SQLiteOrgStorage) Create(ctx context.Context, name, description, url, creatorID string) (*registryv1.User, error) {
+func (s *SQLiteOrgStorage) Create(ctx context.Context, name, description, url, creatorID string) (*identityv1.User, error) {
 	_, err := s.q(ctx).ExecContext(ctx,
 		`INSERT INTO users (username, email, password, type, state, description, url) VALUES (?, '', '', 1, 1, ?, ?)`,
 		name, description, url)
@@ -92,7 +92,7 @@ func (s *SQLiteOrgStorage) Create(ctx context.Context, name, description, url, c
 	return orgUser, err
 }
 
-func (s *SQLiteOrgStorage) Update(ctx context.Context, orgID, description, url string) (*registryv1.User, error) {
+func (s *SQLiteOrgStorage) Update(ctx context.Context, orgID, description, url string) (*identityv1.User, error) {
 	_, err := s.q(ctx).ExecContext(ctx,
 		`UPDATE users SET description=?, url=?, update_time=datetime('now') WHERE id=?`, description, url, orgID)
 	if err != nil {
@@ -117,7 +117,7 @@ func (s *SQLiteOrgStorage) RemoveMember(ctx context.Context, orgID, memberID str
 	return err
 }
 
-func (s *SQLiteOrgStorage) GetUserOrgs(ctx context.Context, memberID string) ([]*registryv1.User, error) {
+func (s *SQLiteOrgStorage) GetUserOrgs(ctx context.Context, memberID string) ([]*identityv1.User, error) {
 	rows, err := s.q(ctx).QueryContext(ctx, `
 SELECT u.`+sqliteUserCols+`
 FROM users u
@@ -161,7 +161,7 @@ ORDER BY u.username`, orgID)
 	defer rows.Close()
 	var members []*org.OrgMember
 	for rows.Next() {
-		u := &registryv1.User{}
+		u := &identityv1.User{}
 		var createTime, updateTime time.Time
 		var password sql.NullString
 		var role string

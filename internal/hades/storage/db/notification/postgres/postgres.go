@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/notification"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -31,7 +31,7 @@ func (s *NotificationStorage) q(ctx context.Context) txkeys.PgxQuerier {
 	return s.pool
 }
 
-func (s *NotificationStorage) ListForUser(ctx context.Context, userID string) ([]*registryv1.Notification, error) {
+func (s *NotificationStorage) ListForUser(ctx context.Context, userID string) ([]*identityv1.Notification, error) {
 	query := `
 SELECT id, type, title, COALESCE(body,''), COALESCE(resource_id,''), read_at, created_at
 FROM notifications
@@ -44,9 +44,9 @@ ORDER BY created_at DESC`
 	}
 	defer rows.Close()
 
-	var notifications []*registryv1.Notification
+	var notifications []*identityv1.Notification
 	for rows.Next() {
-		n := &registryv1.Notification{}
+		n := &identityv1.Notification{}
 		var createdAt time.Time
 		var readAt *time.Time
 		if err := rows.Scan(

@@ -35,7 +35,7 @@ export default function PageTokens() {
 
   const loadTokens = async () => {
     try {
-      const data = await rpcFetch<{ tokens: APIToken[] }>('/hades.api.authentication.v1.APITokenService/ListAPITokens', {});
+      const data = await rpcFetch<{ tokens: APIToken[] }>('/hades.api.auth.v1.APITokenService/ListAPITokens', {});
       setTokens(data.tokens || []);
     } catch (e) { setError(formatError(e)); } finally { setLoading(false); }
   };
@@ -47,7 +47,7 @@ export default function PageTokens() {
     setCreating(true);
     try {
       const scopes = newScopes ? newScopes.split(',').map(s => s.trim()).filter(Boolean) : [];
-      const data = await rpcFetch<{ id: string; token: string; prefix: string; created_at: string }>('/hades.api.authentication.v1.APITokenService/CreateAPIToken', { name: newName, scopes });
+      const data = await rpcFetch<{ id: string; token: string; prefix: string; created_at: string }>('/hades.api.auth.v1.APITokenService/CreateAPIToken', { name: newName, scopes });
       setNewTokenValue(data.token); setShowNew(false); setNewName(''); setNewScopes('');
       await loadTokens();
     } catch (e) { setError(formatError(e)); } finally { setCreating(false); }
@@ -56,7 +56,7 @@ export default function PageTokens() {
   const revokeToken = async (id: string) => {
     setRevoking(id);
     try {
-      await rpcFetch('/hades.api.authentication.v1.APITokenService/RevokeAPIToken', { id });
+      await rpcFetch('/hades.api.auth.v1.APITokenService/RevokeAPIToken', { id });
       setTokens(t => t.filter(tok => tok.id !== id));
     } catch (e) { setError(formatError(e)); } finally { setRevoking(null); }
   };

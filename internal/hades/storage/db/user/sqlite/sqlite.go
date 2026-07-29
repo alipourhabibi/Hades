@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
@@ -31,8 +31,8 @@ func (s *SQLiteUserStorage) q(ctx context.Context) txkeys.SQLQuerier {
 	return s.db
 }
 
-func scanSQLiteUser(row *sql.Row) (*registryv1.User, error) {
-	u := &registryv1.User{}
+func scanSQLiteUser(row *sql.Row) (*identityv1.User, error) {
+	u := &identityv1.User{}
 	var createTime, updateTime sqltypes.Time
 	var password sql.NullString
 	err := row.Scan(
@@ -54,22 +54,22 @@ func scanSQLiteUser(row *sql.Row) (*registryv1.User, error) {
 
 const sqliteUserColumns = `id, create_time, update_time, username, email, password, type, state, description, url`
 
-func (s *SQLiteUserStorage) GetByUsername(ctx context.Context, username string) (*registryv1.User, error) {
+func (s *SQLiteUserStorage) GetByUsername(ctx context.Context, username string) (*identityv1.User, error) {
 	return scanSQLiteUser(s.q(ctx).QueryRowContext(ctx,
 		`SELECT `+sqliteUserColumns+` FROM users WHERE username = ?`, username))
 }
 
-func (s *SQLiteUserStorage) GetByID(ctx context.Context, id string) (*registryv1.User, error) {
+func (s *SQLiteUserStorage) GetByID(ctx context.Context, id string) (*identityv1.User, error) {
 	return scanSQLiteUser(s.q(ctx).QueryRowContext(ctx,
 		`SELECT `+sqliteUserColumns+` FROM users WHERE id = ?`, id))
 }
 
-func (s *SQLiteUserStorage) GetByEmail(ctx context.Context, email string) (*registryv1.User, error) {
+func (s *SQLiteUserStorage) GetByEmail(ctx context.Context, email string) (*identityv1.User, error) {
 	return scanSQLiteUser(s.q(ctx).QueryRowContext(ctx,
 		`SELECT `+sqliteUserColumns+` FROM users WHERE email = ?`, email))
 }
 
-func (s *SQLiteUserStorage) GetBySessionId(ctx context.Context, sessionId string) (*registryv1.User, error) {
+func (s *SQLiteUserStorage) GetBySessionId(ctx context.Context, sessionId string) (*identityv1.User, error) {
 	return scanSQLiteUser(s.q(ctx).QueryRowContext(ctx, `
 SELECT `+sqliteUserColumns+`
 FROM users
@@ -113,7 +113,7 @@ func (s *SQLiteUserStorage) GetAuthFieldsByID(ctx context.Context, id string) (*
 	return af, nil
 }
 
-func (s *SQLiteUserStorage) Create(ctx context.Context, username, email, password string, t registryv1.UserType, status registryv1.UserState, description, url string) error {
+func (s *SQLiteUserStorage) Create(ctx context.Context, username, email, password string, t identityv1.UserType, status identityv1.UserState, description, url string) error {
 	_, err := s.q(ctx).ExecContext(ctx,
 		`INSERT INTO users (username, email, password, type, state, description, url)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -122,7 +122,7 @@ func (s *SQLiteUserStorage) Create(ctx context.Context, username, email, passwor
 	return err
 }
 
-func (s *SQLiteUserStorage) List(ctx context.Context, query string) ([]*registryv1.User, error) {
+func (s *SQLiteUserStorage) List(ctx context.Context, query string) ([]*identityv1.User, error) {
 	rows, err := s.q(ctx).QueryContext(ctx,
 		`SELECT `+sqliteUserColumns+`
 		 FROM users
@@ -136,10 +136,10 @@ func (s *SQLiteUserStorage) List(ctx context.Context, query string) ([]*registry
 	return scanSQLiteUsers(rows)
 }
 
-func scanSQLiteUsers(rows *sql.Rows) ([]*registryv1.User, error) {
-	var users []*registryv1.User
+func scanSQLiteUsers(rows *sql.Rows) ([]*identityv1.User, error) {
+	var users []*identityv1.User
 	for rows.Next() {
-		u := &registryv1.User{}
+		u := &identityv1.User{}
 		var createTime, updateTime sqltypes.Time
 		var password sql.NullString
 		if err := rows.Scan(
@@ -157,7 +157,7 @@ func scanSQLiteUsers(rows *sql.Rows) ([]*registryv1.User, error) {
 	return users, rows.Err()
 }
 
-func (s *SQLiteUserStorage) Update(ctx context.Context, userID, description, url string) (*registryv1.User, error) {
+func (s *SQLiteUserStorage) Update(ctx context.Context, userID, description, url string) (*identityv1.User, error) {
 	_, err := s.q(ctx).ExecContext(ctx,
 		`UPDATE users SET description=?, url=?, update_time=datetime('now') WHERE id=?`,
 		description, url, userID,

@@ -60,8 +60,8 @@ function SearchContent() {
     const trimmed = q.trim();
     Promise.all([
       rpcFetch<{ modules: Module[] }>('/hades.api.registry.v1.ModuleService/ListModules', trimmed ? { owner: trimmed } : {}),
-      rpcFetch<{ users: UserResult[] }>('/hades.api.registry.v1.UserService/ListUsers', { query: trimmed }),
-      rpcFetch<{ organizations: OrgResult[] }>('/hades.api.registry.v1.OrgService/ListOrganizations', { query: trimmed }),
+      rpcFetch<{ users: UserResult[] }>('/hades.api.identity.v1.UserService/ListUsers', { query: trimmed }),
+      rpcFetch<{ organizations: OrgResult[] }>('/hades.api.identity.v1.OrgService/ListOrganizations', { query: trimmed }),
     ])
       .then(([modRes, userRes, orgRes]) => {
         setModules(modRes.modules || []);

@@ -48,9 +48,9 @@ export default function PageSignup() {
     if (!agreed) { setError('Please agree to the terms.'); return; }
     setError(''); setLoading(true);
     try {
-      await rpcFetch('/hades.api.authentication.v1.AuthenticationService/Register', { username, email, password });
+      await rpcFetch('/hades.api.auth.v1.AuthenticationService/Register', { username, email, password });
       try {
-        const data = await rpcFetch<{ token: string }>('/hades.api.authentication.v1.AuthenticationService/Login', { username, password });
+        const data = await rpcFetch<{ token: string }>('/hades.api.auth.v1.AuthenticationService/Login', { username, password });
         if (data.token) { setAuth(data.token, username); router.push('/'); return; }
       } catch { /* login after register failed, redirect to login page */ }
       router.push('/login');

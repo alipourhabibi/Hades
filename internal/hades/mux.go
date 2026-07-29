@@ -11,8 +11,9 @@ import (
 
 	registryv1alpha1connect "buf.build/gen/go/bufbuild/buf/connectrpc/go/buf/alpha/registry/v1alpha1/registryv1alpha1connect"
 	"buf.build/gen/go/bufbuild/registry/connectrpc/go/buf/registry/module/v1/modulev1connect"
-	"github.com/alipourhabibi/Hades/api/gen/api/authentication/v1/authenticationv1connect"
+	"github.com/alipourhabibi/Hades/api/gen/api/auth/v1/authv1connect"
 	"github.com/alipourhabibi/Hades/api/gen/api/authorization/v1/authorizationv1connect"
+	identityv1connect "github.com/alipourhabibi/Hades/api/gen/api/identity/v1/identityv1connect"
 	"github.com/alipourhabibi/Hades/api/gen/api/registry/v1/registryv1connect"
 	"github.com/alipourhabibi/Hades/internal/hades/server/middleware"
 	errorsutils "github.com/alipourhabibi/Hades/utils/errors"
@@ -44,51 +45,51 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 	noAuth := connect.WithInterceptors(base...)
 
 	reflector := grpcreflect.NewStaticReflector(
-		authenticationv1connect.AuthenticationServiceName,
-		authenticationv1connect.SessionServiceName,
-		authenticationv1connect.OAuthServiceName,
-		authenticationv1connect.APITokenServiceName,
-		authenticationv1connect.DeviceServiceName,
-		authenticationv1connect.TOTPServiceName,
-		authenticationv1connect.AuditServiceName,
+		authv1connect.AuthenticationServiceName,
+		authv1connect.SessionServiceName,
+		authv1connect.OAuthServiceName,
+		authv1connect.APITokenServiceName,
+		authv1connect.DeviceServiceName,
+		authv1connect.TOTPServiceName,
+		authv1connect.AuditServiceName,
 		authorizationv1connect.AuthorizationName,
 		registryv1connect.ModuleServiceName,
 		registryv1connect.CommitServiceName,
-		registryv1connect.DiffServiceName,
-		registryv1connect.UserServiceName,
 		registryv1connect.SDKServiceName,
-		registryv1connect.OrgServiceName,
 		registryv1connect.CIServiceName,
-		registryv1connect.NotificationServiceName,
-		registryv1connect.TreeServiceName,
+		identityv1connect.UserServiceName,
+		identityv1connect.OrgServiceName,
+		identityv1connect.NotificationServiceName,
 		registryv1alpha1connect.AuthnServiceName,
 	)
 
 	mux := http.NewServeMux()
 
-	mux.Handle(authenticationv1connect.NewAuthenticationServiceHandler(s.serverSet.AuthenticationServer, withAuth))
+	// Auth-domain handlers — all served by the single *auth.Server
+	mux.Handle(authv1connect.NewAuthenticationServiceHandler(s.serverSet.AuthServer, withAuth))
+	mux.Handle(authv1connect.NewSessionServiceHandler(s.serverSet.AuthServer, withAuth))
+	mux.Handle(authv1connect.NewOAuthServiceHandler(s.serverSet.AuthServer, noAuth))
+	mux.Handle(authv1connect.NewAPITokenServiceHandler(s.serverSet.AuthServer, withAuth))
+	mux.Handle(authv1connect.NewDeviceServiceHandler(s.serverSet.AuthServer, noAuth))
+	mux.Handle(authv1connect.NewTOTPServiceHandler(s.serverSet.AuthServer, withAuth))
+	mux.Handle(authv1connect.NewAuditServiceHandler(s.serverSet.AuthServer, withAuth))
+
 	mux.Handle(authorizationv1connect.NewAuthorizationHandler(s.serverSet.AuthorizationServer, withAuth))
 	mux.Handle(registryv1connect.NewModuleServiceHandler(s.serverSet.ModuleServer, withAuth))
+	mux.Handle(registryv1connect.NewCommitServiceHandler(s.serverSet.CommitHandler, withAuth))
+	mux.Handle(registryv1connect.NewCIServiceHandler(s.serverSet.MetaHandler, withAuth))
+	mux.Handle(registryv1connect.NewSDKServiceHandler(s.serverSet.MetaHandler, withAuth))
+	mux.Handle(identityv1connect.NewUserServiceHandler(s.serverSet.IdentityHandler, withAuth))
+	mux.Handle(identityv1connect.NewOrgServiceHandler(s.serverSet.IdentityHandler, withAuth))
+	mux.Handle(identityv1connect.NewNotificationServiceHandler(s.serverSet.NotifHandler, withAuth))
+
+	// buf.build protocol adapters
 	mux.Handle(modulev1connect.NewModuleServiceHandler(s.serverSet.BufModuleServer, withAuth))
 	mux.Handle(modulev1connect.NewCommitServiceHandler(s.serverSet.BufCommitServer, withAuth))
 	mux.Handle(modulev1connect.NewUploadServiceHandler(s.serverSet.BufUploadServer, withAuth))
 	mux.Handle(modulev1connect.NewGraphServiceHandler(s.serverSet.BufGraphServer, withAuth))
 	mux.Handle(modulev1connect.NewDownloadServiceHandler(s.serverSet.BufDownloadServer, withAuth))
 	mux.Handle(registryv1alpha1connect.NewAuthnServiceHandler(s.serverSet.BufAlphaAuthnServer, withAuth))
-	mux.Handle(authenticationv1connect.NewSessionServiceHandler(s.serverSet.SessionHandler, withAuth))
-	mux.Handle(authenticationv1connect.NewOAuthServiceHandler(s.serverSet.OAuthHandler, noAuth))
-	mux.Handle(authenticationv1connect.NewAPITokenServiceHandler(s.serverSet.APITokenHandler, withAuth))
-	mux.Handle(authenticationv1connect.NewDeviceServiceHandler(s.serverSet.DeviceHandler, noAuth))
-	mux.Handle(authenticationv1connect.NewTOTPServiceHandler(s.serverSet.TOTPHandler, withAuth))
-	mux.Handle(authenticationv1connect.NewAuditServiceHandler(s.serverSet.AuditHandler, withAuth))
-	mux.Handle(registryv1connect.NewCommitServiceHandler(s.serverSet.CommitHandler, withAuth))
-	mux.Handle(registryv1connect.NewDiffServiceHandler(s.serverSet.DiffHandler, withAuth))
-	mux.Handle(registryv1connect.NewUserServiceHandler(s.serverSet.UserHandler, withAuth))
-	mux.Handle(registryv1connect.NewSDKServiceHandler(s.serverSet.SDKHandler, withAuth))
-	mux.Handle(registryv1connect.NewOrgServiceHandler(s.serverSet.OrgHandler, withAuth))
-	mux.Handle(registryv1connect.NewCIServiceHandler(s.serverSet.CIHandler, withAuth))
-	mux.Handle(registryv1connect.NewNotificationServiceHandler(s.serverSet.NotificationHandler, withAuth))
-	mux.Handle(registryv1connect.NewTreeServiceHandler(s.serverSet.TreeHandler, withAuth))
 
 	if s.serverSet.GoProxyHandler != nil {
 		mux.Handle("/go/", s.serverSet.GoProxyHandler)

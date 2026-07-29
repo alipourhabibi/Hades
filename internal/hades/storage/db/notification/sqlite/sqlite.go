@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/notification"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
@@ -27,7 +27,7 @@ func (s *SQLiteNotificationStorage) q(ctx context.Context) txkeys.SQLQuerier {
 	return s.db
 }
 
-func (s *SQLiteNotificationStorage) ListForUser(ctx context.Context, userID string) ([]*registryv1.Notification, error) {
+func (s *SQLiteNotificationStorage) ListForUser(ctx context.Context, userID string) ([]*identityv1.Notification, error) {
 	rows, err := s.q(ctx).QueryContext(ctx, `
 SELECT id, type, title, COALESCE(body,''), COALESCE(resource_id,''), read_at, created_at
 FROM notifications WHERE user_id = ? ORDER BY created_at DESC`, userID)
@@ -35,9 +35,9 @@ FROM notifications WHERE user_id = ? ORDER BY created_at DESC`, userID)
 		return nil, err
 	}
 	defer rows.Close()
-	var notifications []*registryv1.Notification
+	var notifications []*identityv1.Notification
 	for rows.Next() {
-		n := &registryv1.Notification{}
+		n := &identityv1.Notification{}
 		var createdAt sqltypes.Time
 		var readAt sqltypes.NullTime
 		if err := rows.Scan(&n.Id, &n.Type, &n.Title, &n.Body, &n.ResourceId, &readAt, &createdAt); err != nil {

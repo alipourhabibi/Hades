@@ -99,7 +99,7 @@ function ProfileContent() {
 
   const handleSaveProfile = () => {
     setEditSaving(true); setEditError(null);
-    rpcFetch<{ user: User }>('/hades.api.registry.v1.UserService/UpdateUser', { description: editDescription, url: editUrl })
+    rpcFetch<{ user: User }>('/hades.api.identity.v1.UserService/UpdateUser', { description: editDescription, url: editUrl })
       .then(res => { setUser(prev => prev ? { ...prev, ...res.user } : res.user); setEditOpen(false); })
       .catch(e => setEditError(e.message))
       .finally(() => setEditSaving(false));
@@ -109,7 +109,7 @@ function ProfileContent() {
     if (!getToken()) { router.replace('/login'); return; }
     if (!owner) return;
     setLoading(true); setError(null); setNotFound(false);
-    rpcFetch<{ user: User; moduleCount: number; organizations: User[] }>('/hades.api.registry.v1.UserService/GetUser', { username: owner })
+    rpcFetch<{ user: User; moduleCount: number; organizations: User[] }>('/hades.api.identity.v1.UserService/GetUser', { username: owner })
       .then(res => {
         setIsOrg(false); setUser(res.user); setUserModuleCount(res.moduleCount || 0); setUserOrgs(res.organizations || []);
         if (!searchParams.get('tab')) setTab('modules', true);
@@ -117,13 +117,13 @@ function ProfileContent() {
       })
       .then(modRes => { setUserModules(modRes.modules || []); setLoading(false); })
       .catch(() => {
-        rpcFetch<{ org: User; moduleCount: number; memberCount: number }>('/hades.api.registry.v1.OrgService/GetOrg', { name: owner })
+        rpcFetch<{ org: User; moduleCount: number; memberCount: number }>('/hades.api.identity.v1.OrgService/GetOrg', { name: owner })
           .then(orgRes => {
             setIsOrg(true); setOrg(orgRes.org); setOrgModuleCount(orgRes.moduleCount || 0); setOrgMemberCount(orgRes.memberCount || 0);
             if (!searchParams.get('tab')) setTab('overview', true);
             return Promise.all([
               rpcFetch<{ modules: Module[] }>('/hades.api.registry.v1.ModuleService/ListModules', { owner }),
-              rpcFetch<{ members: OrgMember[] }>('/hades.api.registry.v1.OrgService/ListOrgMembers', { orgName: owner }),
+              rpcFetch<{ members: OrgMember[] }>('/hades.api.identity.v1.OrgService/ListOrgMembers', { orgName: owner }),
             ]);
           })
           .then(([modRes, memRes]) => { setOrgModules(modRes.modules || []); setMembers(memRes.members || []); setLoading(false); })

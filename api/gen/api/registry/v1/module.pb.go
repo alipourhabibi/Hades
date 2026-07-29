@@ -29,6 +29,110 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// ModuleVisibility controls who can read a module.
+type ModuleVisibility int32
+
+const (
+	ModuleVisibility_MODULE_VISIBILITY_UNSPECIFIED ModuleVisibility = 0
+	// Anyone can read the module without authentication.
+	ModuleVisibility_MODULE_VISIBILITY_PUBLIC ModuleVisibility = 1
+	// Only the owner and explicitly granted members can read the module.
+	ModuleVisibility_MODULE_VISIBILITY_PRIVATE ModuleVisibility = 2
+)
+
+// Enum value maps for ModuleVisibility.
+var (
+	ModuleVisibility_name = map[int32]string{
+		0: "MODULE_VISIBILITY_UNSPECIFIED",
+		1: "MODULE_VISIBILITY_PUBLIC",
+		2: "MODULE_VISIBILITY_PRIVATE",
+	}
+	ModuleVisibility_value = map[string]int32{
+		"MODULE_VISIBILITY_UNSPECIFIED": 0,
+		"MODULE_VISIBILITY_PUBLIC":      1,
+		"MODULE_VISIBILITY_PRIVATE":     2,
+	}
+)
+
+func (x ModuleVisibility) Enum() *ModuleVisibility {
+	p := new(ModuleVisibility)
+	*p = x
+	return p
+}
+
+func (x ModuleVisibility) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ModuleVisibility) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_registry_v1_module_proto_enumTypes[0].Descriptor()
+}
+
+func (ModuleVisibility) Type() protoreflect.EnumType {
+	return &file_api_registry_v1_module_proto_enumTypes[0]
+}
+
+func (x ModuleVisibility) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ModuleVisibility.Descriptor instead.
+func (ModuleVisibility) EnumDescriptor() ([]byte, []int) {
+	return file_api_registry_v1_module_proto_rawDescGZIP(), []int{0}
+}
+
+// ModuleState reflects the lifecycle stage of a module.
+type ModuleState int32
+
+const (
+	ModuleState_MODULE_STATE_UNSPECIFIED ModuleState = 0
+	// Module is actively maintained.
+	ModuleState_MODULE_STATE_ACTIVE ModuleState = 1
+	// Module is no longer maintained. Reads are still allowed.
+	ModuleState_MODULE_STATE_DEPRECATED ModuleState = 2
+)
+
+// Enum value maps for ModuleState.
+var (
+	ModuleState_name = map[int32]string{
+		0: "MODULE_STATE_UNSPECIFIED",
+		1: "MODULE_STATE_ACTIVE",
+		2: "MODULE_STATE_DEPRECATED",
+	}
+	ModuleState_value = map[string]int32{
+		"MODULE_STATE_UNSPECIFIED": 0,
+		"MODULE_STATE_ACTIVE":      1,
+		"MODULE_STATE_DEPRECATED":  2,
+	}
+)
+
+func (x ModuleState) Enum() *ModuleState {
+	p := new(ModuleState)
+	*p = x
+	return p
+}
+
+func (x ModuleState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ModuleState) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_registry_v1_module_proto_enumTypes[1].Descriptor()
+}
+
+func (ModuleState) Type() protoreflect.EnumType {
+	return &file_api_registry_v1_module_proto_enumTypes[1]
+}
+
+func (x ModuleState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ModuleState.Descriptor instead.
+func (ModuleState) EnumDescriptor() ([]byte, []int) {
+	return file_api_registry_v1_module_proto_rawDescGZIP(), []int{1}
+}
+
 // Module is the metadata record for a Hades schema repository.
 type Module struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -544,7 +648,7 @@ var File_api_registry_v1_module_proto protoreflect.FileDescriptor
 
 const file_api_registry_v1_module_proto_rawDesc = "" +
 	"\n" +
-	"\x1capi/registry/v1/module.proto\x12\x15hades.api.registry.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1aapi/registry/v1/user.proto\"\xcd\x03\n" +
+	"\x1capi/registry/v1/module.proto\x12\x15hades.api.registry.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xcd\x03\n" +
 	"\x06Module\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12;\n" +
 	"\vcreate_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
@@ -583,7 +687,15 @@ const file_api_registry_v1_module_proto_rawDesc = "" +
 	"\x05owner\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x05owner\x12\x1a\n" +
 	"\x04name\x18\x02 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x04name\"J\n" +
 	"\x11GetModuleResponse\x125\n" +
-	"\x06module\x18\x01 \x01(\v2\x1d.hades.api.registry.v1.ModuleR\x06module2\xd0\x02\n" +
+	"\x06module\x18\x01 \x01(\v2\x1d.hades.api.registry.v1.ModuleR\x06module*r\n" +
+	"\x10ModuleVisibility\x12!\n" +
+	"\x1dMODULE_VISIBILITY_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18MODULE_VISIBILITY_PUBLIC\x10\x01\x12\x1d\n" +
+	"\x19MODULE_VISIBILITY_PRIVATE\x10\x02*a\n" +
+	"\vModuleState\x12\x1c\n" +
+	"\x18MODULE_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13MODULE_STATE_ACTIVE\x10\x01\x12\x1b\n" +
+	"\x17MODULE_STATE_DEPRECATED\x10\x022\xd0\x02\n" +
 	"\rModuleService\x12y\n" +
 	"\x12CreateModuleByName\x120.hades.api.registry.v1.CreateModuleByNameRequest\x1a1.hades.api.registry.v1.CreateModuleByNameResponse\x12d\n" +
 	"\vListModules\x12).hades.api.registry.v1.ListModulesRequest\x1a*.hades.api.registry.v1.ListModulesResponse\x12^\n" +
@@ -602,35 +714,36 @@ func file_api_registry_v1_module_proto_rawDescGZIP() []byte {
 	return file_api_registry_v1_module_proto_rawDescData
 }
 
+var file_api_registry_v1_module_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_api_registry_v1_module_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_api_registry_v1_module_proto_goTypes = []any{
-	(*Module)(nil),                     // 0: hades.api.registry.v1.Module
-	(*ModuleRef)(nil),                  // 1: hades.api.registry.v1.ModuleRef
-	(*CreateModuleByNameRequest)(nil),  // 2: hades.api.registry.v1.CreateModuleByNameRequest
-	(*CreateModuleByNameResponse)(nil), // 3: hades.api.registry.v1.CreateModuleByNameResponse
-	(*ListModulesRequest)(nil),         // 4: hades.api.registry.v1.ListModulesRequest
-	(*ListModulesResponse)(nil),        // 5: hades.api.registry.v1.ListModulesResponse
-	(*GetModuleRequest)(nil),           // 6: hades.api.registry.v1.GetModuleRequest
-	(*GetModuleResponse)(nil),          // 7: hades.api.registry.v1.GetModuleResponse
-	(*timestamppb.Timestamp)(nil),      // 8: google.protobuf.Timestamp
-	(ModuleVisibility)(0),              // 9: hades.api.registry.v1.ModuleVisibility
-	(ModuleState)(0),                   // 10: hades.api.registry.v1.ModuleState
+	(ModuleVisibility)(0),              // 0: hades.api.registry.v1.ModuleVisibility
+	(ModuleState)(0),                   // 1: hades.api.registry.v1.ModuleState
+	(*Module)(nil),                     // 2: hades.api.registry.v1.Module
+	(*ModuleRef)(nil),                  // 3: hades.api.registry.v1.ModuleRef
+	(*CreateModuleByNameRequest)(nil),  // 4: hades.api.registry.v1.CreateModuleByNameRequest
+	(*CreateModuleByNameResponse)(nil), // 5: hades.api.registry.v1.CreateModuleByNameResponse
+	(*ListModulesRequest)(nil),         // 6: hades.api.registry.v1.ListModulesRequest
+	(*ListModulesResponse)(nil),        // 7: hades.api.registry.v1.ListModulesResponse
+	(*GetModuleRequest)(nil),           // 8: hades.api.registry.v1.GetModuleRequest
+	(*GetModuleResponse)(nil),          // 9: hades.api.registry.v1.GetModuleResponse
+	(*timestamppb.Timestamp)(nil),      // 10: google.protobuf.Timestamp
 }
 var file_api_registry_v1_module_proto_depIdxs = []int32{
-	8,  // 0: hades.api.registry.v1.Module.create_time:type_name -> google.protobuf.Timestamp
-	8,  // 1: hades.api.registry.v1.Module.update_time:type_name -> google.protobuf.Timestamp
-	9,  // 2: hades.api.registry.v1.Module.visibility:type_name -> hades.api.registry.v1.ModuleVisibility
-	10, // 3: hades.api.registry.v1.Module.state:type_name -> hades.api.registry.v1.ModuleState
-	9,  // 4: hades.api.registry.v1.CreateModuleByNameRequest.visibility:type_name -> hades.api.registry.v1.ModuleVisibility
-	0,  // 5: hades.api.registry.v1.CreateModuleByNameResponse.module:type_name -> hades.api.registry.v1.Module
-	0,  // 6: hades.api.registry.v1.ListModulesResponse.modules:type_name -> hades.api.registry.v1.Module
-	0,  // 7: hades.api.registry.v1.GetModuleResponse.module:type_name -> hades.api.registry.v1.Module
-	2,  // 8: hades.api.registry.v1.ModuleService.CreateModuleByName:input_type -> hades.api.registry.v1.CreateModuleByNameRequest
-	4,  // 9: hades.api.registry.v1.ModuleService.ListModules:input_type -> hades.api.registry.v1.ListModulesRequest
-	6,  // 10: hades.api.registry.v1.ModuleService.GetModule:input_type -> hades.api.registry.v1.GetModuleRequest
-	3,  // 11: hades.api.registry.v1.ModuleService.CreateModuleByName:output_type -> hades.api.registry.v1.CreateModuleByNameResponse
-	5,  // 12: hades.api.registry.v1.ModuleService.ListModules:output_type -> hades.api.registry.v1.ListModulesResponse
-	7,  // 13: hades.api.registry.v1.ModuleService.GetModule:output_type -> hades.api.registry.v1.GetModuleResponse
+	10, // 0: hades.api.registry.v1.Module.create_time:type_name -> google.protobuf.Timestamp
+	10, // 1: hades.api.registry.v1.Module.update_time:type_name -> google.protobuf.Timestamp
+	0,  // 2: hades.api.registry.v1.Module.visibility:type_name -> hades.api.registry.v1.ModuleVisibility
+	1,  // 3: hades.api.registry.v1.Module.state:type_name -> hades.api.registry.v1.ModuleState
+	0,  // 4: hades.api.registry.v1.CreateModuleByNameRequest.visibility:type_name -> hades.api.registry.v1.ModuleVisibility
+	2,  // 5: hades.api.registry.v1.CreateModuleByNameResponse.module:type_name -> hades.api.registry.v1.Module
+	2,  // 6: hades.api.registry.v1.ListModulesResponse.modules:type_name -> hades.api.registry.v1.Module
+	2,  // 7: hades.api.registry.v1.GetModuleResponse.module:type_name -> hades.api.registry.v1.Module
+	4,  // 8: hades.api.registry.v1.ModuleService.CreateModuleByName:input_type -> hades.api.registry.v1.CreateModuleByNameRequest
+	6,  // 9: hades.api.registry.v1.ModuleService.ListModules:input_type -> hades.api.registry.v1.ListModulesRequest
+	8,  // 10: hades.api.registry.v1.ModuleService.GetModule:input_type -> hades.api.registry.v1.GetModuleRequest
+	5,  // 11: hades.api.registry.v1.ModuleService.CreateModuleByName:output_type -> hades.api.registry.v1.CreateModuleByNameResponse
+	7,  // 12: hades.api.registry.v1.ModuleService.ListModules:output_type -> hades.api.registry.v1.ListModulesResponse
+	9,  // 13: hades.api.registry.v1.ModuleService.GetModule:output_type -> hades.api.registry.v1.GetModuleResponse
 	11, // [11:14] is the sub-list for method output_type
 	8,  // [8:11] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
@@ -643,19 +756,19 @@ func file_api_registry_v1_module_proto_init() {
 	if File_api_registry_v1_module_proto != nil {
 		return
 	}
-	file_api_registry_v1_user_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_registry_v1_module_proto_rawDesc), len(file_api_registry_v1_module_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      2,
 			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_api_registry_v1_module_proto_goTypes,
 		DependencyIndexes: file_api_registry_v1_module_proto_depIdxs,
+		EnumInfos:         file_api_registry_v1_module_proto_enumTypes,
 		MessageInfos:      file_api_registry_v1_module_proto_msgTypes,
 	}.Build()
 	File_api_registry_v1_module_proto = out.File

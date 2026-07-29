@@ -152,7 +152,7 @@ function ModuleDetailContent() {
   useEffect(() => {
     if (activeTab !== 'files' || openFilePath || !owner || !moduleName) return;
     setDirLoading(true); setDirError(null);
-    rpcFetch<{ entries: FileEntry[] }>('/hades.api.registry.v1.TreeService/ListModuleFiles', { owner, module: moduleName, path: dirPath })
+    rpcFetch<{ entries: FileEntry[] }>('/hades.api.registry.v1.CommitService/ListModuleFiles', { owner, module: moduleName, path: dirPath })
       .then(res => setDirEntries(res.entries || []))
       .catch(e => setDirError(e.message))
       .finally(() => setDirLoading(false));
@@ -161,7 +161,7 @@ function ModuleDetailContent() {
   useEffect(() => {
     if (!openFilePath || !owner || !moduleName) return;
     setFileLoading(true); setFileError(null); setFileContent(null);
-    rpcFetch<{ content: string }>('/hades.api.registry.v1.TreeService/GetFileContent', { owner, module: moduleName, path: openFilePath })
+    rpcFetch<{ content: string }>('/hades.api.registry.v1.CommitService/GetFileContent', { owner, module: moduleName, path: openFilePath })
       .then(res => setFileContent(atob(res.content || '')))
       .catch(e => setFileError(e.message))
       .finally(() => setFileLoading(false));

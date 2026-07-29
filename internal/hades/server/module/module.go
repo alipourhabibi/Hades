@@ -12,6 +12,7 @@ import (
 
 	"connectrpc.com/connect"
 	registrypbv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1/registryv1connect"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
@@ -34,7 +35,7 @@ type moduleStorage interface {
 
 // authService is the subset of the authorization Server used by the Server.
 type authService interface {
-	CheckReadAccess(ctx context.Context, user *registrypbv1.User, modules []*registrypbv1.Module) error
+	CheckReadAccess(ctx context.Context, user *identityv1.User, modules []*registrypbv1.Module) error
 	Can(ctx context.Context, in *constants.Policy) (*constants.CanResponse, error)
 	ReloadPolicy() error
 }
@@ -66,7 +67,7 @@ func NewServer(deps *server.Dependencies) *Server {
 // GetModules returns modules matching the given refs, enforcing read access for private ones.
 // user may be nil (anonymous): public modules are returned; private ones produce NotFound.
 func (s *Server) GetModules(ctx context.Context, refs []*registrypbv1.ModuleRef) ([]*registrypbv1.Module, error) {
-	user, _ := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User) // nil for anonymous
+	user, _ := ctx.Value(constants.ContextKeyUser).(*identityv1.User) // nil for anonymous
 	modules, err := s.moduleDBStorage.GetModulesByRefs(ctx, refs...)
 	if err != nil {
 		return nil, err
@@ -78,7 +79,7 @@ func (s *Server) ListModules(ctx context.Context, in *connect.Request[registrypb
 	// user may be nil when called without an Authorization header (anonymous access).
 	// Anonymous callers receive only public modules; authenticated callers receive
 	// public modules plus any private modules they are authorised to read.
-	user, _ := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
+	user, _ := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 
 	modules, err := s.moduleDBStorage.ListModules(ctx, in.Msg.Owner)
 	if err != nil {
@@ -108,7 +109,7 @@ func (s *Server) ListModules(ctx context.Context, in *connect.Request[registrypb
 
 func (s *Server) GetModule(ctx context.Context, in *connect.Request[registrypbv1.GetModuleRequest]) (*connect.Response[registrypbv1.GetModuleResponse], error) {
 	// user may be nil for anonymous access; CheckReadAccess handles the nil case.
-	user, _ := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
+	user, _ := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 
 	m, err := s.moduleDBStorage.GetModuleByOwnerAndName(ctx, in.Msg.Owner, in.Msg.Name)
 	if err != nil {
@@ -137,7 +138,7 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 		in.Msg.DefaultBranch = "main"
 	}
 
-	user, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
+	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "CreateModuleByName")
 		return nil, connErr.Unauthenticated("not authenticated")

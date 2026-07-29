@@ -10,9 +10,26 @@ package hades.api.registry.v1;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
-import "api/registry/v1/user.proto";
 
 option go_package = "gen/api/registry/v1";
+
+// ModuleVisibility controls who can read a module.
+enum ModuleVisibility {
+  MODULE_VISIBILITY_UNSPECIFIED = 0;
+  // Anyone can read the module without authentication.
+  MODULE_VISIBILITY_PUBLIC = 1;
+  // Only the owner and explicitly granted members can read the module.
+  MODULE_VISIBILITY_PRIVATE = 2;
+}
+
+// ModuleState reflects the lifecycle stage of a module.
+enum ModuleState {
+  MODULE_STATE_UNSPECIFIED = 0;
+  // Module is actively maintained.
+  MODULE_STATE_ACTIVE = 1;
+  // Module is no longer maintained. Reads are still allowed.
+  MODULE_STATE_DEPRECATED = 2;
+}
 
 // Module is the metadata record for a Hades schema repository.
 message Module {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/config"
 	pb "gitlab.com/gitlab-org/gitaly/v16/proto/go/gitalypb"
 	"google.golang.org/grpc"
@@ -33,7 +34,7 @@ func newOperationService(c config.Gitaly) (*OperationService, error) {
 
 // UserCommitFiles writes files to a module's Gitaly repository in a single
 // commit and returns the resulting commit hash.
-func (o *OperationService) UserCommitFiles(ctx context.Context, module *registryv1.Module, files []*registryv1.File, user *registryv1.User, paths []string, digestValue string) (string, error) {
+func (o *OperationService) UserCommitFiles(ctx context.Context, module *registryv1.Module, files []*registryv1.File, user *identityv1.User, paths []string, digestValue string) (string, error) {
 	stream, err := o.client.UserCommitFiles(ctx)
 	if err != nil {
 		return "", err

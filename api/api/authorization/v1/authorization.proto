@@ -8,7 +8,7 @@ syntax = "proto3";
 
 package hades.api.authorization.v1;
 
-import "api/registry/v1/user.proto";
+import "api/identity/v1/user.proto";
 import "buf/validate/validate.proto";
 
 option go_package = "gen/api/authorization/v1";
@@ -19,7 +19,7 @@ message UserBySessionRequest {}
 // UserBySessionResponse carries the user associated with the current session.
 message UserBySessionResponse {
   // Full user record for the authenticated caller.
-  hades.api.registry.v1.User user = 1;
+  hades.api.identity.v1.User user = 1;
 }
 
 // Authorization resolves authenticated session context to user identity.

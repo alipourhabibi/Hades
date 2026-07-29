@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/org"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/jackc/pgx/v5"
@@ -40,8 +40,8 @@ const userSelectColumnsQualified = `
 
 const returningUserColumns = `id, create_time, update_time, username, email, password, type, state, description, url`
 
-func scanUser(row pgx.Row) (*registryv1.User, error) {
-	usr := &registryv1.User{}
+func scanUser(row pgx.Row) (*identityv1.User, error) {
+	usr := &identityv1.User{}
 	var createTime, updateTime time.Time
 	err := row.Scan(
 		&usr.Id, &createTime, &updateTime,
@@ -56,7 +56,7 @@ func scanUser(row pgx.Row) (*registryv1.User, error) {
 	return usr, nil
 }
 
-func (s *OrgStorage) GetByName(ctx context.Context, name string) (*registryv1.User, error) {
+func (s *OrgStorage) GetByName(ctx context.Context, name string) (*identityv1.User, error) {
 	query := `SELECT` + userSelectColumns + `
 FROM users
 WHERE username = $1 AND type = 1`
@@ -64,7 +64,7 @@ WHERE username = $1 AND type = 1`
 	return scanUser(row)
 }
 
-func (s *OrgStorage) List(ctx context.Context, query string) ([]*registryv1.User, error) {
+func (s *OrgStorage) List(ctx context.Context, query string) ([]*identityv1.User, error) {
 	rows, err := s.q(ctx).Query(ctx, `
 SELECT`+userSelectColumns+`
 FROM users
@@ -77,9 +77,9 @@ LIMIT 50`, query)
 	}
 	defer rows.Close()
 
-	var orgs []*registryv1.User
+	var orgs []*identityv1.User
 	for rows.Next() {
-		usr := &registryv1.User{}
+		usr := &identityv1.User{}
 		var createTime, updateTime time.Time
 		if err := rows.Scan(
 			&usr.Id, &createTime, &updateTime,
@@ -95,7 +95,7 @@ LIMIT 50`, query)
 	return orgs, rows.Err()
 }
 
-func (s *OrgStorage) Create(ctx context.Context, name, description, url, creatorID string) (*registryv1.User, error) {
+func (s *OrgStorage) Create(ctx context.Context, name, description, url, creatorID string) (*identityv1.User, error) {
 	row := s.q(ctx).QueryRow(ctx, `
 INSERT INTO users (username, email, password, type, state, description, url)
 VALUES ($1, '', '', 1, 1, $2, $3)
@@ -115,7 +115,7 @@ ON CONFLICT (org_id, member_id) DO UPDATE SET role = 'admin'`,
 	return o, err
 }
 
-func (s *OrgStorage) Update(ctx context.Context, orgID, description, url string) (*registryv1.User, error) {
+func (s *OrgStorage) Update(ctx context.Context, orgID, description, url string) (*identityv1.User, error) {
 	row := s.q(ctx).QueryRow(ctx, `
 UPDATE users SET description=$1, url=$2, update_time=NOW()
 WHERE id=$3
@@ -146,7 +146,7 @@ func (s *OrgStorage) RemoveMember(ctx context.Context, orgID, memberID string) e
 	return err
 }
 
-func (s *OrgStorage) GetUserOrgs(ctx context.Context, memberID string) ([]*registryv1.User, error) {
+func (s *OrgStorage) GetUserOrgs(ctx context.Context, memberID string) ([]*identityv1.User, error) {
 	rows, err := s.q(ctx).Query(ctx, `
 SELECT`+userSelectColumnsQualified+`
 FROM users u
@@ -158,9 +158,9 @@ ORDER BY u.username`, memberID)
 	}
 	defer rows.Close()
 
-	var orgs []*registryv1.User
+	var orgs []*identityv1.User
 	for rows.Next() {
-		usr := &registryv1.User{}
+		usr := &identityv1.User{}
 		var createTime, updateTime time.Time
 		if err := rows.Scan(
 			&usr.Id, &createTime, &updateTime,
@@ -212,7 +212,7 @@ ORDER BY u.username`
 
 	var members []*org.OrgMember
 	for rows.Next() {
-		usr := &registryv1.User{}
+		usr := &identityv1.User{}
 		var createTime, updateTime time.Time
 		var role string
 		if err := rows.Scan(

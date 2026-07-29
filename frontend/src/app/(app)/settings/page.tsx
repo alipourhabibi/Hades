@@ -54,7 +54,7 @@ export default function PageSettings() {
   const saveProfile = async () => {
     setProfileSaving(true); setProfileError(''); setProfileSuccess(false);
     try {
-      await rpcFetch('/hades.api.registry.v1.UserService/UpdateUser', { description: profileDesc, url: profileUrl });
+      await rpcFetch('/hades.api.identity.v1.UserService/UpdateUser', { description: profileDesc, url: profileUrl });
       setProfileSuccess(true);
     } catch (e) { setProfileError(formatError(e)); } finally { setProfileSaving(false); }
   };
@@ -70,7 +70,7 @@ export default function PageSettings() {
     if (newPass !== confirmPass) { setPassError('New passwords do not match.'); return; }
     setPassLoading(true); setPassError(''); setPassSuccess(false);
     try {
-      await rpcFetch('/hades.api.authentication.v1.AuthenticationService/ChangePassword', { oldPassword: oldPass, newPassword: newPass, revokeOtherSessions });
+      await rpcFetch('/hades.api.auth.v1.AuthenticationService/ChangePassword', { oldPassword: oldPass, newPassword: newPass, revokeOtherSessions });
       setPassSuccess(true); setOldPass(''); setNewPass(''); setConfirmPass('');
     } catch (e) { setPassError(formatError(e)); } finally { setPassLoading(false); }
   };

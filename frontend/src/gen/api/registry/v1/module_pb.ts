@@ -8,20 +8,18 @@
 // @generated from file api/registry/v1/module.proto (package hades.api.registry.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv1";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv1";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv1";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv1";
 import { file_buf_validate_validate } from "../../../buf/validate/validate_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
-import type { ModuleState, ModuleVisibility } from "./user_pb";
-import { file_api_registry_v1_user } from "./user_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file api/registry/v1/module.proto.
  */
 export const file_api_registry_v1_module: GenFile = /*@__PURE__*/
-  fileDesc("ChxhcGkvcmVnaXN0cnkvdjEvbW9kdWxlLnByb3RvEhVoYWRlcy5hcGkucmVnaXN0cnkudjEi3AIKBk1vZHVsZRIKCgJpZBgBIAEoCRIvCgtjcmVhdGVfdGltZRgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLdXBkYXRlX3RpbWUYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgwKBG5hbWUYBCABKAkSEAoIb3duZXJfaWQYBSABKAkSOwoKdmlzaWJpbGl0eRgGIAEoDjInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGVWaXNpYmlsaXR5EhMKC2Rlc2NyaXB0aW9uGAcgASgJEhYKDmRlZmF1bHRfYnJhbmNoGAggASgJEjEKBXN0YXRlGAkgASgOMiIuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZVN0YXRlEgsKA3VybBgKIAEoCRIaChJkZWZhdWx0X2xhYmVsX25hbWUYCyABKAkiNgoJTW9kdWxlUmVmEgoKAmlkGAEgASgJEg0KBW93bmVyGAIgASgJEg4KBm1vZHVsZRgDIAEoCSKbAQoZQ3JlYXRlTW9kdWxlQnlOYW1lUmVxdWVzdBIUCgRuYW1lGAEgASgJQga6SAPIAQESOwoKdmlzaWJpbGl0eRgCIAEoDjInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGVWaXNpYmlsaXR5EhMKC2Rlc2NyaXB0aW9uGAMgASgJEhYKDmRlZmF1bHRfYnJhbmNoGAQgASgJIksKGkNyZWF0ZU1vZHVsZUJ5TmFtZVJlc3BvbnNlEi0KBm1vZHVsZRgBIAEoCzIdLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGUiIwoSTGlzdE1vZHVsZXNSZXF1ZXN0Eg0KBW93bmVyGAEgASgJIkUKE0xpc3RNb2R1bGVzUmVzcG9uc2USLgoHbW9kdWxlcxgBIAMoCzIdLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGUiPwoQR2V0TW9kdWxlUmVxdWVzdBIVCgVvd25lchgBIAEoCUIGukgDyAEBEhQKBG5hbWUYAiABKAlCBrpIA8gBASJCChFHZXRNb2R1bGVSZXNwb25zZRItCgZtb2R1bGUYASABKAsyHS5oYWRlcy5hcGkucmVnaXN0cnkudjEuTW9kdWxlMtACCg1Nb2R1bGVTZXJ2aWNlEnkKEkNyZWF0ZU1vZHVsZUJ5TmFtZRIwLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5DcmVhdGVNb2R1bGVCeU5hbWVSZXF1ZXN0GjEuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkNyZWF0ZU1vZHVsZUJ5TmFtZVJlc3BvbnNlEmQKC0xpc3RNb2R1bGVzEikuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkxpc3RNb2R1bGVzUmVxdWVzdBoqLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5MaXN0TW9kdWxlc1Jlc3BvbnNlEl4KCUdldE1vZHVsZRInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5HZXRNb2R1bGVSZXF1ZXN0GiguaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkdldE1vZHVsZVJlc3BvbnNlQuIBChljb20uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxQgtNb2R1bGVQcm90b1ABWkFnaXRodWIuY29tL2FsaXBvdXJoYWJpYmkvSGFkZXMvYXBpL2dlbi9hcGkvcmVnaXN0cnkvdjE7cmVnaXN0cnl2MaICA0hBUqoCFUhhZGVzLkFwaS5SZWdpc3RyeS5WMcoCFUhhZGVzXEFwaVxSZWdpc3RyeVxWMeICIUhhZGVzXEFwaVxSZWdpc3RyeVxWMVxHUEJNZXRhZGF0YeoCGEhhZGVzOjpBcGk6OlJlZ2lzdHJ5OjpWMWIGcHJvdG8z", [file_buf_validate_validate, file_google_protobuf_timestamp, file_api_registry_v1_user]);
+  fileDesc("ChxhcGkvcmVnaXN0cnkvdjEvbW9kdWxlLnByb3RvEhVoYWRlcy5hcGkucmVnaXN0cnkudjEi3AIKBk1vZHVsZRIKCgJpZBgBIAEoCRIvCgtjcmVhdGVfdGltZRgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLdXBkYXRlX3RpbWUYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgwKBG5hbWUYBCABKAkSEAoIb3duZXJfaWQYBSABKAkSOwoKdmlzaWJpbGl0eRgGIAEoDjInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGVWaXNpYmlsaXR5EhMKC2Rlc2NyaXB0aW9uGAcgASgJEhYKDmRlZmF1bHRfYnJhbmNoGAggASgJEjEKBXN0YXRlGAkgASgOMiIuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZVN0YXRlEgsKA3VybBgKIAEoCRIaChJkZWZhdWx0X2xhYmVsX25hbWUYCyABKAkiNgoJTW9kdWxlUmVmEgoKAmlkGAEgASgJEg0KBW93bmVyGAIgASgJEg4KBm1vZHVsZRgDIAEoCSKbAQoZQ3JlYXRlTW9kdWxlQnlOYW1lUmVxdWVzdBIUCgRuYW1lGAEgASgJQga6SAPIAQESOwoKdmlzaWJpbGl0eRgCIAEoDjInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGVWaXNpYmlsaXR5EhMKC2Rlc2NyaXB0aW9uGAMgASgJEhYKDmRlZmF1bHRfYnJhbmNoGAQgASgJIksKGkNyZWF0ZU1vZHVsZUJ5TmFtZVJlc3BvbnNlEi0KBm1vZHVsZRgBIAEoCzIdLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGUiIwoSTGlzdE1vZHVsZXNSZXF1ZXN0Eg0KBW93bmVyGAEgASgJIkUKE0xpc3RNb2R1bGVzUmVzcG9uc2USLgoHbW9kdWxlcxgBIAMoCzIdLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGUiPwoQR2V0TW9kdWxlUmVxdWVzdBIVCgVvd25lchgBIAEoCUIGukgDyAEBEhQKBG5hbWUYAiABKAlCBrpIA8gBASJCChFHZXRNb2R1bGVSZXNwb25zZRItCgZtb2R1bGUYASABKAsyHS5oYWRlcy5hcGkucmVnaXN0cnkudjEuTW9kdWxlKnIKEE1vZHVsZVZpc2liaWxpdHkSIQodTU9EVUxFX1ZJU0lCSUxJVFlfVU5TUEVDSUZJRUQQABIcChhNT0RVTEVfVklTSUJJTElUWV9QVUJMSUMQARIdChlNT0RVTEVfVklTSUJJTElUWV9QUklWQVRFEAIqYQoLTW9kdWxlU3RhdGUSHAoYTU9EVUxFX1NUQVRFX1VOU1BFQ0lGSUVEEAASFwoTTU9EVUxFX1NUQVRFX0FDVElWRRABEhsKF01PRFVMRV9TVEFURV9ERVBSRUNBVEVEEAIy0AIKDU1vZHVsZVNlcnZpY2USeQoSQ3JlYXRlTW9kdWxlQnlOYW1lEjAuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkNyZWF0ZU1vZHVsZUJ5TmFtZVJlcXVlc3QaMS5oYWRlcy5hcGkucmVnaXN0cnkudjEuQ3JlYXRlTW9kdWxlQnlOYW1lUmVzcG9uc2USZAoLTGlzdE1vZHVsZXMSKS5oYWRlcy5hcGkucmVnaXN0cnkudjEuTGlzdE1vZHVsZXNSZXF1ZXN0GiouaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkxpc3RNb2R1bGVzUmVzcG9uc2USXgoJR2V0TW9kdWxlEicuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkdldE1vZHVsZVJlcXVlc3QaKC5oYWRlcy5hcGkucmVnaXN0cnkudjEuR2V0TW9kdWxlUmVzcG9uc2VC4gEKGWNvbS5oYWRlcy5hcGkucmVnaXN0cnkudjFCC01vZHVsZVByb3RvUAFaQWdpdGh1Yi5jb20vYWxpcG91cmhhYmliaS9IYWRlcy9hcGkvZ2VuL2FwaS9yZWdpc3RyeS92MTtyZWdpc3RyeXYxogIDSEFSqgIVSGFkZXMuQXBpLlJlZ2lzdHJ5LlYxygIVSGFkZXNcQXBpXFJlZ2lzdHJ5XFYx4gIhSGFkZXNcQXBpXFJlZ2lzdHJ5XFYxXEdQQk1ldGFkYXRh6gIYSGFkZXM6OkFwaTo6UmVnaXN0cnk6OlYxYgZwcm90bzM", [file_buf_validate_validate, file_google_protobuf_timestamp]);
 
 /**
  * Module is the metadata record for a Hades schema repository.
@@ -298,6 +296,70 @@ export type GetModuleResponse = Message<"hades.api.registry.v1.GetModuleResponse
  */
 export const GetModuleResponseSchema: GenMessage<GetModuleResponse> = /*@__PURE__*/
   messageDesc(file_api_registry_v1_module, 7);
+
+/**
+ * ModuleVisibility controls who can read a module.
+ *
+ * @generated from enum hades.api.registry.v1.ModuleVisibility
+ */
+export enum ModuleVisibility {
+  /**
+   * @generated from enum value: MODULE_VISIBILITY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Anyone can read the module without authentication.
+   *
+   * @generated from enum value: MODULE_VISIBILITY_PUBLIC = 1;
+   */
+  PUBLIC = 1,
+
+  /**
+   * Only the owner and explicitly granted members can read the module.
+   *
+   * @generated from enum value: MODULE_VISIBILITY_PRIVATE = 2;
+   */
+  PRIVATE = 2,
+}
+
+/**
+ * Describes the enum hades.api.registry.v1.ModuleVisibility.
+ */
+export const ModuleVisibilitySchema: GenEnum<ModuleVisibility> = /*@__PURE__*/
+  enumDesc(file_api_registry_v1_module, 0);
+
+/**
+ * ModuleState reflects the lifecycle stage of a module.
+ *
+ * @generated from enum hades.api.registry.v1.ModuleState
+ */
+export enum ModuleState {
+  /**
+   * @generated from enum value: MODULE_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Module is actively maintained.
+   *
+   * @generated from enum value: MODULE_STATE_ACTIVE = 1;
+   */
+  ACTIVE = 1,
+
+  /**
+   * Module is no longer maintained. Reads are still allowed.
+   *
+   * @generated from enum value: MODULE_STATE_DEPRECATED = 2;
+   */
+  DEPRECATED = 2,
+}
+
+/**
+ * Describes the enum hades.api.registry.v1.ModuleState.
+ */
+export const ModuleStateSchema: GenEnum<ModuleState> = /*@__PURE__*/
+  enumDesc(file_api_registry_v1_module, 1);
 
 /**
  * ModuleService manages Protobuf schema modules (repositories).

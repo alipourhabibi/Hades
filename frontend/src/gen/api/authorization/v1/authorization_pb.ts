@@ -10,8 +10,8 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv1";
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv1";
-import type { User } from "../../registry/v1/user_pb";
-import { file_api_registry_v1_user } from "../../registry/v1/user_pb";
+import type { User } from "../../identity/v1/user_pb";
+import { file_api_identity_v1_user } from "../../identity/v1/user_pb";
 import { file_buf_validate_validate } from "../../../buf/validate/validate_pb";
 import type { Message } from "@bufbuild/protobuf";
 
@@ -19,7 +19,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file api/authorization/v1/authorization.proto.
  */
 export const file_api_authorization_v1_authorization: GenFile = /*@__PURE__*/
-  fileDesc("CihhcGkvYXV0aG9yaXphdGlvbi92MS9hdXRob3JpemF0aW9uLnByb3RvEhpoYWRlcy5hcGkuYXV0aG9yaXphdGlvbi52MSIWChRVc2VyQnlTZXNzaW9uUmVxdWVzdCJCChVVc2VyQnlTZXNzaW9uUmVzcG9uc2USKQoEdXNlchgBIAEoCzIbLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Vc2VyMoUBCg1BdXRob3JpemF0aW9uEnQKDVVzZXJCeVNlc3Npb24SMC5oYWRlcy5hcGkuYXV0aG9yaXphdGlvbi52MS5Vc2VyQnlTZXNzaW9uUmVxdWVzdBoxLmhhZGVzLmFwaS5hdXRob3JpemF0aW9uLnYxLlVzZXJCeVNlc3Npb25SZXNwb25zZUKMAgoeY29tLmhhZGVzLmFwaS5hdXRob3JpemF0aW9uLnYxQhJBdXRob3JpemF0aW9uUHJvdG9QAVpLZ2l0aHViLmNvbS9hbGlwb3VyaGFiaWJpL0hhZGVzL2FwaS9nZW4vYXBpL2F1dGhvcml6YXRpb24vdjE7YXV0aG9yaXphdGlvbnYxogIDSEFBqgIaSGFkZXMuQXBpLkF1dGhvcml6YXRpb24uVjHKAhpIYWRlc1xBcGlcQXV0aG9yaXphdGlvblxWMeICJkhhZGVzXEFwaVxBdXRob3JpemF0aW9uXFYxXEdQQk1ldGFkYXRh6gIdSGFkZXM6OkFwaTo6QXV0aG9yaXphdGlvbjo6VjFiBnByb3RvMw", [file_api_registry_v1_user, file_buf_validate_validate]);
+  fileDesc("CihhcGkvYXV0aG9yaXphdGlvbi92MS9hdXRob3JpemF0aW9uLnByb3RvEhpoYWRlcy5hcGkuYXV0aG9yaXphdGlvbi52MSIWChRVc2VyQnlTZXNzaW9uUmVxdWVzdCJCChVVc2VyQnlTZXNzaW9uUmVzcG9uc2USKQoEdXNlchgBIAEoCzIbLmhhZGVzLmFwaS5pZGVudGl0eS52MS5Vc2VyMoUBCg1BdXRob3JpemF0aW9uEnQKDVVzZXJCeVNlc3Npb24SMC5oYWRlcy5hcGkuYXV0aG9yaXphdGlvbi52MS5Vc2VyQnlTZXNzaW9uUmVxdWVzdBoxLmhhZGVzLmFwaS5hdXRob3JpemF0aW9uLnYxLlVzZXJCeVNlc3Npb25SZXNwb25zZUKMAgoeY29tLmhhZGVzLmFwaS5hdXRob3JpemF0aW9uLnYxQhJBdXRob3JpemF0aW9uUHJvdG9QAVpLZ2l0aHViLmNvbS9hbGlwb3VyaGFiaWJpL0hhZGVzL2FwaS9nZW4vYXBpL2F1dGhvcml6YXRpb24vdjE7YXV0aG9yaXphdGlvbnYxogIDSEFBqgIaSGFkZXMuQXBpLkF1dGhvcml6YXRpb24uVjHKAhpIYWRlc1xBcGlcQXV0aG9yaXphdGlvblxWMeICJkhhZGVzXEFwaVxBdXRob3JpemF0aW9uXFYxXEdQQk1ldGFkYXRh6gIdSGFkZXM6OkFwaTo6QXV0aG9yaXphdGlvbjo6VjFiBnByb3RvMw", [file_api_identity_v1_user, file_buf_validate_validate]);
 
 /**
  * UserBySessionRequest resolves the caller's Bearer token to a user record.
@@ -45,7 +45,7 @@ export type UserBySessionResponse = Message<"hades.api.authorization.v1.UserBySe
   /**
    * Full user record for the authenticated caller.
    *
-   * @generated from field: hades.api.registry.v1.User user = 1;
+   * @generated from field: hades.api.identity.v1.User user = 1;
    */
   user?: User;
 };
