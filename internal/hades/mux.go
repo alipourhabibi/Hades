@@ -65,7 +65,7 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 
 	mux := http.NewServeMux()
 
-	// Auth-domain handlers — all served by the single *auth.Server
+	// Auth-domain handlers - all served by the single *auth.Server
 	mux.Handle(authv1connect.NewAuthenticationServiceHandler(s.serverSet.AuthServer, withAuth))
 	mux.Handle(authv1connect.NewSessionServiceHandler(s.serverSet.AuthServer, withAuth))
 	mux.Handle(authv1connect.NewOAuthServiceHandler(s.serverSet.AuthServer, noAuth))
