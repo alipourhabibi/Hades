@@ -112,6 +112,10 @@ install-tools:
 	go install github.com/open-policy-agent/opa@latest
 	@echo "Installing regal..."
 	go install github.com/styrainc/regal@latest
+	# The path ends in /v2 because Go wants that for major version 2 and up.
+	# Drop it and you get golangci-lint 1.x, which cannot read our config.
+	@echo "Installing golangci-lint..."
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	@echo "All tools installed."
 
 # Generate an HTML coverage report for unit tests.
