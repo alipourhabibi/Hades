@@ -33,7 +33,7 @@ export default function PageLogin() {
     try {
       const data = await rpcFetch<{ token: string }>('/hades.api.auth.v1.AuthenticationService/Login', { username, password });
       if (!data.token) throw new Error('No token returned');
-      setAuth(data.token, username);
+      await setAuth(data.token, username);
       router.push('/');
     } catch (e) {
       setError(formatError(e));
@@ -65,15 +65,15 @@ export default function PageLogin() {
 
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)', display: 'block', marginBottom: 6 }}>Username</label>
-              <Input value={username} onChange={setUsername} placeholder="your-username" autoFocus/>
+              <label htmlFor="login-username" style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)', display: 'block', marginBottom: 6 }}>Username</label>
+              <Input id="login-username" name="username" autoComplete="username" value={username} onChange={setUsername} placeholder="your-username" autoFocus/>
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)' }}>Password</label>
+                <label htmlFor="login-password" style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)' }}>Password</label>
                 <Link href="/forgot-password" style={{ fontSize: 12, color: 'var(--c-accent)' }}>Forgot password?</Link>
               </div>
-              <Input value={password} onChange={setPassword} type={showPass ? 'text' : 'password'} placeholder="••••••••"
+              <Input id="login-password" name="password" autoComplete="current-password" value={password} onChange={setPassword} type={showPass ? 'text' : 'password'} placeholder="••••••••"
                 suffix={
                   <button type="button" onClick={() => setShowPass(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-fg-subtle)', display: 'flex', padding: 0 }}>
                     <IconEye size={14}/>

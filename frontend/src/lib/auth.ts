@@ -12,10 +12,18 @@ export function getCookieValue(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-export function setCookie(name: string, value: string, days = 30, httpOnly = false): void {
+// setCookie writes a NON-SENSITIVE preference cookie from the browser.
+//
+// It cannot set HttpOnly: browsers ignore that attribute on cookies written
+// through document.cookie. The previous signature took an `httpOnly` parameter
+// and appended the flag, which read as protection and provided none. The
+// session token is not written here at all any more; it is set by the server
+// through /api/session. See setToken.
+export function setCookie(name: string, value: string, days = 30): void {
   if (typeof document === 'undefined') return;
   const expires = new Date(Date.now() + days * 864e5).toUTCString();
-  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax${httpOnly ? '; HttpOnly' : ''}`;
+  const secure = typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax${secure}`;
 }
 
 export function deleteCookie(name: string): void {
@@ -23,18 +31,37 @@ export function deleteCookie(name: string): void {
   document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
 }
 
-// ── Token ─────────────────────────────────────────────────────────────────────
+// ── Session token ─────────────────────────────────────────────────────────────
+//
+// The session token lives in an HttpOnly, SameSite=Lax cookie set by the server
+// at /api/session, and is attached to backend calls by the /api/rpc proxy. It is
+// deliberately not readable from JavaScript: it used to be an ordinary
+// document.cookie value, so any XSS anywhere in the app could read it directly.
+//
+// There is therefore no getToken. Use isSignedIn to decide what to render;
+// authorization is the server's answer, not the browser's.
 
-export function getToken(): string | null {
-  return getCookieValue(TOKEN_KEY);
+export async function setToken(t: string): Promise<void> {
+  const resp = await fetch('/api/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: t }),
+    credentials: 'same-origin',
+  });
+  if (!resp.ok) throw new Error('Could not establish the session');
 }
 
-export function setToken(t: string): void {
-  setCookie(TOKEN_KEY, t, 30);
+export async function clearToken(): Promise<void> {
+  await fetch('/api/session', { method: 'DELETE', credentials: 'same-origin' });
 }
 
-export function clearToken(): void {
-  deleteCookie(TOKEN_KEY);
+// isSignedIn reports whether this browser believes it has a session.
+//
+// It reads the username cookie, which is a display value rather than a
+// credential. A stale true answer costs a redirect after the first 401; a
+// readable token would cost the token.
+export function isSignedIn(): boolean {
+  return getUsername() !== null;
 }
 
 // ── Username ──────────────────────────────────────────────────────────────────

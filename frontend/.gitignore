@@ -16,6 +16,12 @@ dist-ssr
 .next/
 out/
 
+# TypeScript's incremental build cache. It is a derived file that changes on
+# every typecheck, and a committed one is worse than churn: CI restores the
+# stale cache from the repository before running `npm run typecheck`, so tsc
+# can skip files whose inputs it believes are unchanged.
+*.tsbuildinfo
+
 
 # Editor directories and files
 .vscode/*
