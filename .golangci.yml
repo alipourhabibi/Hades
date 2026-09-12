@@ -1,0 +1,87 @@
+version: "2"
+
+run:
+  timeout: 10m
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  # The set is deliberately small and all of it is enforcing. Every linter here
+  # would have caught at least one defect that reached main: errcheck the
+  # discarded otelconnect error and the dropped ForEach returns, errorlint the
+  # `err != ErrRepositoryAlreadyExists` comparison, unparam the Internal(msg)
+  # that ignored its argument.
+  enable:
+    - bodyclose
+    - errcheck
+    - errorlint
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nilerr
+    - rowserrcheck
+    - staticcheck
+    - unparam
+    - unused
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      # Deliberate best-effort writes are still written as `_ = f()`, which
+      # errcheck accepts; this only stops a bare call from being silent.
+      check-blank: false
+      exclude-functions:
+        # A deferred Close on a drained result set or a read-only handle has no
+        # error worth acting on: the data is already read, and rows.Err() is
+        # what reports a mid-iteration failure. rowserrcheck enforces that
+        # separately, which is the check that actually matters here.
+        - (*database/sql.Rows).Close
+        - (database/sql.Rows).Close
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+    gosec:
+      excludes:
+        # G104 duplicates errcheck.
+        - G104
+    # misspell has no locale set on purpose. This codebase uses "artifact" and
+    # "color" as technical terms; a UK locale flags 77 of them as misspellings
+    # of "artefact" and "colour", which is noise that trains everyone to ignore
+    # the linter.
+
+  exclusions:
+    generated: lax
+    # frontend/node_modules contains a vendored Go package (flatted), which
+    # `go list ./...` picks up. It is not ours and must not be linted.
+    #
+    # This lives here, under linters.exclusions, because that is where v2 puts
+    # it. It used to be issues.exclude-dirs, which is the v1 key: under the
+    # `version: "2"` header at the top of this file that property does not
+    # exist, golangci-lint 2.x rejects the whole config, and `make lint`
+    # reported govet findings from the vendored package on every machine that
+    # had ever installed the frontend. Run `golangci-lint config verify` after
+    # editing this file; a schema drift is otherwise silent.
+    paths:
+      - frontend
+    rules:
+      # Generated protobuf and Connect code is not ours to fix.
+      - path: 'api/gen/'
+        linters:
+          - errcheck
+          - gosec
+          - staticcheck
+          - unparam
+          - unused
+      # Tests routinely ignore errors on setup helpers and use weak randomness
+      # deliberately.
+      - path: '_test\.go'
+        linters:
+          - errcheck
+          - gosec
+          - unparam
+
+formatters:
+  enable:
+    - gofmt

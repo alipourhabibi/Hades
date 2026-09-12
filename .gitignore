@@ -28,7 +28,10 @@ go.work.sum
 /config/dev.yaml
 /config/example.com-key.pem
 /config/example.com.pem
-buf.lock
+# buf.lock is a lockfile and belongs in the repository, like go.sum. It used to
+# be ignored. `buf breaking --against <the main branch>` then resolved no deps
+# on the against side, so every `import "buf/validate/validate.proto"` failed
+# with "imported file does not exist" and the check could never run.
 /hades
 
 # runtime data (repos, generated SDKs, SQLite DB)

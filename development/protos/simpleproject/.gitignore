@@ -1,1 +1,6 @@
 /gen
+
+# This fixture resolves its dep from whatever registry the developer is running
+# locally, so the lock file pins a commit that exists on one machine only.
+# Unlike api/buf.lock, this one does not belong in the repository.
+/buf.lock
