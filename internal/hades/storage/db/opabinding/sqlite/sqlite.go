@@ -73,4 +73,35 @@ func (s *SQLiteOPABindingStorage) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+func (s *SQLiteOPABindingStorage) ListBySubject(ctx context.Context, subject string) ([]opabinding.RoleBinding, error) {
+	rows, err := s.q(ctx).QueryContext(ctx,
+		`SELECT id, subject, role, domain, created_at FROM opa_role_bindings WHERE subject = ? ORDER BY created_at`,
+		subject)
+	if err != nil {
+		return nil, fmt.Errorf("opabinding: list by subject: %w", err)
+	}
+	defer rows.Close()
+	var out []opabinding.RoleBinding
+	for rows.Next() {
+		var b opabinding.RoleBinding
+		var createdAt sqltypes.Time
+		if err := rows.Scan(&b.ID, &b.Subject, &b.Role, &b.Domain, &createdAt); err != nil {
+			return nil, fmt.Errorf("opabinding: list by subject scan: %w", err)
+		}
+		b.CreatedAt = createdAt.V
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLiteOPABindingStorage) DeleteBySubjectDomain(ctx context.Context, subject, domain string) error {
+	_, err := s.q(ctx).ExecContext(ctx,
+		`DELETE FROM opa_role_bindings WHERE subject = ? AND domain = ?`,
+		subject, domain)
+	if err != nil {
+		return fmt.Errorf("opabinding: delete by subject domain: %w", err)
+	}
+	return nil
+}
+
 var _ opabinding.Storage = (*SQLiteOPABindingStorage)(nil)

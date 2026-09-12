@@ -5,9 +5,19 @@ package config
 
 import (
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
+
+// OPAConfig holds tuning parameters for the in-process OPA authorization engine.
+type OPAConfig struct {
+	// BindingCacheTTL is how long per-subject role-binding results are cached.
+	// Zero uses a backend-specific default: 10s for in-memory, 60s for Redis.
+	// Longer TTL reduces DB load but increases the time window for stale
+	// bindings after a revocation.
+	BindingCacheTTL time.Duration `json:"bindingCacheTTL" yaml:"bindingCacheTTL"`
+}
 
 // Config is the top-level configuration, aggregating all subsystem configs.
 type Config struct {
@@ -22,6 +32,7 @@ type Config struct {
 	OAuth     OAuthConfig     `json:"oauth" yaml:"oauth"`
 	Redis     RedisConfig     `json:"redis" yaml:"redis"`
 	TOTP      TOTPConfig      `json:"totp" yaml:"totp"`
+	OPA       OPAConfig       `json:"opa" yaml:"opa"`
 
 	// Pluggable backend selectors and their per-backend configs.
 	Backends    BackendsConfig    `json:"backends" yaml:"backends"`

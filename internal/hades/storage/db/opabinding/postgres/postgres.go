@@ -93,3 +93,37 @@ func (s *OPABindingStorage) Delete(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+// ListBySubject returns all role bindings for the given subject.
+func (s *OPABindingStorage) ListBySubject(ctx context.Context, subject string) ([]opabinding.RoleBinding, error) {
+	rows, err := s.q(ctx).Query(ctx,
+		`SELECT id, subject, role, domain, created_at FROM opa_role_bindings WHERE subject = $1 ORDER BY created_at`,
+		subject,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("opabinding: list by subject: %w", err)
+	}
+	defer rows.Close()
+
+	var out []opabinding.RoleBinding
+	for rows.Next() {
+		var b opabinding.RoleBinding
+		if err := rows.Scan(&b.ID, &b.Subject, &b.Role, &b.Domain, &b.CreatedAt); err != nil {
+			return nil, fmt.Errorf("opabinding: list by subject scan: %w", err)
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+// DeleteBySubjectDomain removes all role bindings for a given subject and domain.
+func (s *OPABindingStorage) DeleteBySubjectDomain(ctx context.Context, subject, domain string) error {
+	_, err := s.q(ctx).Exec(ctx,
+		`DELETE FROM opa_role_bindings WHERE subject = $1 AND domain = $2`,
+		subject, domain,
+	)
+	if err != nil {
+		return fmt.Errorf("opabinding: delete by subject domain: %w", err)
+	}
+	return nil
+}

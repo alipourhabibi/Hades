@@ -10,8 +10,8 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/alipourhabibi/Hades/api/gen/api/authorization/v1"
 	"github.com/alipourhabibi/Hades/api/gen/api/authorization/v1/authorizationv1connect"
-	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
+	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/authorization"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/apitoken"
@@ -89,27 +89,27 @@ func (s *Server) AddBasicRoles(ctx context.Context, userName string) error {
 	return s.engine.AddBinding(ctx, userName, constants.RoleOwner, userName+"/*")
 }
 
-// AddBasicRolesInTx inserts the namespace-wide owner binding using the
-// transaction injected into ctx. The caller must call ReloadPolicy after commit.
-func (s *Server) AddBasicRolesInTx(ctx context.Context, userName string) error {
-	return s.engine.AddBindingInTx(ctx, userName, constants.RoleOwner, userName+"/*")
+// AddOrgOwner grants the owner role over all resources in an org namespace.
+func (s *Server) AddOrgOwner(ctx context.Context, subject, orgName string) error {
+	return s.engine.AddBinding(ctx, subject, constants.RoleOwner, orgName+"/*")
 }
 
-// ReloadPolicy syncs the in-memory OPA store from the database.
-func (s *Server) ReloadPolicy() error {
-	return s.engine.Reload(context.Background())
+// AddOrgMemberBinding grants a role (contributor or admin) to a user over all
+// resources in an org namespace.
+func (s *Server) AddOrgMemberBinding(ctx context.Context, subject, role, orgName string) error {
+	return s.engine.AddBinding(ctx, subject, role, orgName+"/*")
+}
+
+// DeleteOrgBinding removes all bindings for subject within the org namespace.
+func (s *Server) DeleteOrgBinding(ctx context.Context, subject, orgName string) error {
+	return s.engine.DeleteBinding(ctx, subject, orgName+"/*")
 }
 
 // Can checks a single authorization policy via the OPA engine.
 func (s *Server) Can(ctx context.Context, in *constants.Policy) (*constants.CanResponse, error) {
-	input := authorization.Input{
-		Subject:      in.Subject,
-		Domain:       in.Domain,
-		ResourceType: in.Object,
-		Action:       in.Action,
-		Visibility:   constants.VisibilityPrivate,
-	}
-	allowed, err := s.engine.Allow(ctx, input)
+	p := *in
+	p.Visibility = constants.VisibilityPrivate
+	allowed, err := s.engine.Allow(ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -119,18 +119,25 @@ func (s *Server) Can(ctx context.Context, in *constants.Policy) (*constants.CanR
 	return &constants.CanResponse{Allowed: true}, nil
 }
 
-// BatchCan checks multiple policies, returning the first denied one.
+// BatchCan evaluates all policies in a single OPA call, returning the first
+// denied policy (preserving input order). Uses engine.BatchAllow which calls
+// denied_indices in one Eval() rather than N sequential Allow() calls.
 func (s *Server) BatchCan(ctx context.Context, policies []*constants.Policy) (*constants.CanResponse, error) {
 	if len(policies) == 0 {
 		return &constants.CanResponse{Allowed: true}, nil
 	}
-	for _, p := range policies {
-		resp, err := s.Can(ctx, p)
-		if err != nil {
-			return nil, err
-		}
-		if !resp.Allowed {
-			return resp, nil
+	inputs := make([]constants.Policy, len(policies))
+	for i, p := range policies {
+		inputs[i] = *p
+		inputs[i].Visibility = constants.VisibilityPrivate
+	}
+	results, err := s.engine.BatchAllow(ctx, inputs)
+	if err != nil {
+		return nil, err
+	}
+	for i, allowed := range results {
+		if !allowed {
+			return &constants.CanResponse{Allowed: false, Policy: policies[i]}, nil
 		}
 	}
 	return &constants.CanResponse{Allowed: true}, nil
@@ -153,14 +160,13 @@ func (s *Server) CheckReadAccess(ctx context.Context, user *identityv1.User, mod
 		if user == nil {
 			return connErr.NotFound("not found")
 		}
-		input := authorization.Input{
+		allowed, err := s.engine.Allow(ctx, constants.Policy{
 			Subject:      user.Username,
 			Domain:       m.Name,
 			ResourceType: string(constants.ResourceModule),
 			Action:       string(constants.ActionRead),
 			Visibility:   constants.VisibilityPrivate,
-		}
-		allowed, err := s.engine.Allow(ctx, input)
+		})
 		if err != nil {
 			return err
 		}

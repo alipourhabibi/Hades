@@ -53,5 +53,9 @@ func (r *RedisCache) Allow(ctx context.Context, key string, limit int64, window 
 	return countCmd.Val() <= limit, nil
 }
 
+func (r *RedisCache) Delete(ctx context.Context, key string) error {
+	return r.client.Del(ctx, key).Err()
+}
+
 // Ensure RedisCache implements Cache at compile time.
 var _ Cache = (*RedisCache)(nil)

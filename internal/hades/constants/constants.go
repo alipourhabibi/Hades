@@ -60,11 +60,16 @@ type CanResponse struct {
 	Policy  *Policy // set to the denied policy when Allowed is false; nil otherwise
 }
 
+// Policy is the canonical authorization input type used by the OPA engine and
+// all server-layer Can/BatchCan callers. JSON tags match the Rego input field
+// names so the struct can be passed directly to rego.EvalInput without an
+// intermediate conversion struct.
 type Policy struct {
-	Subject string
-	Domain  string
-	Object  string
-	Action  string
+	Subject      string `json:"subject"`
+	Domain       string `json:"domain"`
+	ResourceType string `json:"resource_type"`
+	Action       string `json:"action"`
+	Visibility   string `json:"visibility"`
 }
 
 type Role struct {

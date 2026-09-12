@@ -62,6 +62,14 @@ MINIO_ROOT_PASSWORD=strongpassword
 
 Update the matching values in `config/prod.yaml` if you change Postgres or MinIO credentials.
 
+## OPA cache and multi-pod deployments
+
+Hades caches per-subject OPA role bindings in the configured cache backend. The production Docker Compose stack uses Redis, which is correct for multi-pod setups.
+
+> **Warning:** If you switch `backends.cache` to `memory`, each pod keeps its own in-process binding cache. Bindings revoked on one pod (e.g., `RemoveOrgMember`) will not propagate to other pods until the TTL expires (default 60s for Redis, 10s for memory). During that window, a removed member may still pass authorization checks on pods they happen to reach. **For any deployment with more than one Hades pod, `backends.cache: redis` is required for timely binding revocation.**
+
+SQLite is single-process by design and pairs naturally with the in-memory cache; multi-pod with SQLite is not a supported configuration.
+
 ## Updates
 
 ```bash
