@@ -1,26 +1,30 @@
 'use client';
 
 import { create } from 'zustand';
-import { setToken, clearToken, setUsername, clearUsername, getUsername } from '../lib/auth';
+import { setToken, clearToken, setUsername, clearUsername } from '../lib/auth';
 
+// The store holds no token.
+//
+// The session token is in an HttpOnly cookie the browser cannot read, so there
+// is nothing to keep here; `username` is what the UI actually renders from.
+// setAuth and clearAuth are async because establishing and clearing the cookie
+// is a round trip to /api/session.
 interface AuthState {
-  token: string | null;
   username: string | null;
-  setAuth: (token: string, username: string) => void;
-  clearAuth: () => void;
+  setAuth: (token: string, username: string) => Promise<void>;
+  clearAuth: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  token: null,
   username: null,
-  setAuth: (token, username) => {
-    setToken(token);
+  setAuth: async (token, username) => {
+    await setToken(token);
     setUsername(username);
-    set({ token, username });
+    set({ username });
   },
-  clearAuth: () => {
-    clearToken();
+  clearAuth: async () => {
+    await clearToken();
     clearUsername();
-    set({ token: null, username: null });
+    set({ username: null });
   },
 }));

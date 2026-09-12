@@ -17,7 +17,7 @@ import {
   IconGitCommit, IconClock, IconShield, IconLink, IconMail, IconGear, IconAlert,
 } from '@/components/icons';
 import { rpcFetch } from '@/lib/rpc';
-import { getToken } from '@/lib/auth';
+import { isSignedIn } from '@/lib/auth';
 import { isNotFound, formatError } from '@/lib/connectError';
 
 interface User { id: string; username: string; email?: string; description?: string; url?: string; type?: number | string; createTime?: string; updateTime?: string; }
@@ -106,7 +106,7 @@ function ProfileContent() {
   };
 
   useEffect(() => {
-    if (!getToken()) { router.replace('/login'); return; }
+    if (!isSignedIn()) { router.replace('/login'); return; }
     if (!owner) return;
     setLoading(true); setError(null); setNotFound(false);
     rpcFetch<{ user: User; moduleCount: number; organizations: User[] }>('/hades.api.identity.v1.UserService/GetUser', { username: owner })
@@ -123,7 +123,12 @@ function ProfileContent() {
             if (!searchParams.get('tab')) setTab('overview', true);
             return Promise.all([
               rpcFetch<{ modules: Module[] }>('/hades.api.registry.v1.ModuleService/ListModules', { owner }),
-              rpcFetch<{ members: OrgMember[] }>('/hades.api.identity.v1.OrgService/ListOrgMembers', { orgName: owner }),
+              // The member roster needs a credential, so an anonymous visitor
+              // gets an empty list rather than a failed page. It used to be
+              // readable without one, which made every organisation's roster
+              // enumerable; the member count from GetOrg is still shown.
+              rpcFetch<{ members: OrgMember[] }>('/hades.api.identity.v1.OrgService/ListOrgMembers', { orgName: owner })
+                .catch(() => ({ members: [] as OrgMember[] })),
             ]);
           })
           .then(([modRes, memRes]) => { setOrgModules(modRes.modules || []); setMembers(memRes.members || []); setLoading(false); })

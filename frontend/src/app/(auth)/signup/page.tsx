@@ -51,7 +51,7 @@ export default function PageSignup() {
       await rpcFetch('/hades.api.auth.v1.AuthenticationService/Register', { username, email, password });
       try {
         const data = await rpcFetch<{ token: string }>('/hades.api.auth.v1.AuthenticationService/Login', { username, password });
-        if (data.token) { setAuth(data.token, username); router.push('/'); return; }
+        if (data.token) { await setAuth(data.token, username); router.push('/'); return; }
       } catch { /* login after register failed, redirect to login page */ }
       router.push('/login');
     } catch (e) {
@@ -85,17 +85,17 @@ export default function PageSignup() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)', display: 'block', marginBottom: 6 }}>Email address</label>
-                <Input value={email} onChange={setEmail} type="email" placeholder="you@company.com"/>
+                <label htmlFor="signup-email" style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)', display: 'block', marginBottom: 6 }}>Email address</label>
+                <Input id="signup-email" name="email" autoComplete="email" value={email} onChange={setEmail} type="email" placeholder="you@company.com"/>
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)', display: 'block', marginBottom: 6 }}>Username</label>
-                <Input value={username} onChange={setUsername} placeholder="jane.doe" prefix={<span style={{ fontSize: 13 }}>@</span>}/>
+                <label htmlFor="signup-username" style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)', display: 'block', marginBottom: 6 }}>Username</label>
+                <Input id="signup-username" name="username" autoComplete="username" value={username} onChange={setUsername} placeholder="jane.doe" prefix={<span style={{ fontSize: 13 }}>@</span>}/>
               </div>
             </div>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)', display: 'block', marginBottom: 6 }}>Password</label>
-              <Input value={password} onChange={setPassword} type={showPass ? 'text' : 'password'} placeholder="Minimum 8 characters"
+              <label htmlFor="signup-password" style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)', display: 'block', marginBottom: 6 }}>Password</label>
+              <Input id="signup-password" name="password" autoComplete="new-password" value={password} onChange={setPassword} type={showPass ? 'text' : 'password'} placeholder="Minimum 8 characters"
                 suffix={<button type="button" onClick={() => setShowPass(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-fg-subtle)', display: 'flex', padding: 0 }}><IconEye size={14}/></button>}/>
               {password && (
                 <div style={{ marginTop: 8 }}>
@@ -109,8 +109,8 @@ export default function PageSignup() {
               )}
             </div>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)', display: 'block', marginBottom: 6 }}>Confirm password</label>
-              <Input value={confirm} onChange={setConfirm} type="password" placeholder="Re-enter password"
+              <label htmlFor="signup-confirm" style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-fg-muted)', display: 'block', marginBottom: 6 }}>Confirm password</label>
+              <Input id="signup-confirm" name="confirm-password" autoComplete="new-password" value={confirm} onChange={setConfirm} type="password" placeholder="Re-enter password"
                 suffix={confirm ? <span style={{ color: confirm === password ? 'var(--c-success)' : 'var(--c-danger)' }}>{confirm === password ? <IconCheck size={14}/> : <IconX size={14}/>}</span> : undefined}/>
             </div>
             <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer', fontSize: 13, color: 'var(--c-fg-muted)', lineHeight: 1.5 }}>

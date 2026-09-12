@@ -13,9 +13,21 @@ interface InputProps {
   autoFocus?: boolean;
   disabled?: boolean;
   name?: string;
+  // id pairs the field with a <label htmlFor>. Without it an input has no
+  // accessible name: a screen reader announces an unlabelled text box, and
+  // getByLabel finds nothing, which is the same lookup a screen reader makes.
+  // A placeholder is not a substitute; it disappears as soon as the field has
+  // content.
+  id?: string;
+  // autoComplete is what a password manager reads to decide what to fill.
+  // Common values here: "username", "current-password", "new-password",
+  // "email", "one-time-code".
+  autoComplete?: string;
+  ariaLabel?: string;
+  required?: boolean;
 }
 
-const Input: React.FC<InputProps> = ({ value, onChange, placeholder, style, type = 'text', prefix, suffix, onKeyDown, autoFocus, disabled, name }) => {
+const Input: React.FC<InputProps> = ({ value, onChange, placeholder, style, type = 'text', prefix, suffix, onKeyDown, autoFocus, disabled, name, id, autoComplete, ariaLabel, required }) => {
   const [foc, setFoc] = useState(false);
   return (
     <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -25,7 +37,8 @@ const Input: React.FC<InputProps> = ({ value, onChange, placeholder, style, type
         </span>
       )}
       <input
-        type={type} value={value} name={name}
+        type={type} value={value} name={name} id={id}
+        autoComplete={autoComplete} aria-label={ariaLabel} required={required}
         onChange={e => onChange && onChange(e.target.value)}
         placeholder={placeholder} autoFocus={autoFocus}
         onKeyDown={onKeyDown} disabled={disabled}

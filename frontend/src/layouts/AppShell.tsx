@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { getSidebarCollapsed, setSidebarCollapsed, getTheme, setTheme, getRecentModules, getUsername } from '../lib/auth';
+import { getSidebarCollapsed, setSidebarCollapsed, getTheme, setTheme, getRecentModules, getUsername, isSignedIn } from '../lib/auth';
 import { rpcFetch } from '../lib/rpc';
 import { useAuthStore } from '../stores/authStore';
 import { useWizardStore } from '../stores/wizardStore';
@@ -86,7 +86,10 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     setCollapsed(getSidebarCollapsed());
     setIsDark(getTheme() === 'dark');
     setRecentModules(getRecentModules());
-    setIsAuthenticated(!!document.cookie.match(/hades_token=([^;]+)/)?.[1]);
+    // The session cookie is HttpOnly and cannot be read here. The username
+    // cookie, which is a display value rather than a credential, is what this
+    // browser has to go on; the server is the authority either way.
+    setIsAuthenticated(isSignedIn());
   }, []);
 
   // Fetch current user on mount
@@ -125,9 +128,11 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     setTheme(next);
   };
 
-  const doLogout = () => {
-    rpcFetch('/hades.api.auth.v1.AuthenticationService/Logout', {}).catch(() => {});
-    clearAuth();
+  const doLogout = async () => {
+    // Revoke server-side first, then clear the cookie. The order matters: the
+    // proxy reads the cookie to authenticate the Logout call.
+    await rpcFetch('/hades.api.auth.v1.AuthenticationService/Logout', {}).catch(() => {});
+    await clearAuth();
     setIsAuthenticated(false);
     router.push('/login');
   };

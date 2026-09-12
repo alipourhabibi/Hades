@@ -39,7 +39,10 @@ function getLangEmoji(lang: string): string { return LANG_EMOJIS[lang.toLowerCas
 function getInstallCmd(lang: string, owner: string, mod: string, version?: string): string {
   const ver = version ? `@${version}` : '@latest';
   switch (lang.toLowerCase()) {
-    case 'go': return `GOPROXY=https://${DOMAIN}/go,off GONOSUMDB=* \\\n  go get ${DOMAIN}/gen/go/${owner}/${mod}${ver}`;
+    // The registry has to be the first entry in a GOPROXY chain, not the whole
+    // value: every generated Go SDK imports google.golang.org/protobuf, which
+    // this registry does not serve, so ",off" here leaves the SDK unresolvable.
+    case 'go': return `GOPROXY=https://${DOMAIN}/go,https://proxy.golang.org,direct \\\n  GOPRIVATE=${DOMAIN}/* GONOSUMDB=${DOMAIN}/* \\\n  go get ${DOMAIN}/gen/go/${owner}/${mod}${ver}`;
     case 'typescript': return `npm install @buf/${owner}_${mod}${version ? `@${version}` : ''}`;
     case 'python': return `pip install buf-${owner}-${mod}${version ? `==${version}` : ''}`;
     default: return `# Install ${lang} SDK for ${owner}/${mod}`;
