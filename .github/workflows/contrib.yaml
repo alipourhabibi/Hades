@@ -21,6 +21,13 @@ jobs:
         with:
           go-version: 1.25
 
+      # internal/proto/breaking and internal/proto/lint shell out to the buf
+      # CLI. Without it the tests still run, and they lie: the checker reports
+      # "cannot run buf" the same way it reports "this change is breaking", so
+      # the test that wants an error passes and the test that wants none fails.
+      - name: Set up buf
+        uses: bufbuild/buf-setup-action@v1
+
       - name: Install dependencies
         run: go mod tidy
 

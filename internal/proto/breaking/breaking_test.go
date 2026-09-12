@@ -5,8 +5,10 @@ package breaking
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -48,8 +50,14 @@ func TestBreakingCheck_DetectsRemovedField(t *testing.T) {
 	writeBufYAML(t, v2Dir)
 
 	c := New("")
-	if err := c.Check(context.Background(), v2Dir, v1Dir); err == nil {
+	err := c.Check(context.Background(), v2Dir, v1Dir)
+	if err == nil {
 		t.Fatal("expected breaking error, got nil")
+	}
+	// Any error is not enough. Without buf on PATH this test used to pass on
+	// the "cannot run buf" error, which says nothing about the protos.
+	if errors.Is(err, ErrUnavailable) {
+		t.Fatalf("the check did not run, so this proves nothing: %v", err)
 	}
 }
 
@@ -67,3 +75,30 @@ func TestBreakingCheck_PassesIdentical(t *testing.T) {
 	}
 }
 
+// A missing buf binary must not look like a breaking change.
+//
+// Check used to return "breaking change detected" for any exec error, so a
+// server without buf rejected every push and blamed the protos. CI ran without
+// buf and this is the case that was hidden: the test wanting an error passed on
+// the wrong error, and only the test wanting no error failed.
+func TestBreakingCheck_MissingBufIsNotABreakingChange(t *testing.T) {
+	dir := t.TempDir()
+	writeBufYAML(t, dir)
+	writeProto(t, dir, protoV1)
+
+	prev := t.TempDir()
+	writeBufYAML(t, prev)
+	writeProto(t, prev, protoV1)
+
+	c := New("buf-that-does-not-exist")
+	err := c.Check(context.Background(), dir, prev)
+	if err == nil {
+		t.Fatal("expected an error when the buf binary is missing")
+	}
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("want ErrUnavailable, got %v", err)
+	}
+	if strings.Contains(err.Error(), "breaking change detected") {
+		t.Fatalf("a missing binary must not be reported as a breaking change: %v", err)
+	}
+}

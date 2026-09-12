@@ -8,9 +8,14 @@ package lint
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 )
+
+// ErrUnavailable means the lint could not run, so we do not know if the
+// protos are clean. A missing buf binary used to read as a lint failure.
+var ErrUnavailable = errors.New("lint: cannot run buf")
 
 // Linter runs buf lint against a directory of .proto files.
 type Linter struct {
@@ -29,6 +34,13 @@ func New(bufBin string) *Linter {
 func (l *Linter) Lint(ctx context.Context, protoDir string) error {
 	out, err := exec.CommandContext(ctx, l.bufBin, "lint", protoDir).CombinedOutput()
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return fmt.Errorf("%w: %w", ErrUnavailable, ctxErr)
+		}
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			return fmt.Errorf("%w: %w", ErrUnavailable, err)
+		}
 		return fmt.Errorf("lint failed:\n%s", out)
 	}
 	return nil

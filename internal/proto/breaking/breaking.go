@@ -8,9 +8,20 @@ package breaking
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 )
+
+// ErrUnavailable means the check could not run, so we do not know if the
+// change is breaking.
+//
+// This used to look the same as a real breaking change. Any error from exec
+// became "breaking change detected", so a missing buf binary rejected every
+// push with a message saying the protos were at fault. CI hit this: buf was
+// not installed, and the test that wanted an error passed for the wrong
+// reason while the test that wanted none failed.
+var ErrUnavailable = errors.New("breaking: cannot run buf")
 
 // Checker runs buf breaking against two directories of .proto files.
 type Checker struct {
@@ -33,8 +44,17 @@ func (c *Checker) Check(ctx context.Context, newDir, prevDir string) error {
 	}
 	out, err := exec.CommandContext(ctx, c.bufBin,
 		"breaking", newDir, "--against", prevDir).CombinedOutput()
-	if err != nil {
+	if err == nil {
+		return nil
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return fmt.Errorf("%w: %w", ErrUnavailable, ctxErr)
+	}
+	// buf ran and said no. That is a real breaking change.
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
 		return fmt.Errorf("breaking change detected:\n%s", out)
 	}
-	return nil
+	// buf did not run at all.
+	return fmt.Errorf("%w: %w", ErrUnavailable, err)
 }
