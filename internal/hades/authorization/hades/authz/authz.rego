@@ -2,33 +2,48 @@ package hades.authz
 
 import rego.v1
 
-# default deny
-default allow := false
+# ---------------------------------------------------------------------------
+# policy_allow is the canonical authorization check for a single policy object.
+# Fields: subject, domain, resource_type, action, visibility.
+#
+# Both the single-eval path (allow) and the batch path (denied_indices) use
+# this helper. Add new rules here only. Both paths then pick them up.
+# ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Superadmin bypass - any subject listed in data.superadmins is allowed
-# everything.
-# ---------------------------------------------------------------------------
-allow if input.subject in data.superadmins
+# Superadmin bypass.
+policy_allow(policy) if policy.subject in data.superadmins
 
-# ---------------------------------------------------------------------------
-# Public visibility bypass - read and list are always allowed on public
-# resources without a role binding.
-# ---------------------------------------------------------------------------
-allow if {
-	input.action in {"read", "list"}
-	input.visibility == "public"
+# Public resources skip the role check. Read and list are always allowed.
+policy_allow(policy) if {
+	policy.action in {"read", "list"}
+	policy.visibility == "public"
+}
+
+# Role-binding check: hybridStore serves data.role_bindings[subject] from
+# cache (Redis or in-memory) on a per-subject basis, falling back to DB on
+# cache miss. Each entry has {role, domain}.
+policy_allow(policy) if {
+	some binding in data.role_bindings[policy.subject]
+	domain_matches(binding.domain, policy.domain)
+	role_permissions[binding.role][policy.resource_type][policy.action]
 }
 
 # ---------------------------------------------------------------------------
-
-# domain and verify the role grants the requested action on the resource.
+# Single-eval path: input fields match the policy object shape exactly, so
+# input can be passed directly as the policy argument.
 # ---------------------------------------------------------------------------
-allow if {
-	some binding in data.role_bindings
-	binding.subject == input.subject
-	domain_matches(binding.domain, input.domain)
-	role_permissions[binding.role][input.resource_type][input.action]
+default allow := false
+
+allow if policy_allow(input)
+
+# ---------------------------------------------------------------------------
+# Batch-eval path: denied_indices is the set of indices in input.policies
+# that are denied. Used by BatchAllow to evaluate all policies in one Eval().
+# ---------------------------------------------------------------------------
+denied_indices contains i if {
+	some i
+	policy := input.policies[i]
+	not policy_allow(policy)
 }
 
 # ---------------------------------------------------------------------------

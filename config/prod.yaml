@@ -100,3 +100,10 @@ sdk:
       secretAccessKey: "minioadmin" # change if you set custom MINIO credentials
       useSSL: false
       region: "us-east-1"
+
+# OPA authorization engine tuning.
+# With cache: redis, bindings are invalidated across all pods immediately
+# (Redis Del propagates). With cache: memory, each pod caches independently
+# and stale bindings stay until the TTL runs out. See DEPLOYMENT.md.
+opa:
+  bindingCacheTTL: 60s # redis=60s is appropriate; lower to reduce revocation latency

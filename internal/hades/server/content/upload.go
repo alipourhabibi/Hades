@@ -62,10 +62,10 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 	for _, content := range contents {
 		moduleFullName := content.ModuleRef.Owner + "/" + content.ModuleRef.Module
 		policies = append(policies, &constants.Policy{
-			Subject: user.Username,
-			Object:  string(constants.ResourceModule),
-			Action:  string(constants.PUSH),
-			Domain:  moduleFullName,
+			Subject:      user.Username,
+			ResourceType: string(constants.ResourceModule),
+			Action:       string(constants.PUSH),
+			Domain:       moduleFullName,
 		})
 	}
 	if len(policies) > 0 {

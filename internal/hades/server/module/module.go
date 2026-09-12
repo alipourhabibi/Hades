@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	registrypbv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
+	registrypbv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1/registryv1connect"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
@@ -37,30 +37,29 @@ type moduleStorage interface {
 type authService interface {
 	CheckReadAccess(ctx context.Context, user *identityv1.User, modules []*registrypbv1.Module) error
 	Can(ctx context.Context, in *constants.Policy) (*constants.CanResponse, error)
-	ReloadPolicy() error
 }
 
 type Server struct {
 	registryv1.ModuleServiceHandler
 
-	logger                  *log.LoggerWrapper
-	moduleDBStorage         moduleStorage
-	commitDBStorage         commitdb.Storage
-	gitStorage              gitstorage.Storage
-	authorization           authService
-	uow                     db.UnitOfWork
-	gitalyOpLog             *gitalyoplog.GitalyOpLogStorage
+	logger          *log.LoggerWrapper
+	moduleDBStorage moduleStorage
+	commitDBStorage commitdb.Storage
+	gitStorage      gitstorage.Storage
+	authorization   authService
+	uow             db.UnitOfWork
+	gitalyOpLog     *gitalyoplog.GitalyOpLogStorage
 }
 
 func NewServer(deps *server.Dependencies) *Server {
 	return &Server{
-		logger:                  deps.Logger,
-		moduleDBStorage:         deps.ModuleDB,
-		commitDBStorage:         deps.CommitDB,
-		gitStorage:              deps.GitStorage,
-		authorization:           deps.Authorization,
-		uow:                     deps.UoW,
-		gitalyOpLog:             deps.GitalyOpLog,
+		logger:          deps.Logger,
+		moduleDBStorage: deps.ModuleDB,
+		commitDBStorage: deps.CommitDB,
+		gitStorage:      deps.GitStorage,
+		authorization:   deps.Authorization,
+		uow:             deps.UoW,
+		gitalyOpLog:     deps.GitalyOpLog,
 	}
 }
 
@@ -147,10 +146,10 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 	moduleFullName := user.Username + "/" + in.Msg.Name
 
 	can, err := s.authorization.Can(ctx, &constants.Policy{
-		Subject: user.Username,
-		Object:  string(constants.ResourceModule),
-		Action:  string(constants.CREATE),
-		Domain:  moduleFullName,
+		Subject:      user.Username,
+		ResourceType: string(constants.ResourceModule),
+		Action:       string(constants.CREATE),
+		Domain:       moduleFullName,
 	})
 	if err != nil {
 		return nil, err

@@ -27,4 +27,7 @@ type Cache interface {
 	// Returns true if the current request is within the limit, false if it is
 	// over the limit for the given window duration.
 	Allow(ctx context.Context, key string, limit int64, window time.Duration) (bool, error)
+
+	// Delete removes the entry at key. No-ops if the key does not exist.
+	Delete(ctx context.Context, key string) error
 }

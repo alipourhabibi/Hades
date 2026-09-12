@@ -76,6 +76,12 @@ docker compose -f development/docker-compose-minimal.yaml up -d
 go run ./cmd/hades serve --config config/dev.yaml
 ```
 
+## OPA cache and single-instance note
+
+Hades caches per-subject OPA role bindings in memory (default) or Redis.
+
+> **Warning:** `backends.cache: memory` (the dev default) is per-process. If you run multiple local instances (e.g., two terminals), binding changes on one will not be visible to the other until the in-memory TTL expires (default 10s). For development this is fine. Just know that authorization checks won't reflect revocations immediately across processes. In production with multiple pods, use `backends.cache: redis`.
+
 ## Storage backends
 
 The default `config/dev.yaml` uses Postgres for metadata. To run with zero external deps (SQLite), change:

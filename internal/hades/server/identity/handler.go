@@ -17,6 +17,13 @@ import (
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
+// orgAuthz is the subset of authorization.Server used by identity.Handler.
+type orgAuthz interface {
+	AddOrgOwner(ctx context.Context, subject, orgName string) error
+	AddOrgMemberBinding(ctx context.Context, subject, role, orgName string) error
+	DeleteOrgBinding(ctx context.Context, subject, orgName string) error
+}
+
 // Handler implements both UserService and OrgService handlers.
 type Handler struct {
 	registryv1connect.UserServiceHandler
@@ -26,6 +33,7 @@ type Handler struct {
 	userDB     userdb.Storage
 	orgStorage orgdb.Storage
 	moduleDB   moduledb.Storage
+	authz      orgAuthz
 }
 
 func NewHandler(deps *server.Dependencies) *Handler {
@@ -34,6 +42,7 @@ func NewHandler(deps *server.Dependencies) *Handler {
 		userDB:     deps.UserDB,
 		orgStorage: deps.OrgDB,
 		moduleDB:   deps.ModuleDB,
+		authz:      deps.Authorization,
 	}
 }
 
@@ -203,6 +212,11 @@ func (h *Handler) CreateOrg(ctx context.Context, in *connect.Request[registrypbv
 		return nil, connErr.FromPgx(err)
 	}
 
+	if err := h.authz.AddOrgOwner(ctx, caller.Username, org.Username); err != nil {
+		h.logger.Error("failed to add org owner binding", "error", err, "org", org.Username, "caller", caller.Username)
+		return nil, connErr.Internal("failed to set org owner permissions")
+	}
+
 	return &connect.Response[registrypbv1.CreateOrgResponse]{
 		Msg: &registrypbv1.CreateOrgResponse{Org: org},
 	}, nil
@@ -265,6 +279,16 @@ func (h *Handler) AddOrgMember(ctx context.Context, in *connect.Request[registry
 		return nil, connErr.Internal("failed to add member")
 	}
 
+	// Map org "member" → OPA "contributor"; "admin" stays "admin".
+	opaRole := memberRole
+	if opaRole == "member" {
+		opaRole = constants.RoleContributor
+	}
+	if err := h.authz.AddOrgMemberBinding(ctx, target.Username, opaRole, org.Username); err != nil {
+		h.logger.Error("failed to add org member binding", "error", err, "org", org.Username, "member", target.Username)
+		return nil, connErr.Internal("failed to set member permissions")
+	}
+
 	return &connect.Response[registrypbv1.AddOrgMemberResponse]{
 		Msg: &registrypbv1.AddOrgMemberResponse{},
 	}, nil
@@ -295,6 +319,11 @@ func (h *Handler) RemoveOrgMember(ctx context.Context, in *connect.Request[regis
 	if err := h.orgStorage.RemoveMember(ctx, org.Id, target.Id); err != nil {
 		h.logger.Error("failed to remove org member", "error", err, "org_id", org.Id, "member_id", target.Id)
 		return nil, connErr.Internal("failed to remove member")
+	}
+
+	if err := h.authz.DeleteOrgBinding(ctx, target.Username, org.Username); err != nil {
+		h.logger.Error("failed to delete org member binding", "error", err, "org", org.Username, "member", target.Username)
+		return nil, connErr.Internal("failed to remove member permissions")
 	}
 
 	return &connect.Response[registrypbv1.RemoveOrgMemberResponse]{

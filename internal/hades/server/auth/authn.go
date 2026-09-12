@@ -101,13 +101,9 @@ func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRe
 			return nil, connErr.FromPgx(err)
 		}
 		userID = user.Id
-		return nil, s.authorizationService.AddBasicRolesInTx(ctx, username)
+		return nil, s.authorizationService.AddBasicRoles(ctx, username)
 	}, 15*time.Second)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := s.authorizationService.ReloadPolicy(); err != nil {
 		return nil, err
 	}
 

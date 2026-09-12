@@ -5,6 +5,7 @@ package hades
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/alipourhabibi/Hades/config"
 	"github.com/alipourhabibi/Hades/internal/goproxy"
@@ -98,7 +99,20 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 		ss.listenPort = c.Server.ListenPort
 	}
 
-	opaEngine, err := authorizationengine.New(ctx, ss.db.OPABinding())
+	cacheBackend, err := cache.New(c.Backends, c.Redis)
+	if err != nil {
+		return nil, fmt.Errorf("server: cache: %w", err)
+	}
+
+	opaTTL := c.OPA.BindingCacheTTL
+	if opaTTL == 0 {
+		if c.Backends.Cache == config.CacheRedis {
+			opaTTL = 60 * time.Second
+		} else {
+			opaTTL = 10 * time.Second
+		}
+	}
+	opaEngine, err := authorizationengine.New(ctx, ss.db.OPABinding(), cacheBackend, opaTTL)
 	if err != nil {
 		return nil, fmt.Errorf("server: opa engine: %w", err)
 	}
@@ -111,11 +125,6 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 	sdkBackend, err := storagefactory.New(*c, ss.gitStorage)
 	if err != nil {
 		return nil, fmt.Errorf("server: sdk artifact storage: %w", err)
-	}
-
-	cacheBackend, err := cache.New(c.Backends, c.Redis)
-	if err != nil {
-		return nil, fmt.Errorf("server: cache: %w", err)
 	}
 
 	deps := &server.Dependencies{

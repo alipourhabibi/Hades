@@ -109,5 +109,12 @@ func (m *MemoryCache) Allow(_ context.Context, key string, limit int64, window t
 	return true, nil
 }
 
+func (m *MemoryCache) Delete(_ context.Context, key string) error {
+	m.mu.Lock()
+	delete(m.entries, key)
+	m.mu.Unlock()
+	return nil
+}
+
 // Ensure MemoryCache implements Cache at compile time.
 var _ Cache = (*MemoryCache)(nil)
