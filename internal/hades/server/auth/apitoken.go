@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -26,15 +25,11 @@ func (s *Server) CreateAPIToken(ctx context.Context, in *connect.Request[v1.Crea
 		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
-	raw, _, err := utilscrypto.GenerateToken()
+	fullToken, prefix, tokenHash, err := utilscrypto.GenerateAPIToken()
 	if err != nil {
 		s.logger.Error("failed to generate token", "error", err, "procedure", "CreateAPIToken", "user_id", user.Id)
 		return nil, connErr.Internal("failed to generate token")
 	}
-
-	prefix := fmt.Sprintf("hades1_%s", raw[:5])
-	fullToken := prefix + "_" + raw
-	tokenHash := utilscrypto.HashToken(fullToken)
 
 	var expiresAt *time.Time
 	if in.Msg.ExpiresAt != nil {

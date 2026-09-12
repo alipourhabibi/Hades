@@ -3,6 +3,8 @@ server:
   registryHost: "example.com" # CHANGE: set to your actual domain
   certKey: "config/example.com-key.pem"
   certFile: "config/example.com.pem"
+  # Serves the unauthenticated gRPC reflection API. Development only.
+  enableReflection: false
 
 logger:
   engine: zap # slog, zap

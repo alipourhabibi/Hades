@@ -14,7 +14,6 @@ type Storage interface {
 	GetByUsername(ctx context.Context, username string) (*identityv1.User, error)
 	GetByID(ctx context.Context, id string) (*identityv1.User, error)
 	GetByEmail(ctx context.Context, email string) (*identityv1.User, error)
-	GetBySessionId(ctx context.Context, sessionId string) (*identityv1.User, error)
 	GetAuthFieldsByUsername(ctx context.Context, username string) (*AuthFields, error)
 	GetAuthFieldsByID(ctx context.Context, id string) (*AuthFields, error)
 	Create(ctx context.Context, username, email, password string, t identityv1.UserType, status identityv1.UserState, description, url string) error

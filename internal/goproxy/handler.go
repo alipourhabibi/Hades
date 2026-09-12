@@ -12,6 +12,7 @@ package goproxy
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,8 +24,11 @@ import (
 
 	"connectrpc.com/connect"
 
+	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
+	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	hserver "github.com/alipourhabibi/Hades/internal/hades/server"
+	"github.com/alipourhabibi/Hades/internal/hades/server/authorization"
 	commitdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
 	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	sdkjobdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/sdkjob"
@@ -32,12 +36,25 @@ import (
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
+// authorizer resolves credentials and enforces module read access. It is
+// satisfied by *authorization.Server; the interface keeps this package
+// testable and free of an import cycle.
+type authorizer interface {
+	// UserFromToken validates a session token or PAT and returns its user plus
+	// the scopes it carries (empty means unrestricted).
+	UserFromToken(ctx context.Context, rawToken string) (*identityv1.User, []string, error)
+	// CheckReadAccess returns an error for the first module the caller may not
+	// read. user may be nil for anonymous callers.
+	CheckReadAccess(ctx context.Context, user *identityv1.User, modules []*registryv1.Module) error
+}
+
 // Handler implements the GOPROXY protocol for generated Go SDKs.
 type Handler struct {
 	moduleDB     moduledb.Storage
 	commitDB     commitdb.Storage
 	sdkJobDB     sdkjobdb.Storage
 	backend      sdkstorage.Backend
+	authz        authorizer
 	registryHost string // resolved from DOMAIN env var or config
 	logger       *log.LoggerWrapper
 }
@@ -56,6 +73,7 @@ func NewHandler(deps *hserver.Dependencies, registryHostFallback string) *Handle
 		commitDB:     deps.CommitDB,
 		sdkJobDB:     deps.SDKJobDB,
 		backend:      deps.SDKStorageBackend,
+		authz:        deps.Authorization,
 		registryHost: host,
 		logger:       deps.Logger,
 	}
@@ -99,20 +117,88 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// This handler is mounted outside the Connect interceptor chain, so it
+	// authenticates and authorises the request itself. Everything below serves
+	// module content, so no route may run before this gate. The authorised
+	// module is threaded through so version lookups can be pinned to it.
+	mod, status := h.authorize(r, owner, modName)
+	if status != 0 {
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
+
 	switch {
 	case query == "list":
-		h.handleList(w, r, owner, modName)
+		h.handleList(w, r, mod)
 	case query == "@latest":
-		h.handleLatest(w, r, owner, modName)
+		h.handleLatest(w, r, mod)
 	case strings.HasSuffix(query, ".info"):
-		h.handleInfo(w, r, strings.TrimSuffix(query, ".info"))
+		h.handleInfo(w, r, mod, strings.TrimSuffix(query, ".info"))
 	case strings.HasSuffix(query, ".mod"):
-		h.handleMod(w, r, modulePath, strings.TrimSuffix(query, ".mod"))
+		h.handleMod(w, r, mod, modulePath, strings.TrimSuffix(query, ".mod"))
 	case strings.HasSuffix(query, ".zip"):
-		h.handleZip(w, r, modulePath, strings.TrimSuffix(query, ".zip"))
+		h.handleZip(w, r, mod, modulePath, strings.TrimSuffix(query, ".zip"))
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// credentialFromRequest extracts a Hades credential from the request.
+//
+// The Go toolchain sends credentials from ~/.netrc as HTTP Basic auth, so a
+// PAT arrives as the password (the username is ignored, matching how the buf
+// CLI and GitHub treat netrc entries). Bearer is also accepted for direct
+// curl-style use. Returns "" when the request is anonymous.
+func credentialFromRequest(r *http.Request) string {
+	if _, password, ok := r.BasicAuth(); ok && password != "" {
+		return strings.TrimSpace(password)
+	}
+	authHeader := r.Header.Get("Authorization")
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) == 2 && strings.EqualFold(parts[0], "bearer") {
+		return strings.TrimSpace(parts[1])
+	}
+	return ""
+}
+
+// authorize resolves the caller and checks read access to the requested
+// module. It returns the module and 0 when the request may proceed, otherwise
+// nil and the HTTP status to send.
+//
+// A missing or private module and an unauthorised caller all produce 404, so
+// the endpoint never reveals that a module the caller cannot read exists.
+func (h *Handler) authorize(r *http.Request, owner, modName string) (*registryv1.Module, int) {
+	ctx := r.Context()
+
+	// Fail closed: without an authorizer nothing can be checked, so nothing is
+	// served.
+	if h.authz == nil {
+		h.logger.Error("goproxy: no authorizer configured, refusing request")
+		return nil, http.StatusServiceUnavailable
+	}
+
+	var user *identityv1.User
+	if cred := credentialFromRequest(r); cred != "" {
+		u, scopes, err := h.authz.UserFromToken(ctx, cred)
+		if err != nil {
+			h.logger.Debug("goproxy: credential rejected", "err", err)
+			return nil, http.StatusUnauthorized
+		}
+		// A scoped PAT must carry module:read to fetch module content.
+		if !authorization.ScopesAllow(scopes, string(constants.ResourceModule), string(constants.ActionRead)) {
+			return nil, http.StatusForbidden
+		}
+		user = u
+	}
+
+	mod, err := h.moduleDB.GetModuleByOwnerAndName(ctx, owner, modName)
+	if err != nil || mod == nil {
+		return nil, http.StatusNotFound
+	}
+	if err := h.authz.CheckReadAccess(ctx, user, []*registryv1.Module{mod}); err != nil {
+		return nil, http.StatusNotFound
+	}
+	return mod, 0
 }
 
 // parseModulePath extracts owner and module name from a full Go module path.
@@ -153,9 +239,12 @@ func hashFromVersion(ver string) (string, bool) {
 	return "", false
 }
 
-// resolveCommit looks up the commit for a pseudo-version string.
+// resolveCommit looks up the commit for a pseudo-version string and pins it to
+// mod, the module the caller was authorised for. Without that check a caller
+// could ask a module they can read for a commit hash belonging to a module they
+// cannot, since hashes are resolved globally.
 // Returns (nil, non-zero status) on error.
-func (h *Handler) resolveCommit(r *http.Request, ver string) (*registryv1.Commit, int) {
+func (h *Handler) resolveCommit(r *http.Request, mod *registryv1.Module, ver string) (*registryv1.Commit, int) {
 	hashPfx, ok := hashFromVersion(ver)
 	if !ok {
 		return nil, http.StatusBadRequest
@@ -168,6 +257,9 @@ func (h *Handler) resolveCommit(r *http.Request, ver string) (*registryv1.Commit
 		}
 		h.logger.Error("goproxy: GetByHashPrefix", "err", err)
 		return nil, http.StatusInternalServerError
+	}
+	if commit.ModuleId != mod.Id {
+		return nil, http.StatusNotFound
 	}
 	return commit, 0
 }
@@ -212,14 +304,8 @@ func (h *Handler) GoImportHandler() http.Handler {
 }
 
 // handleList serves /@v/list - newline-separated pseudo-versions, newest first.
-func (h *Handler) handleList(w http.ResponseWriter, r *http.Request, owner, modName string) {
+func (h *Handler) handleList(w http.ResponseWriter, r *http.Request, mod *registryv1.Module) {
 	ctx := r.Context()
-
-	mod, err := h.moduleDB.GetModuleByOwnerAndName(ctx, owner, modName)
-	if err != nil || mod == nil {
-		http.NotFound(w, r)
-		return
-	}
 
 	jobs, err := h.sdkJobDB.ListSucceededByModuleAndLang(ctx, mod.Id, "go")
 	if err != nil {
@@ -242,8 +328,8 @@ func (h *Handler) handleList(w http.ResponseWriter, r *http.Request, owner, modN
 }
 
 // handleInfo serves /@v/{version}.info - JSON version metadata.
-func (h *Handler) handleInfo(w http.ResponseWriter, r *http.Request, ver string) {
-	commit, status := h.resolveCommit(r, ver)
+func (h *Handler) handleInfo(w http.ResponseWriter, r *http.Request, mod *registryv1.Module, ver string) {
+	commit, status := h.resolveCommit(r, mod, ver)
 	if status != 0 {
 		http.Error(w, http.StatusText(status), status)
 		return
@@ -262,8 +348,8 @@ func (h *Handler) handleInfo(w http.ResponseWriter, r *http.Request, ver string)
 
 // handleMod serves /@v/{version}.mod - the go.mod content.
 // If the worker did not upload a go.mod, a minimal one is generated on the fly.
-func (h *Handler) handleMod(w http.ResponseWriter, r *http.Request, modulePath, ver string) {
-	commit, status := h.resolveCommit(r, ver)
+func (h *Handler) handleMod(w http.ResponseWriter, r *http.Request, mod *registryv1.Module, modulePath, ver string) {
+	commit, status := h.resolveCommit(r, mod, ver)
 	if status != 0 {
 		http.Error(w, http.StatusText(status), status)
 		return
@@ -287,10 +373,10 @@ func (h *Handler) handleMod(w http.ResponseWriter, r *http.Request, modulePath, 
 // Files are loaded from MinIO and written into the zip on the fly.
 // Large modules hold the full file set in memory; a streaming approach would
 // require the backend to expose a per-file reader instead of []byte slices.
-func (h *Handler) handleZip(w http.ResponseWriter, r *http.Request, modulePath, ver string) {
+func (h *Handler) handleZip(w http.ResponseWriter, r *http.Request, mod *registryv1.Module, modulePath, ver string) {
 	ctx := r.Context()
 
-	commit, status := h.resolveCommit(r, ver)
+	commit, status := h.resolveCommit(r, mod, ver)
 	if status != 0 {
 		http.Error(w, http.StatusText(status), status)
 		return
@@ -355,14 +441,8 @@ func (h *Handler) handleZip(w http.ResponseWriter, r *http.Request, modulePath, 
 }
 
 // handleLatest serves /@latest - version info for the newest Go SDK.
-func (h *Handler) handleLatest(w http.ResponseWriter, r *http.Request, owner, modName string) {
+func (h *Handler) handleLatest(w http.ResponseWriter, r *http.Request, mod *registryv1.Module) {
 	ctx := r.Context()
-
-	mod, err := h.moduleDB.GetModuleByOwnerAndName(ctx, owner, modName)
-	if err != nil || mod == nil {
-		http.NotFound(w, r)
-		return
-	}
 
 	jobs, err := h.sdkJobDB.ListSucceededByModuleAndLang(ctx, mod.Id, "go")
 	if err != nil || len(jobs) == 0 {

@@ -79,8 +79,7 @@ SELECT
   create_time, COALESCE(last_activity_at, create_time),
   COALESCE(absolute_expires_at, expires_at), expires_at,
   revoked_at,
-  COALESCE(totp_verified, FALSE),
-  COALESCE(old_token_hash,''), old_token_expires_at
+  COALESCE(totp_verified, FALSE)
 FROM sessions
 WHERE token_hash = $1`
 
@@ -92,7 +91,6 @@ WHERE token_hash = $1`
 		&row.AbsoluteExpiresAt, &row.IdleExpiresAt,
 		&row.RevokedAt,
 		&row.TOTPVerified,
-		&row.OldTokenHash, &row.OldTokenExpiresAt,
 	)
 	if err != nil {
 		return nil, err
@@ -100,49 +98,11 @@ WHERE token_hash = $1`
 	return row, nil
 }
 
-func (s *SessionStorage) GetByOldTokenHash(ctx context.Context, hash string) (*session.SessionRow, error) {
-	query := `
-SELECT
-  id, user_id, auth_module,
-  COALESCE(token_hash,''), COALESCE(ip_address,''), COALESCE(user_agent,''),
-  create_time, COALESCE(last_activity_at, create_time),
-  COALESCE(absolute_expires_at, expires_at), expires_at,
-  revoked_at,
-  COALESCE(totp_verified, FALSE),
-  COALESCE(old_token_hash,''), old_token_expires_at
-FROM sessions
-WHERE old_token_hash = $1 AND old_token_expires_at > NOW()`
-
-	row := &session.SessionRow{}
-	err := s.q(ctx).QueryRow(ctx, query, hash).Scan(
-		&row.ID, &row.UserID, &row.AuthModule,
-		&row.TokenHash, &row.IPAddress, &row.UserAgent,
-		&row.CreatedAt, &row.LastActivityAt,
-		&row.AbsoluteExpiresAt, &row.IdleExpiresAt,
-		&row.RevokedAt,
-		&row.TOTPVerified,
-		&row.OldTokenHash, &row.OldTokenExpiresAt,
+func (s *SessionStorage) Touch(ctx context.Context, id string, idleExpires time.Time) error {
+	_, err := s.q(ctx).Exec(ctx,
+		`UPDATE sessions SET last_activity_at = NOW(), expires_at = $1 WHERE id = $2 AND revoked_at IS NULL`,
+		idleExpires, id,
 	)
-	if err != nil {
-		return nil, err
-	}
-	return row, nil
-}
-
-func (s *SessionStorage) UpdateActivity(
-	ctx context.Context,
-	id, newTokenHash, oldTokenHash string,
-	oldTokenExpires, newIdleExpires time.Time,
-) error {
-	query := `
-UPDATE sessions SET
-  token_hash          = $1,
-  old_token_hash      = $2,
-  old_token_expires_at = $3,
-  last_activity_at    = NOW(),
-  expires_at          = $4
-WHERE id = $5`
-	_, err := s.q(ctx).Exec(ctx, query, newTokenHash, oldTokenHash, oldTokenExpires, newIdleExpires, id)
 	return err
 }
 
@@ -167,8 +127,7 @@ SELECT
   create_time, COALESCE(last_activity_at, create_time),
   COALESCE(absolute_expires_at, expires_at), expires_at,
   revoked_at,
-  COALESCE(totp_verified, FALSE),
-  COALESCE(old_token_hash,''), old_token_expires_at
+  COALESCE(totp_verified, FALSE)
 FROM sessions
 WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
 ORDER BY last_activity_at DESC`
@@ -189,7 +148,6 @@ ORDER BY last_activity_at DESC`
 			&row.AbsoluteExpiresAt, &row.IdleExpiresAt,
 			&row.RevokedAt,
 			&row.TOTPVerified,
-			&row.OldTokenHash, &row.OldTokenExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -211,8 +169,7 @@ SELECT
   create_time, COALESCE(last_activity_at, create_time),
   COALESCE(absolute_expires_at, expires_at), expires_at,
   revoked_at,
-  COALESCE(totp_verified, FALSE),
-  COALESCE(old_token_hash,''), old_token_expires_at
+  COALESCE(totp_verified, FALSE)
 FROM sessions
 WHERE id = $1`
 
@@ -224,7 +181,6 @@ WHERE id = $1`
 		&row.AbsoluteExpiresAt, &row.IdleExpiresAt,
 		&row.RevokedAt,
 		&row.TOTPVerified,
-		&row.OldTokenHash, &row.OldTokenExpiresAt,
 	)
 	if err != nil {
 		return nil, err

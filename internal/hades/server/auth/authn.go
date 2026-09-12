@@ -112,7 +112,7 @@ func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRe
 		if expiry == 0 {
 			expiry = 24
 		}
-		raw, hash, err := utilscrypto.GenerateToken()
+		raw, hash, err := utilscrypto.GenerateToken("")
 		if err == nil {
 			expiresAt := time.Now().Add(time.Duration(expiry) * time.Hour)
 			if err := s.emailVerStorage.Create(ctx, userID, hash, expiresAt); err == nil {
@@ -198,7 +198,7 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 
 	_ = s.userStorage.ResetFailedLogins(ctx, af.ID)
 
-	raw, hash, err := utilscrypto.GenerateToken()
+	fullToken, tokenHash, err := utilscrypto.GenerateToken(utilscrypto.SessionTokenPrefix)
 	if err != nil {
 		s.logger.Error("failed to generate session token", "error", err, "procedure", "Login")
 		return nil, connErr.Internal("failed to generate session token")
@@ -215,7 +215,7 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 	idleExpires := time.Now().Add(time.Duration(idleDays) * 24 * time.Hour)
 	absExpires := time.Now().Add(time.Duration(absDays) * 24 * time.Hour)
 
-	_, err = s.sessionStorage.CreateWithToken(ctx, af.ID, "session", hash, ip, ua, idleExpires, absExpires)
+	_, err = s.sessionStorage.CreateWithToken(ctx, af.ID, "session", tokenHash, ip, ua, idleExpires, absExpires)
 	if err != nil {
 		s.logger.Error("failed to create session", "error", err, "procedure", "Login", "user_id", af.ID)
 		return nil, connErr.FromPgx(err)
@@ -227,7 +227,7 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 
 	s.logger.Info("user logged in", "procedure", "Login", "user_id", af.ID)
 	return &connect.Response[v1.LoginResponse]{
-		Msg: &v1.LoginResponse{Token: raw},
+		Msg: &v1.LoginResponse{Token: fullToken},
 	}, nil
 }
 
@@ -304,7 +304,7 @@ func (s *Server) ResendVerificationEmail(ctx context.Context, in *connect.Reques
 	if expiry == 0 {
 		expiry = 24
 	}
-	raw, hash, err := utilscrypto.GenerateToken()
+	raw, hash, err := utilscrypto.GenerateToken("")
 	if err != nil {
 		s.logger.Error("failed to generate verification token", "error", err, "procedure", "ResendVerificationEmail", "user_id", user.Id)
 		return nil, connErr.Internal("failed to generate verification token")
@@ -334,7 +334,7 @@ func (s *Server) RequestPasswordReset(ctx context.Context, in *connect.Request[v
 		if expiry == 0 {
 			expiry = 1
 		}
-		raw, hash, tokenErr := utilscrypto.GenerateToken()
+		raw, hash, tokenErr := utilscrypto.GenerateToken("")
 		if tokenErr == nil {
 			expiresAt := time.Now().Add(time.Duration(expiry) * time.Hour)
 			if createErr := s.passwordResetStorage.Create(ctx, user.Id, hash, expiresAt); createErr == nil {

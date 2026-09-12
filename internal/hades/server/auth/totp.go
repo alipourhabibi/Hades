@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"time"
 
 	"connectrpc.com/connect"
 	"golang.org/x/crypto/bcrypt"
@@ -138,36 +137,32 @@ func (s *Server) VerifyTOTP(ctx context.Context, in *connect.Request[v1.VerifyTO
 		_ = s.backupCodeDB.MarkUsed(ctx, backupRow.ID)
 	}
 
+	// Mark the caller's session TOTP-verified. This must not be best-effort:
+	// if it fails the session stays unverified and the client would loop on the
+	// TOTP prompt forever with an apparently successful response.
 	rawToken, _ := ctx.Value(constants.ContextKeyAuthorization).(string)
-	if rawToken != "" {
-		tokenHash := utilscrypto.HashToken(rawToken)
-		if sess, err := s.sessionStorage.GetByTokenHash(ctx, tokenHash); err == nil {
-			_ = s.sessionStorage.MarkTOTPVerified(ctx, sess.ID)
-		}
+	if rawToken == "" {
+		s.logger.Error("missing session token in context", "procedure", "VerifyTOTP", "user_id", user.Id)
+		return nil, connErr.Unauthenticated("not authenticated")
 	}
-
-	raw, hash, err := utilscrypto.GenerateToken()
+	sess, err := s.sessionStorage.GetByTokenHash(ctx, utilscrypto.HashToken(rawToken))
 	if err != nil {
-		s.logger.Error("failed to generate token", "error", err, "procedure", "VerifyTOTP", "user_id", user.Id)
-		return nil, connErr.Internal("failed to generate token")
+		s.logger.Error("failed to load session", "error", err, "procedure", "VerifyTOTP", "user_id", user.Id)
+		return nil, connErr.FromPgx(err)
 	}
-	newIdleExpires := time.Now().Add(7 * 24 * time.Hour)
-
-	if rawToken != "" {
-		tokenHash := utilscrypto.HashToken(rawToken)
-		if sess, err := s.sessionStorage.GetByTokenHash(ctx, tokenHash); err == nil {
-			graceExpires := time.Now().Add(30 * time.Second)
-			_ = s.sessionStorage.UpdateActivity(ctx, sess.ID, hash, tokenHash, graceExpires, newIdleExpires)
-		}
+	if err := s.sessionStorage.MarkTOTPVerified(ctx, sess.ID); err != nil {
+		s.logger.Error("failed to mark session TOTP-verified", "error", err, "procedure", "VerifyTOTP", "user_id", user.Id)
+		return nil, connErr.FromPgx(err)
 	}
 
 	if s.auditLogDB != nil {
 		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_LOGIN_SUCCESS, "", "", map[string]any{"totp": true})
 	}
 
+	// Return the same session token; the session is now TOTP-verified in the DB.
 	return &connect.Response[v1.VerifyTOTPResponse]{
 		Msg: &v1.VerifyTOTPResponse{
-			Login: &v1.LoginResponse{Token: raw},
+			Login: &v1.LoginResponse{Token: rawToken},
 		},
 	}, nil
 }

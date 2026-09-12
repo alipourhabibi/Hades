@@ -75,14 +75,6 @@ func (s *Server) UserBySession(ctx context.Context, in *connect.Request[v1.UserB
 	}, nil
 }
 
-func (s *Server) UserFromSessionID(ctx context.Context, session string) (*identityv1.User, error) {
-	user, err := s.userStorage.GetBySessionId(ctx, session)
-	if err != nil {
-		return nil, err
-	}
-	return user, nil
-}
-
 // AddBasicRoles inserts the namespace-wide owner binding for a new user and
 // reloads the OPA store. This is the non-transactional variant.
 func (s *Server) AddBasicRoles(ctx context.Context, userName string) error {
