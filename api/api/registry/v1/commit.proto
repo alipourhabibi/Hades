@@ -66,12 +66,18 @@ message ListCommitsRequest {
   string owner = 1 [(buf.validate.field).required = true];
   // Short module name (without the owner prefix).
   string module = 2 [(buf.validate.field).required = true];
+  // Maximum number of commits to return. 0 uses the server default (50). Max 100.
+  int32 page_size = 3;
+  // Opaque pagination cursor from a previous response. Empty returns the first page.
+  string page_token = 4;
 }
 
 // ListCommitsResponse is the output for CommitService.ListCommits.
 message ListCommitsResponse {
   // Commits for the module, ordered newest first.
   repeated Commit commits = 1;
+  // Cursor for the next page. Empty when this is the last page.
+  string next_page_token = 2;
 }
 
 // GetCommitRequest is the input for CommitService.GetCommit.

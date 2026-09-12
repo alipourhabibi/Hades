@@ -82,6 +82,13 @@ func (h *Handler) GetUser(ctx context.Context, in *connect.Request[registrypbv1.
 }
 
 func (h *Handler) ListUsers(ctx context.Context, in *connect.Request[registrypbv1.ListUsersRequest]) (*connect.Response[registrypbv1.ListUsersResponse], error) {
+	// Any authenticated caller may enumerate users. This is intentional for an
+	// internal registry where member discovery is expected. Anonymous callers
+	// are rejected to prevent unauthenticated scraping.
+	if _, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User); !ok {
+		return nil, connErr.Unauthenticated("authentication required")
+	}
+
 	users, err := h.userDB.List(ctx, in.Msg.Query)
 	if err != nil {
 		h.logger.Error("failed to list users", "error", err, "query", in.Msg.Query)
@@ -223,6 +230,9 @@ func (h *Handler) CreateOrg(ctx context.Context, in *connect.Request[registrypbv
 }
 
 func (h *Handler) UpdateOrg(ctx context.Context, in *connect.Request[registrypbv1.UpdateOrgRequest]) (*connect.Response[registrypbv1.UpdateOrgResponse], error) {
+	// Org mutation handlers (UpdateOrg, AddOrgMember, RemoveOrgMember) use a direct
+	// DB role lookup instead of OPA. Org membership is stored in the DB, not in the
+	// OPA policy store, so the DB check is the authoritative source for these operations.
 	caller, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
 	if !ok || caller == nil {
 		return nil, connErr.Unauthenticated("authentication required")

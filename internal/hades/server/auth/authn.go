@@ -164,7 +164,7 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 	if af.LockedUntil != nil && time.Now().Before(*af.LockedUntil) {
 		_ = bcrypt.CompareHashAndPassword([]byte(dummyHash), []byte(in.Msg.Password))
 		if s.auditLogDB != nil {
-			_ = s.auditLogDB.Create(ctx, &af.ID, "login_failed", ip, ua, map[string]any{"reason": "locked"})
+			_ = s.auditLogDB.Create(ctx, &af.ID, v1.AuditEventType_AUDIT_EVENT_TYPE_LOGIN_FAILED, ip, ua, map[string]any{"reason": "locked"})
 		}
 		return nil, connErr.PermissionDenied("account locked")
 	}
@@ -183,11 +183,11 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 			}
 			_ = s.userStorage.LockUntil(ctx, af.ID, time.Now().Add(time.Duration(cooldown)*time.Minute))
 			if s.auditLogDB != nil {
-				_ = s.auditLogDB.Create(ctx, &af.ID, "account_locked", ip, ua, nil)
+				_ = s.auditLogDB.Create(ctx, &af.ID, v1.AuditEventType_AUDIT_EVENT_TYPE_ACCOUNT_LOCKED, ip, ua, nil)
 			}
 		}
 		if s.auditLogDB != nil {
-			_ = s.auditLogDB.Create(ctx, &af.ID, "login_failed", ip, ua, map[string]any{"attempts": newCount})
+			_ = s.auditLogDB.Create(ctx, &af.ID, v1.AuditEventType_AUDIT_EVENT_TYPE_LOGIN_FAILED, ip, ua, map[string]any{"attempts": newCount})
 		}
 		return nil, connErr.Unauthenticated("invalid credentials")
 	}
@@ -222,7 +222,7 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 	}
 
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &af.ID, "login_success", ip, ua, nil)
+		_ = s.auditLogDB.Create(ctx, &af.ID, v1.AuditEventType_AUDIT_EVENT_TYPE_LOGIN_SUCCESS, ip, ua, nil)
 	}
 
 	s.logger.Info("user logged in", "procedure", "Login", "user_id", af.ID)
@@ -246,7 +246,7 @@ func (s *Server) Logout(ctx context.Context, in *connect.Request[v1.LogoutReques
 		}
 	}
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &user.Id, "logout", "", "", nil)
+		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_LOGOUT, "", "", nil)
 	}
 	s.logger.Info("user logged out", "procedure", "Logout", "user_id", user.Id)
 	return &connect.Response[v1.LogoutResponse]{Msg: &v1.LogoutResponse{}}, nil
@@ -276,7 +276,7 @@ func (s *Server) VerifyEmail(ctx context.Context, in *connect.Request[v1.VerifyE
 		return nil, connErr.FromPgx(err)
 	}
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &row.UserID, "email_verified", "", "", nil)
+		_ = s.auditLogDB.Create(ctx, &row.UserID, v1.AuditEventType_AUDIT_EVENT_TYPE_EMAIL_VERIFIED, "", "", nil)
 	}
 	s.logger.Info("email verified", "procedure", "VerifyEmail", "user_id", row.UserID)
 	return &connect.Response[v1.VerifyEmailResponse]{Msg: &v1.VerifyEmailResponse{}}, nil
@@ -343,7 +343,7 @@ func (s *Server) RequestPasswordReset(ctx context.Context, in *connect.Request[v
 			}
 		}
 		if s.auditLogDB != nil {
-			_ = s.auditLogDB.Create(ctx, &user.Id, "password_reset_requested", ip, "", nil)
+			_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_PASSWORD_RESET, ip, "", nil)
 		}
 	}
 	return &connect.Response[v1.RequestPasswordResetResponse]{Msg: &v1.RequestPasswordResetResponse{}}, nil
@@ -390,7 +390,7 @@ func (s *Server) ResetPassword(ctx context.Context, in *connect.Request[v1.Reset
 	}
 	_ = s.sessionStorage.RevokeAllForUser(ctx, row.UserID, "")
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &row.UserID, "password_changed", "", "", nil)
+		_ = s.auditLogDB.Create(ctx, &row.UserID, v1.AuditEventType_AUDIT_EVENT_TYPE_PASSWORD_CHANGED, "", "", nil)
 	}
 	s.logger.Info("password reset", "procedure", "ResetPassword", "user_id", row.UserID)
 	return &connect.Response[v1.ResetPasswordResponse]{Msg: &v1.ResetPasswordResponse{}}, nil
@@ -446,7 +446,7 @@ func (s *Server) ChangePassword(ctx context.Context, in *connect.Request[v1.Chan
 			"Your account password was changed. If this wasn't you, please contact support.")
 	}
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &user.Id, "password_changed", "", "", nil)
+		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_PASSWORD_CHANGED, "", "", nil)
 	}
 	s.logger.Info("password changed", "procedure", "ChangePassword", "user_id", user.Id)
 	return &connect.Response[v1.ChangePasswordResponse]{Msg: &v1.ChangePasswordResponse{}}, nil

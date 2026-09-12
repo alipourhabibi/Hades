@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 
+	authv1 "github.com/alipourhabibi/Hades/api/gen/api/auth/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/auditlog"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -29,7 +30,7 @@ func (s *AuditLogStorage) q(ctx context.Context) txkeys.PgxQuerier {
 	return s.pool
 }
 
-func (s *AuditLogStorage) Create(ctx context.Context, userID *string, event, ipAddress, userAgent string, metadata map[string]any) error {
+func (s *AuditLogStorage) Create(ctx context.Context, userID *string, event authv1.AuditEventType, ipAddress, userAgent string, metadata map[string]any) error {
 	var metaJSON []byte
 	if metadata != nil {
 		var err error
@@ -41,7 +42,7 @@ func (s *AuditLogStorage) Create(ctx context.Context, userID *string, event, ipA
 	_, err := s.q(ctx).Exec(ctx,
 		`INSERT INTO audit_log (user_id, event, ip_address, user_agent, metadata)
 		 VALUES ($1, $2, $3, $4, $5)`,
-		userID, event, ipAddress, userAgent, metaJSON,
+		userID, event.String(), ipAddress, userAgent, metaJSON,
 	)
 	return err
 }
@@ -66,9 +67,11 @@ func (s *AuditLogStorage) List(ctx context.Context, userID string, pageSize, off
 	for rows.Next() {
 		row := &auditlog.Row{}
 		var metaJSON []byte
-		if err := rows.Scan(&row.ID, &row.UserID, &row.Event, &row.IPAddress, &row.UserAgent, &metaJSON, &row.CreatedAt); err != nil {
+		var eventStr string
+		if err := rows.Scan(&row.ID, &row.UserID, &eventStr, &row.IPAddress, &row.UserAgent, &metaJSON, &row.CreatedAt); err != nil {
 			return nil, err
 		}
+		row.EventType = authv1.AuditEventType(authv1.AuditEventType_value[eventStr])
 		if metaJSON != nil {
 			_ = json.Unmarshal(metaJSON, &row.Metadata)
 		}

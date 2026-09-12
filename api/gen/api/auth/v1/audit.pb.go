@@ -31,13 +31,105 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// AuditEventType enumerates all security-relevant events recorded by the audit log.
+type AuditEventType int32
+
+const (
+	AuditEventType_AUDIT_EVENT_TYPE_UNSPECIFIED       AuditEventType = 0
+	AuditEventType_AUDIT_EVENT_TYPE_LOGIN_SUCCESS     AuditEventType = 1
+	AuditEventType_AUDIT_EVENT_TYPE_LOGIN_FAILED      AuditEventType = 2
+	AuditEventType_AUDIT_EVENT_TYPE_ACCOUNT_LOCKED    AuditEventType = 3
+	AuditEventType_AUDIT_EVENT_TYPE_EMAIL_VERIFIED    AuditEventType = 4
+	AuditEventType_AUDIT_EVENT_TYPE_LOGOUT            AuditEventType = 5
+	AuditEventType_AUDIT_EVENT_TYPE_PASSWORD_RESET    AuditEventType = 6
+	AuditEventType_AUDIT_EVENT_TYPE_PASSWORD_CHANGED  AuditEventType = 7
+	AuditEventType_AUDIT_EVENT_TYPE_API_TOKEN_CREATED AuditEventType = 8
+	AuditEventType_AUDIT_EVENT_TYPE_API_TOKEN_REVOKED AuditEventType = 9
+	AuditEventType_AUDIT_EVENT_TYPE_MODULE_CREATED    AuditEventType = 10
+	AuditEventType_AUDIT_EVENT_TYPE_MODULE_UPDATED    AuditEventType = 11
+	AuditEventType_AUDIT_EVENT_TYPE_SESSION_REVOKED   AuditEventType = 12
+	AuditEventType_AUDIT_EVENT_TYPE_TOTP_ENABLED      AuditEventType = 13
+	AuditEventType_AUDIT_EVENT_TYPE_TOTP_DISABLED     AuditEventType = 14
+	AuditEventType_AUDIT_EVENT_TYPE_OAUTH_LINKED      AuditEventType = 15
+	AuditEventType_AUDIT_EVENT_TYPE_OAUTH_UNLINKED    AuditEventType = 16
+)
+
+// Enum value maps for AuditEventType.
+var (
+	AuditEventType_name = map[int32]string{
+		0:  "AUDIT_EVENT_TYPE_UNSPECIFIED",
+		1:  "AUDIT_EVENT_TYPE_LOGIN_SUCCESS",
+		2:  "AUDIT_EVENT_TYPE_LOGIN_FAILED",
+		3:  "AUDIT_EVENT_TYPE_ACCOUNT_LOCKED",
+		4:  "AUDIT_EVENT_TYPE_EMAIL_VERIFIED",
+		5:  "AUDIT_EVENT_TYPE_LOGOUT",
+		6:  "AUDIT_EVENT_TYPE_PASSWORD_RESET",
+		7:  "AUDIT_EVENT_TYPE_PASSWORD_CHANGED",
+		8:  "AUDIT_EVENT_TYPE_API_TOKEN_CREATED",
+		9:  "AUDIT_EVENT_TYPE_API_TOKEN_REVOKED",
+		10: "AUDIT_EVENT_TYPE_MODULE_CREATED",
+		11: "AUDIT_EVENT_TYPE_MODULE_UPDATED",
+		12: "AUDIT_EVENT_TYPE_SESSION_REVOKED",
+		13: "AUDIT_EVENT_TYPE_TOTP_ENABLED",
+		14: "AUDIT_EVENT_TYPE_TOTP_DISABLED",
+		15: "AUDIT_EVENT_TYPE_OAUTH_LINKED",
+		16: "AUDIT_EVENT_TYPE_OAUTH_UNLINKED",
+	}
+	AuditEventType_value = map[string]int32{
+		"AUDIT_EVENT_TYPE_UNSPECIFIED":       0,
+		"AUDIT_EVENT_TYPE_LOGIN_SUCCESS":     1,
+		"AUDIT_EVENT_TYPE_LOGIN_FAILED":      2,
+		"AUDIT_EVENT_TYPE_ACCOUNT_LOCKED":    3,
+		"AUDIT_EVENT_TYPE_EMAIL_VERIFIED":    4,
+		"AUDIT_EVENT_TYPE_LOGOUT":            5,
+		"AUDIT_EVENT_TYPE_PASSWORD_RESET":    6,
+		"AUDIT_EVENT_TYPE_PASSWORD_CHANGED":  7,
+		"AUDIT_EVENT_TYPE_API_TOKEN_CREATED": 8,
+		"AUDIT_EVENT_TYPE_API_TOKEN_REVOKED": 9,
+		"AUDIT_EVENT_TYPE_MODULE_CREATED":    10,
+		"AUDIT_EVENT_TYPE_MODULE_UPDATED":    11,
+		"AUDIT_EVENT_TYPE_SESSION_REVOKED":   12,
+		"AUDIT_EVENT_TYPE_TOTP_ENABLED":      13,
+		"AUDIT_EVENT_TYPE_TOTP_DISABLED":     14,
+		"AUDIT_EVENT_TYPE_OAUTH_LINKED":      15,
+		"AUDIT_EVENT_TYPE_OAUTH_UNLINKED":    16,
+	}
+)
+
+func (x AuditEventType) Enum() *AuditEventType {
+	p := new(AuditEventType)
+	*p = x
+	return p
+}
+
+func (x AuditEventType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AuditEventType) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_auth_v1_audit_proto_enumTypes[0].Descriptor()
+}
+
+func (AuditEventType) Type() protoreflect.EnumType {
+	return &file_api_auth_v1_audit_proto_enumTypes[0]
+}
+
+func (x AuditEventType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AuditEventType.Descriptor instead.
+func (AuditEventType) EnumDescriptor() ([]byte, []int) {
+	return file_api_auth_v1_audit_proto_rawDescGZIP(), []int{0}
+}
+
 // AuditEvent records a single security-relevant action.
 type AuditEvent struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Unique event identifier (UUID).
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// Machine-readable event type (e.g. "login.succeeded", "api_token.created").
-	EventType string `protobuf:"bytes,2,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	// Machine-readable event type.
+	EventType AuditEventType `protobuf:"varint,2,opt,name=event_type,json=eventType,proto3,enum=hades.api.auth.v1.AuditEventType" json:"event_type,omitempty"`
 	// IP address of the client that triggered the event.
 	IpAddress string `protobuf:"bytes,3,opt,name=ip_address,json=ipAddress,proto3" json:"ip_address,omitempty"`
 	// User-Agent of the client, if available.
@@ -87,11 +179,11 @@ func (x *AuditEvent) GetId() string {
 	return ""
 }
 
-func (x *AuditEvent) GetEventType() string {
+func (x *AuditEvent) GetEventType() AuditEventType {
 	if x != nil {
 		return x.EventType
 	}
-	return ""
+	return AuditEventType_AUDIT_EVENT_TYPE_UNSPECIFIED
 }
 
 func (x *AuditEvent) GetIpAddress() string {
@@ -238,12 +330,12 @@ var File_api_auth_v1_audit_proto protoreflect.FileDescriptor
 
 const file_api_auth_v1_audit_proto_rawDesc = "" +
 	"\n" +
-	"\x17api/auth/v1/audit.proto\x12\x11hades.api.auth.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe9\x01\n" +
+	"\x17api/auth/v1/audit.proto\x12\x11hades.api.auth.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8c\x02\n" +
 	"\n" +
 	"AuditEvent\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12@\n" +
 	"\n" +
-	"event_type\x18\x02 \x01(\tR\teventType\x12\x1d\n" +
+	"event_type\x18\x02 \x01(\x0e2!.hades.api.auth.v1.AuditEventTypeR\teventType\x12\x1d\n" +
 	"\n" +
 	"ip_address\x18\x03 \x01(\tR\tipAddress\x12\x1d\n" +
 	"\n" +
@@ -257,7 +349,26 @@ const file_api_auth_v1_audit_proto_rawDesc = "" +
 	"page_token\x18\x02 \x01(\tR\tpageToken\"u\n" +
 	"\x14ListAuditLogResponse\x125\n" +
 	"\x06events\x18\x01 \x03(\v2\x1d.hades.api.auth.v1.AuditEventR\x06events\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2o\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken*\xfb\x04\n" +
+	"\x0eAuditEventType\x12 \n" +
+	"\x1cAUDIT_EVENT_TYPE_UNSPECIFIED\x10\x00\x12\"\n" +
+	"\x1eAUDIT_EVENT_TYPE_LOGIN_SUCCESS\x10\x01\x12!\n" +
+	"\x1dAUDIT_EVENT_TYPE_LOGIN_FAILED\x10\x02\x12#\n" +
+	"\x1fAUDIT_EVENT_TYPE_ACCOUNT_LOCKED\x10\x03\x12#\n" +
+	"\x1fAUDIT_EVENT_TYPE_EMAIL_VERIFIED\x10\x04\x12\x1b\n" +
+	"\x17AUDIT_EVENT_TYPE_LOGOUT\x10\x05\x12#\n" +
+	"\x1fAUDIT_EVENT_TYPE_PASSWORD_RESET\x10\x06\x12%\n" +
+	"!AUDIT_EVENT_TYPE_PASSWORD_CHANGED\x10\a\x12&\n" +
+	"\"AUDIT_EVENT_TYPE_API_TOKEN_CREATED\x10\b\x12&\n" +
+	"\"AUDIT_EVENT_TYPE_API_TOKEN_REVOKED\x10\t\x12#\n" +
+	"\x1fAUDIT_EVENT_TYPE_MODULE_CREATED\x10\n" +
+	"\x12#\n" +
+	"\x1fAUDIT_EVENT_TYPE_MODULE_UPDATED\x10\v\x12$\n" +
+	" AUDIT_EVENT_TYPE_SESSION_REVOKED\x10\f\x12!\n" +
+	"\x1dAUDIT_EVENT_TYPE_TOTP_ENABLED\x10\r\x12\"\n" +
+	"\x1eAUDIT_EVENT_TYPE_TOTP_DISABLED\x10\x0e\x12!\n" +
+	"\x1dAUDIT_EVENT_TYPE_OAUTH_LINKED\x10\x0f\x12#\n" +
+	"\x1fAUDIT_EVENT_TYPE_OAUTH_UNLINKED\x10\x102o\n" +
 	"\fAuditService\x12_\n" +
 	"\fListAuditLog\x12&.hades.api.auth.v1.ListAuditLogRequest\x1a'.hades.api.auth.v1.ListAuditLogResponseB\xc5\x01\n" +
 	"\x15com.hades.api.auth.v1B\n" +
@@ -275,25 +386,28 @@ func file_api_auth_v1_audit_proto_rawDescGZIP() []byte {
 	return file_api_auth_v1_audit_proto_rawDescData
 }
 
+var file_api_auth_v1_audit_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_api_auth_v1_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_api_auth_v1_audit_proto_goTypes = []any{
-	(*AuditEvent)(nil),            // 0: hades.api.auth.v1.AuditEvent
-	(*ListAuditLogRequest)(nil),   // 1: hades.api.auth.v1.ListAuditLogRequest
-	(*ListAuditLogResponse)(nil),  // 2: hades.api.auth.v1.ListAuditLogResponse
-	(*structpb.Struct)(nil),       // 3: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(AuditEventType)(0),           // 0: hades.api.auth.v1.AuditEventType
+	(*AuditEvent)(nil),            // 1: hades.api.auth.v1.AuditEvent
+	(*ListAuditLogRequest)(nil),   // 2: hades.api.auth.v1.ListAuditLogRequest
+	(*ListAuditLogResponse)(nil),  // 3: hades.api.auth.v1.ListAuditLogResponse
+	(*structpb.Struct)(nil),       // 4: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
 }
 var file_api_auth_v1_audit_proto_depIdxs = []int32{
-	3, // 0: hades.api.auth.v1.AuditEvent.metadata:type_name -> google.protobuf.Struct
-	4, // 1: hades.api.auth.v1.AuditEvent.created_at:type_name -> google.protobuf.Timestamp
-	0, // 2: hades.api.auth.v1.ListAuditLogResponse.events:type_name -> hades.api.auth.v1.AuditEvent
-	1, // 3: hades.api.auth.v1.AuditService.ListAuditLog:input_type -> hades.api.auth.v1.ListAuditLogRequest
-	2, // 4: hades.api.auth.v1.AuditService.ListAuditLog:output_type -> hades.api.auth.v1.ListAuditLogResponse
-	4, // [4:5] is the sub-list for method output_type
-	3, // [3:4] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	0, // 0: hades.api.auth.v1.AuditEvent.event_type:type_name -> hades.api.auth.v1.AuditEventType
+	4, // 1: hades.api.auth.v1.AuditEvent.metadata:type_name -> google.protobuf.Struct
+	5, // 2: hades.api.auth.v1.AuditEvent.created_at:type_name -> google.protobuf.Timestamp
+	1, // 3: hades.api.auth.v1.ListAuditLogResponse.events:type_name -> hades.api.auth.v1.AuditEvent
+	2, // 4: hades.api.auth.v1.AuditService.ListAuditLog:input_type -> hades.api.auth.v1.ListAuditLogRequest
+	3, // 5: hades.api.auth.v1.AuditService.ListAuditLog:output_type -> hades.api.auth.v1.ListAuditLogResponse
+	5, // [5:6] is the sub-list for method output_type
+	4, // [4:5] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_api_auth_v1_audit_proto_init() }
@@ -306,13 +420,14 @@ func file_api_auth_v1_audit_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_auth_v1_audit_proto_rawDesc), len(file_api_auth_v1_audit_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_api_auth_v1_audit_proto_goTypes,
 		DependencyIndexes: file_api_auth_v1_audit_proto_depIdxs,
+		EnumInfos:         file_api_auth_v1_audit_proto_enumTypes,
 		MessageInfos:      file_api_auth_v1_audit_proto_msgTypes,
 	}.Build()
 	File_api_auth_v1_audit_proto = out.File

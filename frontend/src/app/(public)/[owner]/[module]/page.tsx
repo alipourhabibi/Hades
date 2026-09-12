@@ -24,7 +24,7 @@ import { DOMAIN } from '@/lib/config';
 import { rpcFetch } from '@/lib/rpc';
 import { isNotFound, formatError } from '@/lib/connectError';
 
-interface Module { id: string; name: string; ownerId: string; visibility: string | number; description: string; defaultBranch: string; createTime?: string; updateTime?: string; }
+interface Module { id: string; name: string; ownerId: string; visibility: string | number; description: string; defaultBranch: string; createTime?: string; updateTime?: string; lintPreset?: number | string; breakingEnabled?: boolean; }
 interface Commit { id: string; commitHash: string; createTime?: string; ownerId?: string; moduleId?: string; }
 interface SDK { id: string; moduleId: string; commitId?: string; language: string; plugin?: string; status?: string; outputLocation?: string; }
 type FileEntryType = number | string;
@@ -93,6 +93,8 @@ function ModuleDetailContent() {
 
   const [mod, setMod] = useState<Module | null>(null);
   const [commits, setCommits] = useState<Commit[]>([]);
+  const [commitsNextToken, setCommitsNextToken] = useState('');
+  const [commitsLoadingMore, setCommitsLoadingMore] = useState(false);
   const [sdks, setSdks] = useState<SDK[]>([]);
   const [sdkLang, setSdkLang] = useState<string | null>(null);
   const [sdkVersionId, setSdkVersionId] = useState<string | null>(null);
@@ -101,7 +103,11 @@ function ModuleDetailContent() {
   const [notFound, setNotFound] = useState(false);
   const [settingsDesc, setSettingsDesc] = useState('');
   const [settingsPublic, setSettingsPublic] = useState(false);
+  const [settingsLintPreset, setSettingsLintPreset] = useState('LINT_PRESET_DEFAULT');
+  const [settingsBreaking, setSettingsBreaking] = useState(true);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [dirEntries, setDirEntries] = useState<FileEntry[]>([]);
   const [dirLoading, setDirLoading] = useState(false);
   const [dirError, setDirError] = useState<string | null>(null);
@@ -128,13 +134,20 @@ function ModuleDetailContent() {
     rpcFetch<{ module: Module }>('/hades.api.registry.v1.ModuleService/GetModule', { owner, name: moduleName })
       .then(modRes => {
         const m = modRes.module;
-        setMod(m); setSettingsDesc(m.description || ''); setSettingsPublic(isPublic(m.visibility));
+        setMod(m);
+        setSettingsDesc(m.description || '');
+        setSettingsPublic(isPublic(m.visibility));
+        setSettingsLintPreset(typeof m.lintPreset === 'string' ? m.lintPreset : 'LINT_PRESET_DEFAULT');
+        setSettingsBreaking(m.breakingEnabled !== false);
         addRecentModule({ owner, name: moduleName, fullName: `${owner}/${moduleName}`, visibility: isPublic(m.visibility) ? 'public' : 'private' });
         Promise.allSettled([
-          rpcFetch<{ commits: Commit[] }>('/hades.api.registry.v1.CommitService/ListCommits', { owner, module: moduleName }),
+          rpcFetch<{ commits: Commit[]; nextPageToken?: string }>('/hades.api.registry.v1.CommitService/ListCommits', { owner, module: moduleName }),
           rpcFetch<{ sdkJobs: SDK[] }>('/hades.api.registry.v1.SDKService/ListSDKs', { owner, module: moduleName }),
         ]).then(([commitResult, sdkResult]) => {
-          if (commitResult.status === 'fulfilled') setCommits(commitResult.value.commits || []);
+          if (commitResult.status === 'fulfilled') {
+            setCommits(commitResult.value.commits || []);
+            setCommitsNextToken(commitResult.value.nextPageToken || '');
+          }
           if (sdkResult.status === 'fulfilled') {
             const jobs = sdkResult.value.sdkJobs || [];
             setSdks(jobs);
@@ -171,7 +184,7 @@ function ModuleDetailContent() {
   if (notFound || (!loading && !mod && !error)) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 400 }}>
       <EmptyState
-        icon={<IconBox size={48}/>}
+        icon={<IconBox size={48} />}
         title={`"${owner}/${moduleName}" not found`}
         subtitle="This module does not exist or you do not have permission to view it."
         action={<Btn variant="ghost" onClick={() => router.push(`/${owner}`)}>View profile</Btn>}
@@ -181,7 +194,7 @@ function ModuleDetailContent() {
   if (error) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 400 }}>
       <EmptyState
-        icon={<IconAlert size={48}/>}
+        icon={<IconAlert size={48} />}
         title="Something went wrong"
         subtitle={error}
         action={<Btn variant="ghost" onClick={() => router.back()}>Go back</Btn>}
@@ -192,7 +205,19 @@ function ModuleDetailContent() {
   if (!mod) return null;
   const pub = isPublic(mod.visibility);
   const latestCommit = commits[0] || null;
-  const bufYaml = `version: v2\nmodules:\n  - path: .\n    name: ${DOMAIN}/${owner}/${moduleName}\nlint:\n  use:\n    - DEFAULT\nbreaking:\n  use:\n    - FILE`;
+  const lintPresetByNum: Record<number, string> = { 0: 'DEFAULT', 1: 'DEFAULT', 2: 'BASIC', 3: 'MINIMAL', 4: 'COMMENTS' };
+  const lintPresetByStr: Record<string, string> = { LINT_PRESET_UNSPECIFIED: 'DEFAULT', LINT_PRESET_DEFAULT: 'DEFAULT', LINT_PRESET_BASIC: 'BASIC', LINT_PRESET_MINIMAL: 'MINIMAL', LINT_PRESET_COMMENTS: 'COMMENTS' };
+  const lintRule = typeof mod.lintPreset === 'string' ? (lintPresetByStr[mod.lintPreset] ?? 'DEFAULT') : (lintPresetByNum[mod.lintPreset ?? 1] ?? 'DEFAULT');
+  const bufYaml = [
+    'version: v2',
+    'modules:',
+    '  - path: .',
+    `    name: ${DOMAIN}/${owner}/${moduleName}`,
+    'lint:',
+    '  use:',
+    `    - ${lintRule}`,
+    ...(mod.breakingEnabled !== false ? ['breaking:', '  use:', '    - FILE'] : []),
+  ].join('\n');
   const dirSegments = dirPath ? dirPath.split('/').filter(Boolean) : [];
   const sortedEntries = [...dirEntries].sort((a, b) => { const aD = isEntryDir(a.type); const bD = isEntryDir(b.type); if (aD !== bD) return aD ? -1 : 1; return a.name.localeCompare(b.name); });
 
@@ -207,7 +232,7 @@ function ModuleDetailContent() {
           const isFilename = fileEntry && isLast;
           return (
             <React.Fragment key={segPath}>
-              <IconChevronRight size={12} style={{ opacity: 0.4, flexShrink: 0 }}/>
+              <IconChevronRight size={12} style={{ opacity: 0.4, flexShrink: 0 }} />
               <span role={!isFilename ? 'button' : undefined} style={{ fontFamily: "'IBM Plex Mono', monospace", color: isLast ? 'var(--c-fg)' : 'var(--c-accent)', cursor: isFilename ? 'default' : 'pointer', fontWeight: isLast ? 600 : 400 }} onClick={() => { if (!isFilename) navigateToDir(segPath); }}>{seg}</span>
             </React.Fragment>
           );
@@ -223,7 +248,7 @@ function ModuleDetailContent() {
           {renderBreadcrumb(openFile)}
           {fileLoading && <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, padding: '40px 20px', textAlign: 'center', color: 'var(--c-fg-muted)', fontSize: 13 }}>Loading…</div>}
           {fileError && <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, padding: '40px 20px', textAlign: 'center', color: 'var(--c-danger)', fontSize: 13 }}>{fileError}</div>}
-          {!fileLoading && !fileError && fileContent !== null && <FileViewer filename={openFile.name} content={fileContent} oid={openFile.oid}/>}
+          {!fileLoading && !fileError && fileContent !== null && <FileViewer filename={openFile.name} content={fileContent} oid={openFile.oid} />}
         </div>
       );
     }
@@ -232,13 +257,13 @@ function ModuleDetailContent() {
       <div style={{ padding: '20px 32px' }}>
         {renderBreadcrumb(null)}
         <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--c-bg-default)' }}>
-          {dirPath && <FileRow icon={<IconFolder size={14} style={{ color: 'var(--c-fg-subtle)' }}/>} name=".." oid="" isDir isLast={!dirLoading && sortedEntries.length === 0} onClick={() => navigateToDir(parentPath)}/>}
+          {dirPath && <FileRow icon={<IconFolder size={14} style={{ color: 'var(--c-fg-subtle)' }} />} name=".." oid="" isDir isLast={!dirLoading && sortedEntries.length === 0} onClick={() => navigateToDir(parentPath)} />}
           {dirLoading && <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--c-fg-muted)', fontSize: 13 }}>Loading…</div>}
           {dirError && <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--c-danger)', fontSize: 13 }}>{dirError}</div>}
           {!dirLoading && !dirError && sortedEntries.length === 0 && !dirPath && <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--c-fg-muted)', fontSize: 13 }}>No files found. Push your first commit to see files here.</div>}
           {!dirLoading && !dirError && sortedEntries.map((entry, i) => {
             const dir = isEntryDir(entry.type);
-            return <FileRow key={entry.path} icon={dir ? <IconFolder size={14} style={{ color: '#e3a14f' }}/> : <IconFile size={14} style={{ color: 'var(--c-fg-subtle)' }}/>} name={entry.name} oid={entry.oid} isDir={dir} isLast={i === sortedEntries.length - 1} nameStyle={{ color: dir ? 'var(--c-accent)' : 'var(--c-fg)' }} onClick={() => dir ? navigateToDir(entry.path) : openFileView(entry)}/>;
+            return <FileRow key={entry.path} icon={dir ? <IconFolder size={14} style={{ color: '#e3a14f' }} /> : <IconFile size={14} style={{ color: 'var(--c-fg-subtle)' }} />} name={entry.name} oid={entry.oid} isDir={dir} isLast={i === sortedEntries.length - 1} nameStyle={{ color: dir ? 'var(--c-accent)' : 'var(--c-fg)' }} onClick={() => dir ? navigateToDir(entry.path) : openFileView(entry)} />;
           })}
         </div>
       </div>
@@ -256,14 +281,14 @@ function ModuleDetailContent() {
         title={<span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 18 }}>{owner}/{moduleName}</span>}
         subtitle={mod.description || undefined}
         actions={<>
-          <Btn size="sm" icon={<IconStar size={13}/>}>Star</Btn>
-          <Btn size="sm" icon={<IconDownload size={13}/>}>Clone</Btn>
-          <Btn size="sm" variant="primary" icon={<IconCode size={13}/>} onClick={() => setTab('sdks')}>Get SDKs</Btn>
+          <Btn size="sm" icon={<IconStar size={13} />}>Star</Btn>
+          <Btn size="sm" icon={<IconDownload size={13} />}>Clone</Btn>
+          <Btn size="sm" variant="primary" icon={<IconCode size={13} />} onClick={() => setTab('sdks')}>Get SDKs</Btn>
         </>}
       />
 
       <div style={{ padding: '0 32px' }}>
-        <Tabs tabs={MODULE_TABS.map(t => ({ ...t, count: t.id === 'commits' ? commits.length : t.id === 'sdks' ? new Set(sdks.map(s => s.language)).size || undefined : undefined }))} active={activeTab} onChange={setTab}/>
+        <Tabs tabs={MODULE_TABS.map(t => ({ ...t, count: t.id === 'commits' ? commits.length : t.id === 'sdks' ? new Set(sdks.map(s => s.language)).size || undefined : undefined }))} active={activeTab} onChange={setTab} />
       </div>
 
       {activeTab === 'overview' && (
@@ -273,7 +298,7 @@ function ModuleDetailContent() {
               <Card style={{ padding: 20, marginBottom: 16 }}>
                 <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: 'var(--c-fg)' }}>Latest Commit</h3>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                  <Avatar initials={owner.slice(0, 2)} size={28}/>
+                  <Avatar initials={owner.slice(0, 2)} size={28} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, color: 'var(--c-fg)', marginBottom: 4, fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latestCommit.commitHash}</div>
                     <div style={{ fontSize: 12, color: 'var(--c-fg-subtle)', display: 'flex', gap: 12 }}>
@@ -287,20 +312,20 @@ function ModuleDetailContent() {
             )}
             <Card style={{ padding: 20 }}>
               <h3 style={{ margin: '0 0 14px', fontSize: 13, fontWeight: 600, color: 'var(--c-fg)' }}>buf.yaml</h3>
-              <CodeBlock lang="yaml" code={bufYaml}/>
+              <CodeBlock lang="yaml" code={bufYaml} />
             </Card>
           </div>
           <div style={{ width: 220, flexShrink: 0 }}>
             <Card style={{ padding: 20, marginBottom: 12 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <Stat label="Visibility" value={pub ? 'Public' : 'Private'} icon={pub ? <IconGlobe size={14}/> : <IconLock size={14}/>}/>
-                <Divider/>
-                <Stat label="Commits" value={String(commits.length)} icon={<IconGitCommit size={14}/>}/>
+                <Stat label="Visibility" value={pub ? 'Public' : 'Private'} icon={pub ? <IconGlobe size={14} /> : <IconLock size={14} />} />
+                <Divider />
+                <Stat label="Commits" value={String(commits.length)} icon={<IconGitCommit size={14} />} />
               </div>
             </Card>
             <Card style={{ padding: 16 }}>
-              {mod.defaultBranch && (<><div style={{ fontSize: 12, color: 'var(--c-fg-subtle)', marginBottom: 4 }}>Branch</div><div style={{ fontSize: 13, color: 'var(--c-fg)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><IconBranch size={12}/>{mod.defaultBranch}</div></>)}
-              {mod.createTime && (<><div style={{ fontSize: 12, color: 'var(--c-fg-subtle)', marginBottom: 4 }}>Created</div><div style={{ fontSize: 13, color: 'var(--c-fg)', display: 'flex', alignItems: 'center', gap: 6 }}><IconClock size={12}/>{fmtDate(mod.createTime)}</div></>)}
+              {mod.defaultBranch && (<><div style={{ fontSize: 12, color: 'var(--c-fg-subtle)', marginBottom: 4 }}>Branch</div><div style={{ fontSize: 13, color: 'var(--c-fg)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><IconBranch size={12} />{mod.defaultBranch}</div></>)}
+              {mod.createTime && (<><div style={{ fontSize: 12, color: 'var(--c-fg-subtle)', marginBottom: 4 }}>Created</div><div style={{ fontSize: 13, color: 'var(--c-fg)', display: 'flex', alignItems: 'center', gap: 6 }}><IconClock size={12} />{fmtDate(mod.createTime)}</div></>)}
             </Card>
           </div>
         </div>
@@ -310,33 +335,45 @@ function ModuleDetailContent() {
 
       {activeTab === 'commits' && (
         <Section>
-          {commits.length === 0 ? <EmptyState icon={<IconGitCommit size={40}/>} title="No commits yet" subtitle="Push your first Protobuf files to create a commit."/> : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden' }}>
-              {commits.map((c, i) => (
-                <div key={c.id} style={{ background: 'var(--c-bg-default)', borderBottom: i < commits.length - 1 ? '1px solid var(--c-border-muted)' : 'none' }}>
-                  <div style={{ padding: '14px 18px', display: 'flex', gap: 12, alignItems: 'flex-start', cursor: 'pointer' }} onClick={() => router.push(`/${owner}/${moduleName}/commit/${c.commitHash}`)} onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--c-bg-overlay)'} onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
-                    <Avatar initials={owner.slice(0, 2)} size={28}/>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-fg)', marginBottom: 4, fontFamily: "'IBM Plex Mono', monospace" }}>{c.commitHash.slice(0, 32)}{c.commitHash.length > 32 ? '…' : ''}</div>
-                      <div style={{ fontSize: 12, color: 'var(--c-fg-subtle)', display: 'flex', gap: 12 }}><span>{c.ownerId || owner}</span><span>committed {fmtDate(c.createTime)}</span></div>
+          {commits.length === 0 ? <EmptyState icon={<IconGitCommit size={40} />} title="No commits yet" subtitle="Push your first Protobuf files to create a commit." /> : (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1, border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden' }}>
+                {commits.map((c, i) => (
+                  <div key={c.id} style={{ background: 'var(--c-bg-default)', borderBottom: i < commits.length - 1 ? '1px solid var(--c-border-muted)' : 'none' }}>
+                    <div style={{ padding: '14px 18px', display: 'flex', gap: 12, alignItems: 'flex-start', cursor: 'pointer' }} onClick={() => router.push(`/${owner}/${moduleName}/commit/${c.commitHash}`)} onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--c-bg-overlay)'} onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
+                      <Avatar initials={owner.slice(0, 2)} size={28} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-fg)', marginBottom: 4, fontFamily: "'IBM Plex Mono', monospace" }}>{c.commitHash.slice(0, 32)}{c.commitHash.length > 32 ? '...' : ''}</div>
+                        <div style={{ fontSize: 12, color: 'var(--c-fg-subtle)', display: 'flex', gap: 12 }}><span>{c.ownerId || owner}</span><span>committed {fmtDate(c.createTime)}</span></div>
+                      </div>
+                      <code style={{ fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", color: 'var(--c-accent)', background: 'var(--c-accent-bg)', padding: '2px 8px', borderRadius: 4, flexShrink: 0 }}>{c.commitHash.slice(0, 7)}</code>
                     </div>
-                    <code style={{ fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", color: 'var(--c-accent)', background: 'var(--c-accent-bg)', padding: '2px 8px', borderRadius: 4, flexShrink: 0 }}>{c.commitHash.slice(0, 7)}</code>
                   </div>
+                ))}
+              </div>
+              {commitsNextToken && (
+                <div style={{ marginTop: 12, textAlign: 'center' }}>
+                  <Btn variant="ghost" size="sm" disabled={commitsLoadingMore} onClick={() => {
+                    setCommitsLoadingMore(true);
+                    rpcFetch<{ commits: Commit[]; nextPageToken?: string }>('/hades.api.registry.v1.CommitService/ListCommits', { owner, module: moduleName, pageToken: commitsNextToken })
+                      .then(res => { setCommits(prev => [...prev, ...(res.commits || [])]); setCommitsNextToken(res.nextPageToken || ''); })
+                      .finally(() => setCommitsLoadingMore(false));
+                  }}>{commitsLoadingMore ? 'Loading...' : 'Load more'}</Btn>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </Section>
       )}
 
       {activeTab === 'versions' && (
         <Section>
-          {commits.length === 0 ? <EmptyState icon={<IconTag size={40}/>} title="No versions yet"/> : (
+          {commits.length === 0 ? <EmptyState icon={<IconTag size={40} />} title="No versions yet" /> : (
             <Table columns={[
               { key: 'version', label: 'Version', render: v => <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: 'var(--c-accent)', fontSize: 13 }}>{String(v)}</span> },
               { key: 'hash', label: 'Commit', render: v => <code style={{ fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", color: 'var(--c-fg-muted)' }}>{String(v)}</code> },
               { key: 'date', label: 'Date' },
-            ]} rows={commits.map((c, i) => ({ version: `v${commits.length - i}`, hash: c.commitHash.slice(0, 12), date: fmtDate(c.createTime), _commit: c }))} onRowClick={row => router.push(`/${owner}/${moduleName}/commit/${(row as { _commit: Commit })._commit.commitHash}`)}/>
+            ]} rows={commits.map((c, i) => ({ version: `v${commits.length - i}`, hash: c.commitHash.slice(0, 12), date: fmtDate(c.createTime), _commit: c }))} onRowClick={row => router.push(`/${owner}/${moduleName}/commit/${(row as { _commit: Commit })._commit.commitHash}`)} />
           )}
         </Section>
       )}
@@ -350,7 +387,7 @@ function ModuleDetailContent() {
           const tag = idx === 0 ? 'latest' : `v${langSdks.length - idx}`;
           return sdk.commitId ? `${tag} (${sdk.commitId.slice(0, 8)})` : tag;
         };
-        if (sdks.length === 0) return <Section><EmptyState icon={<IconPackage size={40}/>} title="No SDKs generated" subtitle="SDK generation runs automatically when you push commits."/></Section>;
+        if (sdks.length === 0) return <Section><EmptyState icon={<IconPackage size={40} />} title="No SDKs generated" subtitle="SDK generation runs automatically when you push commits." /></Section>;
         return (
           <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
             <div style={{ width: 180, flexShrink: 0, borderRight: '1px solid var(--c-border)', overflowY: 'auto', padding: '16px 0' }}>
@@ -392,11 +429,11 @@ function ModuleDetailContent() {
                   </div>
                   <div style={{ marginBottom: 24 }}>
                     <h3 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 600, color: 'var(--c-fg)' }}>Installation</h3>
-                    <CodeBlock code={getInstallCmd(activeSdk.language, owner, moduleName, activeSdk.commitId?.slice(0, 12))} lang={activeSdk.language.toLowerCase() === 'typescript' ? 'bash' : activeSdk.language.toLowerCase()}/>
+                    <CodeBlock code={getInstallCmd(activeSdk.language, owner, moduleName, activeSdk.commitId?.slice(0, 12))} lang={activeSdk.language.toLowerCase() === 'typescript' ? 'bash' : activeSdk.language.toLowerCase()} />
                   </div>
                   <div style={{ marginBottom: 24 }}>
                     <h3 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 600, color: 'var(--c-fg)' }}>Usage</h3>
-                    <CodeBlock code={getUsageCode(activeSdk.language, owner, moduleName)} lang={activeSdk.language.toLowerCase()}/>
+                    <CodeBlock code={getUsageCode(activeSdk.language, owner, moduleName)} lang={activeSdk.language.toLowerCase()} />
                   </div>
                   {activeSdk.commitId && (
                     <Card style={{ padding: '12px 16px' }}>
@@ -413,23 +450,60 @@ function ModuleDetailContent() {
         );
       })()}
 
-      {activeTab === 'dependencies' && <Section><EmptyState icon={<IconBox size={40}/>} title="No dependencies" subtitle="This module has no external dependencies declared."/></Section>}
-      {activeTab === 'ci' && <Section><EmptyState icon={<IconCode size={40}/>} title="CI / Lint" subtitle="Connect your repository to enable lint checks and breaking change detection."/></Section>}
+      {activeTab === 'dependencies' && <Section><EmptyState icon={<IconBox size={40} />} title="No dependencies" subtitle="This module has no external dependencies declared." /></Section>}
+      {activeTab === 'ci' && <Section><EmptyState icon={<IconCode size={40} />} title="CI / Lint" subtitle="Connect your repository to enable lint checks and breaking change detection." /></Section>}
 
       {activeTab === 'settings' && (
         <Section>
           <div style={{ maxWidth: 500, display: 'flex', flexDirection: 'column', gap: 20 }}>
             <div>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--c-fg)', marginBottom: 6 }}>Description</label>
-              <Input value={settingsDesc} onChange={val => { setSettingsDesc(val); setSettingsSaved(false); }} placeholder="Short description of this module"/>
+              <Input value={settingsDesc} onChange={val => { setSettingsDesc(val); setSettingsSaved(false); }} placeholder="Short description of this module" />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div><div style={{ fontSize: 13, fontWeight: 500, color: 'var(--c-fg)' }}>Public visibility</div><div style={{ fontSize: 12, color: 'var(--c-fg-muted)', marginTop: 2 }}>Anyone can view this module if enabled</div></div>
-              <Toggle checked={settingsPublic} onChange={v => { setSettingsPublic(v); setSettingsSaved(false); }}/>
+              <Toggle checked={settingsPublic} onChange={v => { setSettingsPublic(v); setSettingsSaved(false); }} />
             </div>
             <div>
-              <Btn variant="primary" onClick={() => setSettingsSaved(true)}>Save changes</Btn>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--c-fg)', marginBottom: 6 }}>Lint preset</label>
+              <select
+                value={settingsLintPreset}
+                onChange={e => { setSettingsLintPreset(e.target.value); setSettingsSaved(false); }}
+                style={{ width: '100%', padding: '6px 10px', fontSize: 13, borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg-overlay)', color: 'var(--c-fg)' }}
+              >
+                <option value="LINT_PRESET_DEFAULT">DEFAULT</option>
+                <option value="LINT_PRESET_BASIC">BASIC</option>
+                <option value="LINT_PRESET_MINIMAL">MINIMAL</option>
+                <option value="LINT_PRESET_COMMENTS">COMMENTS</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div><div style={{ fontSize: 13, fontWeight: 500, color: 'var(--c-fg)' }}>Breaking change detection</div><div style={{ fontSize: 12, color: 'var(--c-fg-muted)', marginTop: 2 }}>Reject pushes that introduce breaking changes</div></div>
+              <Toggle checked={settingsBreaking} onChange={v => { setSettingsBreaking(v); setSettingsSaved(false); }} />
+            </div>
+            <div>
+              <Btn
+                variant="primary"
+                disabled={settingsSaving}
+                onClick={() => {
+                  setSettingsSaving(true);
+                  setSettingsError(null);
+                  const visibilityVal = settingsPublic ? 'MODULE_VISIBILITY_PUBLIC' : 'MODULE_VISIBILITY_PRIVATE';
+                  rpcFetch<{ module: Module }>('/hades.api.registry.v1.ModuleService/UpdateModule', {
+                    owner,
+                    name: moduleName,
+                    description: settingsDesc,
+                    visibility: visibilityVal,
+                    lintPreset: settingsLintPreset,
+                    breakingEnabled: settingsBreaking,
+                  })
+                    .then(res => { setMod(res.module); setSettingsSaved(true); })
+                    .catch(e => setSettingsError(e.message))
+                    .finally(() => setSettingsSaving(false));
+                }}
+              >{settingsSaving ? 'Saving…' : 'Save changes'}</Btn>
               {settingsSaved && <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--c-success)' }}>Saved</span>}
+              {settingsError && <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--c-error)' }}>{settingsError}</span>}
             </div>
           </div>
         </Section>
@@ -441,7 +515,7 @@ function ModuleDetailContent() {
 export default function ModuleDetailPage() {
   return (
     <Suspense fallback={<div style={{ padding: 40, color: 'var(--c-fg-muted)' }}>Loading…</div>}>
-      <ModuleDetailContent/>
+      <ModuleDetailContent />
     </Suspense>
   );
 }

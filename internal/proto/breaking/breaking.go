@@ -1,21 +1,27 @@
 // Package breaking wraps the buf CLI to detect backward-incompatible changes
 // between two directories of .proto files. It is called during upload to
 // reject pushes that would break existing consumers.
+//
+// The caller (runProtoChecks) is responsible for writing buf.yaml to
+// newDir before calling Check. This package does not create it.
 package breaking
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 )
 
-const bufYAML = `version: v2
-breaking:
-  use:
-    - FILE
-`
+// ErrUnavailable means the check could not run, so we do not know if the
+// change is breaking.
+//
+// This used to look the same as a real breaking change. Any error from exec
+// became "breaking change detected", so a missing buf binary rejected every
+// push with a message saying the protos were at fault. CI hit this: buf was
+// not installed, and the test that wanted an error passed for the wrong
+// reason while the test that wanted none failed.
+var ErrUnavailable = errors.New("breaking: cannot run buf")
 
 // Checker runs buf breaking against two directories of .proto files.
 type Checker struct {
@@ -31,28 +37,24 @@ func New(bufBin string) *Checker {
 }
 
 // Check compares newDir against prevDir for backward-incompatible changes.
-// If prevDir is empty the check is skipped (first push).
+// If prevDir is empty the check is skipped. buf.yaml must already exist in newDir.
 func (c *Checker) Check(ctx context.Context, newDir, prevDir string) error {
 	if prevDir == "" {
 		return nil
 	}
-	if err := writeBufYAML(newDir); err != nil {
-		return fmt.Errorf("breaking: failed to write buf.yaml: %w", err)
-	}
 	out, err := exec.CommandContext(ctx, c.bufBin,
 		"breaking", newDir, "--against", prevDir).CombinedOutput()
-	if err != nil {
+	if err == nil {
+		return nil
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return fmt.Errorf("%w: %w", ErrUnavailable, ctxErr)
+	}
+	// buf ran and said no. That is a real breaking change.
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
 		return fmt.Errorf("breaking change detected:\n%s", out)
 	}
-	return nil
-}
-
-// writeBufYAML writes the default buf.yaml only when the directory does not
-// already contain one (i.e. the module did not upload its own buf.yaml).
-func writeBufYAML(dir string) error {
-	path := filepath.Join(dir, "buf.yaml")
-	if _, err := os.Stat(path); err == nil {
-		return nil // module has its own buf.yaml; honour it
-	}
-	return os.WriteFile(path, []byte(bufYAML), 0o644)
+	// buf did not run at all.
+	return fmt.Errorf("%w: %w", ErrUnavailable, err)
 }

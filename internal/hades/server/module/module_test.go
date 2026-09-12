@@ -24,7 +24,7 @@ func (f *fakeModuleStorage) GetModulesByRefs(_ context.Context, _ ...*registrypb
 	return f.modules, f.err
 }
 
-func (f *fakeModuleStorage) ListModules(_ context.Context, _ string) ([]*registrypbv1.Module, error) {
+func (f *fakeModuleStorage) ListModules(_ context.Context, _ string, _, _ int) ([]*registrypbv1.Module, error) {
 	return f.modules, f.err
 }
 
@@ -35,8 +35,12 @@ func (f *fakeModuleStorage) GetModuleByOwnerAndName(_ context.Context, _, _ stri
 	return f.modules[0], f.err
 }
 
-func (f *fakeModuleStorage) Create(_ context.Context, _, _ string, _ registrypbv1.ModuleVisibility, _ registrypbv1.ModuleState, _, _, _, _ string) (*registrypbv1.Module, error) {
+func (f *fakeModuleStorage) Create(_ context.Context, _, _ string, _ registrypbv1.ModuleVisibility, _ registrypbv1.ModuleState, _, _, _, _ string, _ registrypbv1.LintPreset, _ bool) (*registrypbv1.Module, error) {
 	return nil, nil
+}
+
+func (f *fakeModuleStorage) Update(_ context.Context, _ *registrypbv1.UpdateModuleRequest) (*registrypbv1.Module, error) {
+	return nil, f.err
 }
 
 type fakeAuth struct{ err error }

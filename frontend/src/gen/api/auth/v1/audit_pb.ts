@@ -9,8 +9,8 @@
 // @generated from file api/auth/v1/audit.proto (package hades.api.auth.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv1";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv1";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv1";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv1";
 import { file_buf_validate_validate } from "../../../buf/validate/validate_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_struct, file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
@@ -20,7 +20,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file api/auth/v1/audit.proto.
  */
 export const file_api_auth_v1_audit: GenFile = /*@__PURE__*/
-  fileDesc("ChdhcGkvYXV0aC92MS9hdWRpdC5wcm90bxIRaGFkZXMuYXBpLmF1dGgudjEirwEKCkF1ZGl0RXZlbnQSCgoCaWQYASABKAkSEgoKZXZlbnRfdHlwZRgCIAEoCRISCgppcF9hZGRyZXNzGAMgASgJEhIKCnVzZXJfYWdlbnQYBCABKAkSKQoIbWV0YWRhdGEYBSABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0Ei4KCmNyZWF0ZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIkcKE0xpc3RBdWRpdExvZ1JlcXVlc3QSHAoJcGFnZV9zaXplGAEgASgFQgm6SAYaBBhkKAASEgoKcGFnZV90b2tlbhgCIAEoCSJeChRMaXN0QXVkaXRMb2dSZXNwb25zZRItCgZldmVudHMYASADKAsyHS5oYWRlcy5hcGkuYXV0aC52MS5BdWRpdEV2ZW50EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCTJvCgxBdWRpdFNlcnZpY2USXwoMTGlzdEF1ZGl0TG9nEiYuaGFkZXMuYXBpLmF1dGgudjEuTGlzdEF1ZGl0TG9nUmVxdWVzdBonLmhhZGVzLmFwaS5hdXRoLnYxLkxpc3RBdWRpdExvZ1Jlc3BvbnNlQsUBChVjb20uaGFkZXMuYXBpLmF1dGgudjFCCkF1ZGl0UHJvdG9QAVo5Z2l0aHViLmNvbS9hbGlwb3VyaGFiaWJpL0hhZGVzL2FwaS9nZW4vYXBpL2F1dGgvdjE7YXV0aHYxogIDSEFBqgIRSGFkZXMuQXBpLkF1dGguVjHKAhFIYWRlc1xBcGlcQXV0aFxWMeICHUhhZGVzXEFwaVxBdXRoXFYxXEdQQk1ldGFkYXRh6gIUSGFkZXM6OkFwaTo6QXV0aDo6VjFiBnByb3RvMw", [file_buf_validate_validate, file_google_protobuf_struct, file_google_protobuf_timestamp]);
+  fileDesc("ChdhcGkvYXV0aC92MS9hdWRpdC5wcm90bxIRaGFkZXMuYXBpLmF1dGgudjEi0gEKCkF1ZGl0RXZlbnQSCgoCaWQYASABKAkSNQoKZXZlbnRfdHlwZRgCIAEoDjIhLmhhZGVzLmFwaS5hdXRoLnYxLkF1ZGl0RXZlbnRUeXBlEhIKCmlwX2FkZHJlc3MYAyABKAkSEgoKdXNlcl9hZ2VudBgEIAEoCRIpCghtZXRhZGF0YRgFIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSLgoKY3JlYXRlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiRwoTTGlzdEF1ZGl0TG9nUmVxdWVzdBIcCglwYWdlX3NpemUYASABKAVCCbpIBhoEGGQoABISCgpwYWdlX3Rva2VuGAIgASgJIl4KFExpc3RBdWRpdExvZ1Jlc3BvbnNlEi0KBmV2ZW50cxgBIAMoCzIdLmhhZGVzLmFwaS5hdXRoLnYxLkF1ZGl0RXZlbnQSFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJKvsECg5BdWRpdEV2ZW50VHlwZRIgChxBVURJVF9FVkVOVF9UWVBFX1VOU1BFQ0lGSUVEEAASIgoeQVVESVRfRVZFTlRfVFlQRV9MT0dJTl9TVUNDRVNTEAESIQodQVVESVRfRVZFTlRfVFlQRV9MT0dJTl9GQUlMRUQQAhIjCh9BVURJVF9FVkVOVF9UWVBFX0FDQ09VTlRfTE9DS0VEEAMSIwofQVVESVRfRVZFTlRfVFlQRV9FTUFJTF9WRVJJRklFRBAEEhsKF0FVRElUX0VWRU5UX1RZUEVfTE9HT1VUEAUSIwofQVVESVRfRVZFTlRfVFlQRV9QQVNTV09SRF9SRVNFVBAGEiUKIUFVRElUX0VWRU5UX1RZUEVfUEFTU1dPUkRfQ0hBTkdFRBAHEiYKIkFVRElUX0VWRU5UX1RZUEVfQVBJX1RPS0VOX0NSRUFURUQQCBImCiJBVURJVF9FVkVOVF9UWVBFX0FQSV9UT0tFTl9SRVZPS0VEEAkSIwofQVVESVRfRVZFTlRfVFlQRV9NT0RVTEVfQ1JFQVRFRBAKEiMKH0FVRElUX0VWRU5UX1RZUEVfTU9EVUxFX1VQREFURUQQCxIkCiBBVURJVF9FVkVOVF9UWVBFX1NFU1NJT05fUkVWT0tFRBAMEiEKHUFVRElUX0VWRU5UX1RZUEVfVE9UUF9FTkFCTEVEEA0SIgoeQVVESVRfRVZFTlRfVFlQRV9UT1RQX0RJU0FCTEVEEA4SIQodQVVESVRfRVZFTlRfVFlQRV9PQVVUSF9MSU5LRUQQDxIjCh9BVURJVF9FVkVOVF9UWVBFX09BVVRIX1VOTElOS0VEEBAybwoMQXVkaXRTZXJ2aWNlEl8KDExpc3RBdWRpdExvZxImLmhhZGVzLmFwaS5hdXRoLnYxLkxpc3RBdWRpdExvZ1JlcXVlc3QaJy5oYWRlcy5hcGkuYXV0aC52MS5MaXN0QXVkaXRMb2dSZXNwb25zZULFAQoVY29tLmhhZGVzLmFwaS5hdXRoLnYxQgpBdWRpdFByb3RvUAFaOWdpdGh1Yi5jb20vYWxpcG91cmhhYmliaS9IYWRlcy9hcGkvZ2VuL2FwaS9hdXRoL3YxO2F1dGh2MaICA0hBQaoCEUhhZGVzLkFwaS5BdXRoLlYxygIRSGFkZXNcQXBpXEF1dGhcVjHiAh1IYWRlc1xBcGlcQXV0aFxWMVxHUEJNZXRhZGF0YeoCFEhhZGVzOjpBcGk6OkF1dGg6OlYxYgZwcm90bzM", [file_buf_validate_validate, file_google_protobuf_struct, file_google_protobuf_timestamp]);
 
 /**
  * AuditEvent records a single security-relevant action.
@@ -36,11 +36,11 @@ export type AuditEvent = Message<"hades.api.auth.v1.AuditEvent"> & {
   id: string;
 
   /**
-   * Machine-readable event type (e.g. "login.succeeded", "api_token.created").
+   * Machine-readable event type.
    *
-   * @generated from field: string event_type = 2;
+   * @generated from field: hades.api.auth.v1.AuditEventType event_type = 2;
    */
-  eventType: string;
+  eventType: AuditEventType;
 
   /**
    * IP address of the client that triggered the event.
@@ -135,6 +135,104 @@ export type ListAuditLogResponse = Message<"hades.api.auth.v1.ListAuditLogRespon
  */
 export const ListAuditLogResponseSchema: GenMessage<ListAuditLogResponse> = /*@__PURE__*/
   messageDesc(file_api_auth_v1_audit, 2);
+
+/**
+ * AuditEventType enumerates all security-relevant events recorded by the audit log.
+ *
+ * @generated from enum hades.api.auth.v1.AuditEventType
+ */
+export enum AuditEventType {
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_LOGIN_SUCCESS = 1;
+   */
+  LOGIN_SUCCESS = 1,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_LOGIN_FAILED = 2;
+   */
+  LOGIN_FAILED = 2,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_ACCOUNT_LOCKED = 3;
+   */
+  ACCOUNT_LOCKED = 3,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_EMAIL_VERIFIED = 4;
+   */
+  EMAIL_VERIFIED = 4,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_LOGOUT = 5;
+   */
+  LOGOUT = 5,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_PASSWORD_RESET = 6;
+   */
+  PASSWORD_RESET = 6,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_PASSWORD_CHANGED = 7;
+   */
+  PASSWORD_CHANGED = 7,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_API_TOKEN_CREATED = 8;
+   */
+  API_TOKEN_CREATED = 8,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_API_TOKEN_REVOKED = 9;
+   */
+  API_TOKEN_REVOKED = 9,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_MODULE_CREATED = 10;
+   */
+  MODULE_CREATED = 10,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_MODULE_UPDATED = 11;
+   */
+  MODULE_UPDATED = 11,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_SESSION_REVOKED = 12;
+   */
+  SESSION_REVOKED = 12,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_TOTP_ENABLED = 13;
+   */
+  TOTP_ENABLED = 13,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_TOTP_DISABLED = 14;
+   */
+  TOTP_DISABLED = 14,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_OAUTH_LINKED = 15;
+   */
+  OAUTH_LINKED = 15,
+
+  /**
+   * @generated from enum value: AUDIT_EVENT_TYPE_OAUTH_UNLINKED = 16;
+   */
+  OAUTH_UNLINKED = 16,
+}
+
+/**
+ * Describes the enum hades.api.auth.v1.AuditEventType.
+ */
+export const AuditEventTypeSchema: GenEnum<AuditEventType> = /*@__PURE__*/
+  enumDesc(file_api_auth_v1_audit, 0);
 
 /**
  * AuditService exposes the audit log for the authenticated user.

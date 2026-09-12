@@ -31,45 +31,55 @@ func (m *SQLiteModuleStorage) q(ctx context.Context) txkeys.SQLQuerier {
 	return m.db
 }
 
-const sqliteModuleCols = `modules.id, modules.create_time, modules.update_time, modules.name, modules.owner_id, modules.visibility, modules.state, modules.description, modules.url, modules.default_label_name, modules.default_branch`
+const sqliteModuleCols = `modules.id, modules.create_time, modules.update_time, modules.name, modules.owner_id, modules.visibility, modules.state, modules.description, modules.url, modules.default_label_name, modules.default_branch, modules.lint_preset, modules.breaking_enabled`
 
 func scanSQLiteModule(row *sql.Row) (*registryv1.Module, error) {
 	mod := &registryv1.Module{}
 	var createTime, updateTime sqltypes.Time
+	var breakingEnabled int
 	err := row.Scan(
 		&mod.Id, &createTime, &updateTime, &mod.Name, &mod.OwnerId,
 		&mod.Visibility, &mod.State, &mod.Description, &mod.Url,
 		&mod.DefaultLabelName, &mod.DefaultBranch,
+		&mod.LintPreset, &breakingEnabled,
 	)
 	if err != nil {
 		return nil, err
 	}
 	mod.CreateTime = timestamppb.New(createTime.V)
 	mod.UpdateTime = timestamppb.New(updateTime.V)
+	mod.BreakingEnabled = breakingEnabled != 0
 	return mod, nil
 }
 
 func scanSQLiteModuleRow(rows *sql.Rows) (*registryv1.Module, error) {
 	mod := &registryv1.Module{}
 	var createTime, updateTime sqltypes.Time
+	var breakingEnabled int
 	err := rows.Scan(
 		&mod.Id, &createTime, &updateTime, &mod.Name, &mod.OwnerId,
 		&mod.Visibility, &mod.State, &mod.Description, &mod.Url,
 		&mod.DefaultLabelName, &mod.DefaultBranch,
+		&mod.LintPreset, &breakingEnabled,
 	)
 	if err != nil {
 		return nil, err
 	}
 	mod.CreateTime = timestamppb.New(createTime.V)
 	mod.UpdateTime = timestamppb.New(updateTime.V)
+	mod.BreakingEnabled = breakingEnabled != 0
 	return mod, nil
 }
 
-func (m *SQLiteModuleStorage) Create(ctx context.Context, name, ownerId string, visibility registryv1.ModuleVisibility, state registryv1.ModuleState, description, url, defaultLabelName, defaultBranch string) (*registryv1.Module, error) {
+func (m *SQLiteModuleStorage) Create(ctx context.Context, name, ownerId string, visibility registryv1.ModuleVisibility, state registryv1.ModuleState, description, url, defaultLabelName, defaultBranch string, lintPreset registryv1.LintPreset, breakingEnabled bool) (*registryv1.Module, error) {
+	breakingInt := 0
+	if breakingEnabled {
+		breakingInt = 1
+	}
 	_, err := m.q(ctx).ExecContext(ctx, `
-INSERT INTO modules (name, owner_id, visibility, state, description, url, default_label_name, default_branch)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		name, ownerId, visibility, state, description, url, defaultLabelName, defaultBranch)
+INSERT INTO modules (name, owner_id, visibility, state, description, url, default_label_name, default_branch, lint_preset, breaking_enabled)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		name, ownerId, visibility, state, description, url, defaultLabelName, defaultBranch, lintPreset, breakingInt)
 	if err != nil {
 		return nil, err
 	}
@@ -84,21 +94,67 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 	return mod, nil
 }
 
-func (m *SQLiteModuleStorage) ListModules(ctx context.Context, ownerUsername string) ([]*registryv1.Module, error) {
+func (m *SQLiteModuleStorage) Update(ctx context.Context, req *registryv1.UpdateModuleRequest) (*registryv1.Module, error) {
+	// Pass nil for unset optional fields so COALESCE preserves the existing value.
+	var vis, lint interface{}
+	if req.Visibility != nil {
+		vis = int64(*req.Visibility)
+	}
+	if req.LintPreset != nil {
+		lint = int64(*req.LintPreset)
+	}
+	var breaking interface{}
+	if req.BreakingEnabled != nil {
+		if *req.BreakingEnabled {
+			breaking = 1
+		} else {
+			breaking = 0
+		}
+	}
+	_, err := m.q(ctx).ExecContext(ctx, `
+UPDATE modules
+SET
+  description      = COALESCE(?, description),
+  visibility       = COALESCE(?, visibility),
+  lint_preset      = COALESCE(?, lint_preset),
+  breaking_enabled = COALESCE(?, breaking_enabled),
+  update_time      = datetime('now')
+WHERE id = (
+  SELECT modules.id FROM modules
+  JOIN users ON users.id = modules.owner_id
+  WHERE users.username = ? AND modules.name = ?
+)`, req.Description, vis, lint, breaking, req.Owner, req.Owner+"/"+req.Name)
+	if err != nil {
+		return nil, err
+	}
+	return scanSQLiteModule(m.q(ctx).QueryRowContext(ctx,
+		`SELECT `+sqliteModuleCols+`
+FROM modules
+JOIN users ON users.id = modules.owner_id
+WHERE users.username = ? AND modules.name = ?`, req.Owner, req.Owner+"/"+req.Name))
+}
+
+func (m *SQLiteModuleStorage) ListModules(ctx context.Context, ownerUsername string, limit, offset int) ([]*registryv1.Module, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
 	var (
 		rows *sql.Rows
 		err  error
 	)
 	if ownerUsername == "" {
 		rows, err = m.q(ctx).QueryContext(ctx,
-			`SELECT `+sqliteModuleCols+` FROM modules ORDER BY create_time DESC`)
+			`SELECT `+sqliteModuleCols+` FROM modules ORDER BY create_time DESC LIMIT ? OFFSET ?`, limit, offset)
 	} else {
 		rows, err = m.q(ctx).QueryContext(ctx, `
 SELECT `+sqliteModuleCols+`
 FROM modules
 JOIN users ON users.id = modules.owner_id
 WHERE users.username = ?
-ORDER BY modules.create_time DESC`, ownerUsername)
+ORDER BY modules.create_time DESC LIMIT ? OFFSET ?`, ownerUsername, limit, offset)
 	}
 	if err != nil {
 		return nil, err

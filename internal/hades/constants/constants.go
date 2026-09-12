@@ -8,6 +8,7 @@ type contextKey string
 const (
 	ContextKeyUser          contextKey = "user"
 	ContextKeyAuthorization contextKey = "Authorization"
+	ContextKeyTokenScopes   contextKey = "token_scopes"
 )
 
 type Action string

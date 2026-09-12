@@ -27,6 +27,7 @@ type Handler struct {
 	uow             db.UnitOfWork
 	authz           *authorization.Server
 	gitalyOpLog     *gitalyoplog.GitalyOpLogStorage
+	registryHost    string
 }
 
 func NewHandler(deps *server.Dependencies) *Handler {
@@ -41,5 +42,6 @@ func NewHandler(deps *server.Dependencies) *Handler {
 		uow:             deps.UoW,
 		authz:           deps.Authorization,
 		gitalyOpLog:     deps.GitalyOpLog,
+		registryHost:    deps.RegistryHost,
 	}
 }

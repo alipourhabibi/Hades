@@ -5,12 +5,13 @@ import (
 	"context"
 	"time"
 
+	authv1 "github.com/alipourhabibi/Hades/api/gen/api/auth/v1"
 	"github.com/google/uuid"
 )
 
 // Storage is the domain interface for audit log persistence.
 type Storage interface {
-	Create(ctx context.Context, userID *string, event, ipAddress, userAgent string, metadata map[string]any) error
+	Create(ctx context.Context, userID *string, event authv1.AuditEventType, ipAddress, userAgent string, metadata map[string]any) error
 	List(ctx context.Context, userID string, pageSize, offset int) ([]*Row, error)
 	RecentIPsForUser(ctx context.Context, userID string, n int) ([]string, error)
 }
@@ -18,7 +19,7 @@ type Storage interface {
 type Row struct {
 	ID        uuid.UUID
 	UserID    *string
-	Event     string
+	EventType authv1.AuditEventType
 	IPAddress string
 	UserAgent string
 	Metadata  map[string]any

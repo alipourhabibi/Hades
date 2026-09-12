@@ -114,12 +114,11 @@ opa:
 sdk:
   enabled: true
   bufBin: "buf"
-  protocBin: "protoc"
   lintEnabled: false
   breakingEnabled: false
   generators:
     - language: go
-      plugin: go
+      plugin: protoc-gen-go
       options: "paths=source_relative"
   storage:
     type: disk

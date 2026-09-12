@@ -16,7 +16,7 @@ type Storage interface {
 	// Returns (nil, nil) when no matching commit exists.
 	GetCommitByDigest(ctx context.Context, moduleID, digestValue string) (*registryv1.Commit, error)
 	GetCommitByOwnerModule(ctx context.Context, moduleRefs []*registryv1.ModuleRef) ([]*registryv1.Commit, error)
-	ListByModule(ctx context.Context, moduleID string) ([]*registryv1.Commit, error)
+	ListByModule(ctx context.Context, moduleID string, limit, offset int) ([]*registryv1.Commit, error)
 	GetByHash(ctx context.Context, commitHash string) (*registryv1.Commit, error)
 	GetByHashPrefix(ctx context.Context, prefix string) (*registryv1.Commit, error)
 	DeleteByIds(ctx context.Context, ids []string) error

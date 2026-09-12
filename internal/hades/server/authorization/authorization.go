@@ -105,8 +105,32 @@ func (s *Server) DeleteOrgBinding(ctx context.Context, subject, orgName string) 
 	return s.engine.DeleteBinding(ctx, subject, orgName+"/*")
 }
 
+// scopeCovers reports whether scopes grants resource_type:action.
+// An empty scopes slice means unrestricted (full access).
+// Wildcard "resource_type:*" covers any action on that resource.
+func scopeCovers(scopes []string, resourceType, action string) bool {
+	if len(scopes) == 0 {
+		return true
+	}
+	exact := resourceType + ":" + action
+	wildcard := resourceType + ":*"
+	for _, s := range scopes {
+		if s == exact || s == wildcard {
+			return true
+		}
+	}
+	return false
+}
+
 // Can checks a single authorization policy via the OPA engine.
+// If the request was made with a scoped API token the action must also be
+// covered by the token's declared scopes (empty scopes = full access).
 func (s *Server) Can(ctx context.Context, in *constants.Policy) (*constants.CanResponse, error) {
+	if scopes, ok := ctx.Value(constants.ContextKeyTokenScopes).([]string); ok && len(scopes) > 0 {
+		if !scopeCovers(scopes, in.ResourceType, in.Action) {
+			return &constants.CanResponse{Allowed: false, Policy: in}, nil
+		}
+	}
 	p := *in
 	p.Visibility = constants.VisibilityPrivate
 	allowed, err := s.engine.Allow(ctx, p)
@@ -122,9 +146,18 @@ func (s *Server) Can(ctx context.Context, in *constants.Policy) (*constants.CanR
 // BatchCan evaluates all policies in a single OPA call, returning the first
 // denied policy (preserving input order). Uses engine.BatchAllow which calls
 // denied_indices in one Eval() rather than N sequential Allow() calls.
+// Token scope restrictions are applied before the OPA check.
 func (s *Server) BatchCan(ctx context.Context, policies []*constants.Policy) (*constants.CanResponse, error) {
 	if len(policies) == 0 {
 		return &constants.CanResponse{Allowed: true}, nil
+	}
+	scopes, _ := ctx.Value(constants.ContextKeyTokenScopes).([]string)
+	if len(scopes) > 0 {
+		for _, p := range policies {
+			if !scopeCovers(scopes, p.ResourceType, p.Action) {
+				return &constants.CanResponse{Allowed: false, Policy: p}, nil
+			}
+		}
 	}
 	inputs := make([]constants.Policy, len(policies))
 	for i, p := range policies {

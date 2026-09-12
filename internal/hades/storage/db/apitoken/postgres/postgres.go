@@ -60,10 +60,16 @@ func (s *APITokenStorage) GetByID(ctx context.Context, id uuid.UUID) (*apitoken.
 	return scanAPITokenRow(s.q(ctx).QueryRow(ctx, `SELECT `+apiTokenColumns+` FROM api_tokens WHERE id = $1`, id))
 }
 
-func (s *APITokenStorage) ListByUserID(ctx context.Context, userID string) ([]*apitoken.Row, error) {
+func (s *APITokenStorage) ListByUserID(ctx context.Context, userID string, limit, offset int) ([]*apitoken.Row, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
 	rows, err := s.q(ctx).Query(ctx,
-		`SELECT `+apiTokenColumns+` FROM api_tokens WHERE user_id = $1 AND revoked_at IS NULL ORDER BY create_time DESC`,
-		userID,
+		`SELECT `+apiTokenColumns+` FROM api_tokens WHERE user_id = $1 AND revoked_at IS NULL ORDER BY create_time DESC LIMIT $2 OFFSET $3`,
+		userID, limit, offset,
 	)
 	if err != nil {
 		return nil, err

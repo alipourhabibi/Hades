@@ -70,9 +70,15 @@ func (s *SQLiteAPITokenStorage) GetByID(ctx context.Context, id uuid.UUID) (*api
 		`SELECT `+sqliteAPITokenCols+` FROM api_tokens WHERE id = ?`, sqlutil.UUID(id)))
 }
 
-func (s *SQLiteAPITokenStorage) ListByUserID(ctx context.Context, userID string) ([]*apitoken.Row, error) {
+func (s *SQLiteAPITokenStorage) ListByUserID(ctx context.Context, userID string, limit, offset int) ([]*apitoken.Row, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
 	rows, err := s.q(ctx).QueryContext(ctx,
-		`SELECT `+sqliteAPITokenCols+` FROM api_tokens WHERE user_id = ? AND revoked_at IS NULL ORDER BY create_time DESC`, userID)
+		`SELECT `+sqliteAPITokenCols+` FROM api_tokens WHERE user_id = ? AND revoked_at IS NULL ORDER BY create_time DESC LIMIT ? OFFSET ?`, userID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

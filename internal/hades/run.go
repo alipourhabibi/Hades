@@ -78,7 +78,7 @@ func newSDKWorker(s *SchemaRegistryServer, backend sdkstorage.Backend) (*worker.
 	cfg := s.config.SDK
 	generators := make(map[string]*generate.Generator, len(cfg.Generators))
 	for _, g := range cfg.Generators {
-		generators[g.Plugin] = generate.New(cfg.ProtocBin, g)
+		generators[g.Plugin] = generate.New(cfg.BufBin, g)
 	}
 	return worker.New(
 		s.db.SDKJob(),

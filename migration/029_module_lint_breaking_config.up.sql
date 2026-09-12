@@ -1,0 +1,2 @@
+ALTER TABLE modules ADD COLUMN lint_preset      SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE modules ADD COLUMN breaking_enabled BOOLEAN  NOT NULL DEFAULT true;

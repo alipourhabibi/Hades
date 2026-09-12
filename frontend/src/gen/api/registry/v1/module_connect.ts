@@ -9,7 +9,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreateModuleByNameRequest, CreateModuleByNameResponse, GetModuleRequest, GetModuleResponse, ListModulesRequest, ListModulesResponse } from "./module_pb.js";
+import { CreateModuleByNameRequest, CreateModuleByNameResponse, GetModuleRequest, GetModuleResponse, ListModulesRequest, ListModulesResponse, UpdateModuleRequest, UpdateModuleResponse } from "./module_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -58,6 +58,19 @@ export const ModuleService = {
       name: "GetModule",
       I: GetModuleRequest,
       O: GetModuleResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * UpdateModule updates mutable metadata fields of an existing module.
+     * Returns NOT_FOUND if the module does not exist or the caller cannot read it.
+     * Returns PERMISSION_DENIED if the caller does not have update access.
+     *
+     * @generated from rpc hades.api.registry.v1.ModuleService.UpdateModule
+     */
+    updateModule: {
+      name: "UpdateModule",
+      I: UpdateModuleRequest,
+      O: UpdateModuleResponse,
       kind: MethodKind.Unary,
     },
   }

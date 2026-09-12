@@ -31,6 +31,19 @@ enum ModuleState {
   MODULE_STATE_DEPRECATED = 2;
 }
 
+// LintPreset selects the set of buf lint rules enforced on upload.
+enum LintPreset {
+  LINT_PRESET_UNSPECIFIED = 0;
+  // Recommended rules for most teams.
+  LINT_PRESET_DEFAULT  = 1;
+  // A smaller, more permissive set.
+  LINT_PRESET_BASIC    = 2;
+  // Only the most critical checks.
+  LINT_PRESET_MINIMAL  = 3;
+  // DEFAULT plus all comment rules.
+  LINT_PRESET_COMMENTS = 4;
+}
+
 // Module is the metadata record for a Hades schema repository.
 message Module {
   // Unique module identifier (UUID).
@@ -56,6 +69,10 @@ message Module {
   string url = 10;
   // Default label used when a commit is pushed without an explicit label.
   string default_label_name = 11;
+  // Lint rule set enforced on upload.
+  LintPreset lint_preset = 12;
+  // Whether backward-compatibility checks are enforced on upload.
+  bool breaking_enabled = 13;
 }
 
 // ModuleRef is a lightweight reference to a module used in upload payloads.
@@ -78,6 +95,10 @@ message CreateModuleByNameRequest {
   string description = 3;
   // Default branch name. Defaults to "main" when empty.
   string default_branch = 4;
+  // Lint rule set to enforce on upload. Defaults to DEFAULT when unspecified.
+  LintPreset lint_preset = 5;
+  // Whether backward-compatibility checks are enforced on upload. Defaults to true.
+  bool breaking_enabled = 6;
 }
 
 // CreateModuleByNameResponse carries the newly created module record.
@@ -90,11 +111,40 @@ message ListModulesRequest {
   // Filter by owner username. When empty, all modules visible to the caller
   // are returned (public modules and private modules the caller can read).
   string owner = 1;
+  // Maximum number of modules to return. 0 uses the server default (50). Max 100.
+  int32 page_size = 2;
+  // Opaque pagination cursor from a previous response. Empty returns the first page.
+  string page_token = 3;
 }
 
 // ListModulesResponse is the output for ModuleService.ListModules.
 message ListModulesResponse {
   repeated Module modules = 1;
+  // Cursor for the next page. Empty when this is the last page.
+  string next_page_token = 2;
+}
+
+// UpdateModuleRequest updates mutable fields of an existing module.
+// All mutable fields are optional: omit a field to leave its current value unchanged.
+message UpdateModuleRequest {
+  // Owner username of the module.
+  string owner = 1 [(buf.validate.field).required = true];
+  // Short module name (without the owner prefix).
+  string name  = 2 [(buf.validate.field).required = true];
+  // New description. Omit to leave unchanged.
+  optional string description   = 3;
+  // New visibility. Omit to leave unchanged.
+  // TODO: changing public to private should drop star count to 0; not implemented yet.
+  optional ModuleVisibility visibility    = 4;
+  // New lint rule set. Omit to leave unchanged.
+  optional LintPreset lint_preset         = 5;
+  // New breaking-change enforcement flag. Omit to leave unchanged.
+  optional bool breaking_enabled          = 6;
+}
+
+// UpdateModuleResponse carries the updated module record.
+message UpdateModuleResponse {
+  Module module = 1;
 }
 
 // GetModuleRequest is the input for ModuleService.GetModule.
@@ -127,4 +177,9 @@ service ModuleService {
   // GetModule returns the module identified by owner and short name.
   // Returns NOT_FOUND if the module is private and the caller lacks read access.
   rpc GetModule(GetModuleRequest) returns (GetModuleResponse);
+
+  // UpdateModule updates mutable metadata fields of an existing module.
+  // Returns NOT_FOUND if the module does not exist or the caller cannot read it.
+  // Returns PERMISSION_DENIED if the caller does not have update access.
+  rpc UpdateModule(UpdateModuleRequest) returns (UpdateModuleResponse);
 }

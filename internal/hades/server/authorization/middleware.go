@@ -177,6 +177,9 @@ func (s *Server) NewAuthorizationInterceptor() connect.UnaryInterceptorFunc {
 					}
 					ctx = context.WithValue(ctx, constants.ContextKeyUser, fullUser)
 					ctx = context.WithValue(ctx, constants.ContextKeyAuthorization, rawToken)
+					if len(apiTok.Scopes) > 0 {
+						ctx = context.WithValue(ctx, constants.ContextKeyTokenScopes, apiTok.Scopes)
+					}
 					return next(ctx, req)
 				}
 			}

@@ -47,6 +47,9 @@ const (
 	ModuleServiceListModulesProcedure = "/hades.api.registry.v1.ModuleService/ListModules"
 	// ModuleServiceGetModuleProcedure is the fully-qualified name of the ModuleService's GetModule RPC.
 	ModuleServiceGetModuleProcedure = "/hades.api.registry.v1.ModuleService/GetModule"
+	// ModuleServiceUpdateModuleProcedure is the fully-qualified name of the ModuleService's
+	// UpdateModule RPC.
+	ModuleServiceUpdateModuleProcedure = "/hades.api.registry.v1.ModuleService/UpdateModule"
 )
 
 // ModuleServiceClient is a client for the hades.api.registry.v1.ModuleService service.
@@ -60,6 +63,10 @@ type ModuleServiceClient interface {
 	// GetModule returns the module identified by owner and short name.
 	// Returns NOT_FOUND if the module is private and the caller lacks read access.
 	GetModule(context.Context, *connect.Request[v1.GetModuleRequest]) (*connect.Response[v1.GetModuleResponse], error)
+	// UpdateModule updates mutable metadata fields of an existing module.
+	// Returns NOT_FOUND if the module does not exist or the caller cannot read it.
+	// Returns PERMISSION_DENIED if the caller does not have update access.
+	UpdateModule(context.Context, *connect.Request[v1.UpdateModuleRequest]) (*connect.Response[v1.UpdateModuleResponse], error)
 }
 
 // NewModuleServiceClient constructs a client for the hades.api.registry.v1.ModuleService service.
@@ -91,6 +98,12 @@ func NewModuleServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(moduleServiceMethods.ByName("GetModule")),
 			connect.WithClientOptions(opts...),
 		),
+		updateModule: connect.NewClient[v1.UpdateModuleRequest, v1.UpdateModuleResponse](
+			httpClient,
+			baseURL+ModuleServiceUpdateModuleProcedure,
+			connect.WithSchema(moduleServiceMethods.ByName("UpdateModule")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -99,6 +112,7 @@ type moduleServiceClient struct {
 	createModuleByName *connect.Client[v1.CreateModuleByNameRequest, v1.CreateModuleByNameResponse]
 	listModules        *connect.Client[v1.ListModulesRequest, v1.ListModulesResponse]
 	getModule          *connect.Client[v1.GetModuleRequest, v1.GetModuleResponse]
+	updateModule       *connect.Client[v1.UpdateModuleRequest, v1.UpdateModuleResponse]
 }
 
 // CreateModuleByName calls hades.api.registry.v1.ModuleService.CreateModuleByName.
@@ -116,6 +130,11 @@ func (c *moduleServiceClient) GetModule(ctx context.Context, req *connect.Reques
 	return c.getModule.CallUnary(ctx, req)
 }
 
+// UpdateModule calls hades.api.registry.v1.ModuleService.UpdateModule.
+func (c *moduleServiceClient) UpdateModule(ctx context.Context, req *connect.Request[v1.UpdateModuleRequest]) (*connect.Response[v1.UpdateModuleResponse], error) {
+	return c.updateModule.CallUnary(ctx, req)
+}
+
 // ModuleServiceHandler is an implementation of the hades.api.registry.v1.ModuleService service.
 type ModuleServiceHandler interface {
 	// CreateModuleByName creates a new module owned by the authenticated user.
@@ -127,6 +146,10 @@ type ModuleServiceHandler interface {
 	// GetModule returns the module identified by owner and short name.
 	// Returns NOT_FOUND if the module is private and the caller lacks read access.
 	GetModule(context.Context, *connect.Request[v1.GetModuleRequest]) (*connect.Response[v1.GetModuleResponse], error)
+	// UpdateModule updates mutable metadata fields of an existing module.
+	// Returns NOT_FOUND if the module does not exist or the caller cannot read it.
+	// Returns PERMISSION_DENIED if the caller does not have update access.
+	UpdateModule(context.Context, *connect.Request[v1.UpdateModuleRequest]) (*connect.Response[v1.UpdateModuleResponse], error)
 }
 
 // NewModuleServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -154,6 +177,12 @@ func NewModuleServiceHandler(svc ModuleServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(moduleServiceMethods.ByName("GetModule")),
 		connect.WithHandlerOptions(opts...),
 	)
+	moduleServiceUpdateModuleHandler := connect.NewUnaryHandler(
+		ModuleServiceUpdateModuleProcedure,
+		svc.UpdateModule,
+		connect.WithSchema(moduleServiceMethods.ByName("UpdateModule")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hades.api.registry.v1.ModuleService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ModuleServiceCreateModuleByNameProcedure:
@@ -162,6 +191,8 @@ func NewModuleServiceHandler(svc ModuleServiceHandler, opts ...connect.HandlerOp
 			moduleServiceListModulesHandler.ServeHTTP(w, r)
 		case ModuleServiceGetModuleProcedure:
 			moduleServiceGetModuleHandler.ServeHTTP(w, r)
+		case ModuleServiceUpdateModuleProcedure:
+			moduleServiceUpdateModuleHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -181,4 +212,8 @@ func (UnimplementedModuleServiceHandler) ListModules(context.Context, *connect.R
 
 func (UnimplementedModuleServiceHandler) GetModule(context.Context, *connect.Request[v1.GetModuleRequest]) (*connect.Response[v1.GetModuleResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hades.api.registry.v1.ModuleService.GetModule is not implemented"))
+}
+
+func (UnimplementedModuleServiceHandler) UpdateModule(context.Context, *connect.Request[v1.UpdateModuleRequest]) (*connect.Response[v1.UpdateModuleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hades.api.registry.v1.ModuleService.UpdateModule is not implemented"))
 }

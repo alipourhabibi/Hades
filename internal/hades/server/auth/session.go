@@ -76,7 +76,7 @@ func (s *Server) RevokeSession(ctx context.Context, in *connect.Request[v1.Revok
 		return nil, connErr.FromPgx(err)
 	}
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &user.Id, "session_revoked", "", "", map[string]any{"session_id": in.Msg.SessionId})
+		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_SESSION_REVOKED, "", "", map[string]any{"session_id": in.Msg.SessionId})
 	}
 
 	s.logger.Info("session revoked", "procedure", "RevokeSession", "user_id", user.Id, "session_id", in.Msg.SessionId)
@@ -104,7 +104,7 @@ func (s *Server) RevokeAllOtherSessions(ctx context.Context, in *connect.Request
 		return nil, connErr.FromPgx(err)
 	}
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &user.Id, "session_revoked", "", "", map[string]any{"scope": "all_other"})
+		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_SESSION_REVOKED, "", "", map[string]any{"scope": "all_other"})
 	}
 
 	s.logger.Info("all other sessions revoked", "procedure", "RevokeAllOtherSessions", "user_id", user.Id)

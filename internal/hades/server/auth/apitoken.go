@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"connectrpc.com/connect"
@@ -48,7 +49,7 @@ func (s *Server) CreateAPIToken(ctx context.Context, in *connect.Request[v1.Crea
 	}
 
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &user.Id, "api_token_created", "", "", map[string]any{"token_id": row.ID.String()})
+		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_API_TOKEN_CREATED, "", "", map[string]any{"token_id": row.ID.String()})
 	}
 
 	s.logger.Info("API token created", "procedure", "CreateAPIToken", "user_id", user.Id, "token_id", row.ID.String())
@@ -69,7 +70,18 @@ func (s *Server) ListAPITokens(ctx context.Context, in *connect.Request[v1.ListA
 		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
-	rows, err := s.apiTokenDB.ListByUserID(ctx, user.Id)
+	pageSize := int(in.Msg.PageSize)
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	offset := 0
+	if in.Msg.PageToken != "" {
+		if n, err := strconv.Atoi(in.Msg.PageToken); err == nil {
+			offset = n
+		}
+	}
+
+	rows, err := s.apiTokenDB.ListByUserID(ctx, user.Id, pageSize, offset)
 	if err != nil {
 		s.logger.Error("failed to list API tokens", "error", err, "procedure", "ListAPITokens", "user_id", user.Id)
 		return nil, connErr.FromPgx(err)
@@ -94,8 +106,14 @@ func (s *Server) ListAPITokens(ctx context.Context, in *connect.Request[v1.ListA
 		}
 		tokens = append(tokens, t)
 	}
+
+	nextPageToken := ""
+	if len(rows) == pageSize {
+		nextPageToken = strconv.Itoa(offset + pageSize)
+	}
+
 	return &connect.Response[v1.ListAPITokensResponse]{
-		Msg: &v1.ListAPITokensResponse{Tokens: tokens},
+		Msg: &v1.ListAPITokensResponse{Tokens: tokens, NextPageToken: nextPageToken},
 	}, nil
 }
 
@@ -120,7 +138,7 @@ func (s *Server) RevokeAPIToken(ctx context.Context, in *connect.Request[v1.Revo
 		return nil, connErr.FromPgx(err)
 	}
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &user.Id, "api_token_revoked", "", "", map[string]any{"token_id": in.Msg.Id})
+		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_API_TOKEN_REVOKED, "", "", map[string]any{"token_id": in.Msg.Id})
 	}
 
 	s.logger.Info("API token revoked", "procedure", "RevokeAPIToken", "user_id", user.Id, "token_id", in.Msg.Id)
