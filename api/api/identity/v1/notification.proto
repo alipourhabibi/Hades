@@ -1,8 +1,17 @@
 // In-app notification API for the Hades schema registry.
 //
 // Notifications are user-facing alerts about events on resources the user
-// cares about (e.g. a new commit on a watched module, an SDK job finishing,
-// a CI failure). They are created server-side and delivered via polling.
+// cares about. They are created server-side and delivered via polling.
+//
+// Two events raise them today:
+//
+//   commit.pushed   on every owner of the module and, when an organisation
+//                   owns it, on each of its members, except whoever pushed
+//   sdk.succeeded   on the author of the commit, when an SDK job finishes
+//   sdk.failed      on the same recipient, when an SDK job fails
+//
+// Raising a notification is best effort and never fails the operation that
+// triggered it: the push or the job outcome is already durable by then.
 
 syntax = "proto3";
 
@@ -17,14 +26,15 @@ option go_package = "gen/api/identity/v1";
 message Notification {
   // Unique notification identifier (UUID).
   string id = 1;
-  // Machine-readable event type (e.g. "commit.pushed", "sdk.succeeded").
+  // Machine-readable event type: "commit.pushed", "sdk.succeeded", or
+  // "sdk.failed".
   string type = 2;
   // Short human-readable title shown in notification lists.
   string title = 3;
   // Optional longer description with additional context.
   string body = 4;
-  // Optional ID of the resource that triggered this notification
-  // (e.g. a commit ID or SDK job ID).
+  // ID of the resource this notification is about: a commit id for
+  // "commit.pushed", an SDK job id for the two "sdk." types.
   string resource_id = 5;
   // True when the user has acknowledged this notification.
   bool read = 6;
@@ -55,13 +65,18 @@ message MarkNotificationReadResponse {}
 // NotificationService manages in-app notifications for the authenticated user.
 //
 // Notifications are created server-side only. This service exposes read and
-// acknowledgement operations for the caller's own notifications.
+// acknowledgement operations for the caller's own notifications. Both RPCs
+// require authentication.
 service NotificationService {
-  // ListNotifications returns all notifications for the caller, ordered newest first.
+  // ListNotifications returns every notification for the caller, read and
+  // unread, ordered newest first. There is no pagination.
   rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
 
   // MarkNotificationRead marks the given notification as read.
-  // The notification must belong to the authenticated user; silently succeeds
-  // if it is already marked read.
+  //
+  // The update is scoped to the caller's own notifications and matches nothing
+  // otherwise, so this succeeds without error when the id is unknown, belongs
+  // to another user, or is already marked read. Ownership is enforced by
+  // touching no other user's row, not by reporting one.
   rpc MarkNotificationRead(MarkNotificationReadRequest) returns (MarkNotificationReadResponse);
 }

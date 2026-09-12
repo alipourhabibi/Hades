@@ -52,13 +52,20 @@ const (
 
 // UserServiceClient is a client for the hades.api.identity.v1.UserService service.
 type UserServiceClient interface {
-	// CreateUser creates a user account without sending a verification email.
-	// Prefer AuthenticationService.Register for end-user registration.
+	// CreateUser is not implemented and returns UNIMPLEMENTED.
+	// Use AuthenticationService.Register instead.
 	CreateUser(context.Context, *connect.Request[v1.CreateUserRequest]) (*connect.Response[v1.CreateUserResponse], error)
 	// GetUser returns the profile and summary counts for the given username.
-	// Returns NOT_FOUND if no account with that username exists.
+	// Readable anonymously.
+	//
+	// Returns NOT_FOUND if no account with that username exists, and also for
+	// organization accounts: look those up with OrgService.GetOrg.
 	GetUser(context.Context, *connect.Request[v1.GetUserRequest]) (*connect.Response[v1.GetUserResponse], error)
-	// ListUsers returns user accounts matching an optional username query.
+	// ListUsers returns up to 50 user accounts matching an optional username
+	// query. Organization accounts are excluded.
+	//
+	// Returns UNAUTHENTICATED to anonymous callers: member discovery is expected
+	// within a registry, but not open to unauthenticated scraping.
 	ListUsers(context.Context, *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error)
 	// UpdateUser updates the description and url for the authenticated caller's account.
 	UpdateUser(context.Context, *connect.Request[v1.UpdateUserRequest]) (*connect.Response[v1.UpdateUserResponse], error)
@@ -132,13 +139,20 @@ func (c *userServiceClient) UpdateUser(ctx context.Context, req *connect.Request
 
 // UserServiceHandler is an implementation of the hades.api.identity.v1.UserService service.
 type UserServiceHandler interface {
-	// CreateUser creates a user account without sending a verification email.
-	// Prefer AuthenticationService.Register for end-user registration.
+	// CreateUser is not implemented and returns UNIMPLEMENTED.
+	// Use AuthenticationService.Register instead.
 	CreateUser(context.Context, *connect.Request[v1.CreateUserRequest]) (*connect.Response[v1.CreateUserResponse], error)
 	// GetUser returns the profile and summary counts for the given username.
-	// Returns NOT_FOUND if no account with that username exists.
+	// Readable anonymously.
+	//
+	// Returns NOT_FOUND if no account with that username exists, and also for
+	// organization accounts: look those up with OrgService.GetOrg.
 	GetUser(context.Context, *connect.Request[v1.GetUserRequest]) (*connect.Response[v1.GetUserResponse], error)
-	// ListUsers returns user accounts matching an optional username query.
+	// ListUsers returns up to 50 user accounts matching an optional username
+	// query. Organization accounts are excluded.
+	//
+	// Returns UNAUTHENTICATED to anonymous callers: member discovery is expected
+	// within a registry, but not open to unauthenticated scraping.
 	ListUsers(context.Context, *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error)
 	// UpdateUser updates the description and url for the authenticated caller's account.
 	UpdateUser(context.Context, *connect.Request[v1.UpdateUserRequest]) (*connect.Response[v1.UpdateUserResponse], error)

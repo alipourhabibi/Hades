@@ -15,9 +15,15 @@ import { MethodKind } from "@bufbuild/protobuf";
 /**
  * ModuleService manages Protobuf schema modules (repositories).
  *
- * Module creation allocates both a metadata row in PostgreSQL and a Git
- * repository in Gitaly. If the DB insert fails after the repository is
- * created, the repository is cleaned up before the error is returned.
+ * Module creation allocates a Git repository in Gitaly and a metadata row in
+ * the configured database (SQLite by default, PostgreSQL when selected). The
+ * git work happens first and the database writes follow in one short
+ * transaction, so no Gitaly round trip is made while a transaction is open.
+ * Compensation is saga-style: if any step after repository creation fails, the
+ * repository is deleted before the error is returned.
+ *
+ * ListModules and GetModule are readable anonymously and return only public
+ * modules in that case.
  *
  * @generated from service hades.api.registry.v1.ModuleService
  */
@@ -25,8 +31,13 @@ export const ModuleService = {
   typeName: "hades.api.registry.v1.ModuleService",
   methods: {
     /**
-     * CreateModuleByName creates a new module owned by the authenticated user.
-     * Returns ALREADY_EXISTS if the name is taken within the owner's namespace.
+     * CreateModuleByName creates a new module in the requested namespace and
+     * seeds it with a README.md and a buf.yaml reflecting the lint and breaking
+     * settings.
+     *
+     * Returns ALREADY_EXISTS if the name is taken within the owner's namespace,
+     * NOT_FOUND if the named owner namespace does not exist, and
+     * PERMISSION_DENIED if the caller may not create modules there.
      *
      * @generated from rpc hades.api.registry.v1.ModuleService.CreateModuleByName
      */
@@ -37,8 +48,9 @@ export const ModuleService = {
       kind: MethodKind.Unary,
     },
     /**
-     * ListModules returns modules matching the optional owner filter.
-     * Private modules are included only when the caller has read access.
+     * ListModules returns a page of modules matching the optional owner filter.
+     * Private modules are included only when the caller has read access; modules
+     * they cannot read are filtered out rather than erroring the call.
      *
      * @generated from rpc hades.api.registry.v1.ModuleService.ListModules
      */
@@ -50,7 +62,8 @@ export const ModuleService = {
     },
     /**
      * GetModule returns the module identified by owner and short name.
-     * Returns NOT_FOUND if the module is private and the caller lacks read access.
+     * Returns NOT_FOUND if the module is private and the caller lacks read
+     * access, so that a private name is indistinguishable from a missing one.
      *
      * @generated from rpc hades.api.registry.v1.ModuleService.GetModule
      */
@@ -62,8 +75,10 @@ export const ModuleService = {
     },
     /**
      * UpdateModule updates mutable metadata fields of an existing module.
-     * Returns NOT_FOUND if the module does not exist or the caller cannot read it.
-     * Returns PERMISSION_DENIED if the caller does not have update access.
+     *
+     * Returns PERMISSION_DENIED if the caller does not have update access, which
+     * is also the answer for a module that does not exist, since no caller holds
+     * update rights over a name that was never created.
      *
      * @generated from rpc hades.api.registry.v1.ModuleService.UpdateModule
      */

@@ -16,9 +16,8 @@ import { MethodKind } from "@bufbuild/protobuf";
 /**
  * UserService manages user account profiles.
  *
- * Account creation for end-users should go through AuthenticationService.Register
- * which also handles email verification. CreateUser here is for internal/admin
- * use only.
+ * Account creation for end-users goes through AuthenticationService.Register,
+ * which also handles email verification. CreateUser here is not implemented.
  *
  * @generated from service hades.api.identity.v1.UserService
  */
@@ -26,8 +25,8 @@ export const UserService = {
   typeName: "hades.api.identity.v1.UserService",
   methods: {
     /**
-     * CreateUser creates a user account without sending a verification email.
-     * Prefer AuthenticationService.Register for end-user registration.
+     * CreateUser is not implemented and returns UNIMPLEMENTED.
+     * Use AuthenticationService.Register instead.
      *
      * @generated from rpc hades.api.identity.v1.UserService.CreateUser
      */
@@ -39,7 +38,10 @@ export const UserService = {
     },
     /**
      * GetUser returns the profile and summary counts for the given username.
-     * Returns NOT_FOUND if no account with that username exists.
+     * Readable anonymously.
+     *
+     * Returns NOT_FOUND if no account with that username exists, and also for
+     * organization accounts: look those up with OrgService.GetOrg.
      *
      * @generated from rpc hades.api.identity.v1.UserService.GetUser
      */
@@ -50,7 +52,11 @@ export const UserService = {
       kind: MethodKind.Unary,
     },
     /**
-     * ListUsers returns user accounts matching an optional username query.
+     * ListUsers returns up to 50 user accounts matching an optional username
+     * query. Organization accounts are excluded.
+     *
+     * Returns UNAUTHENTICATED to anonymous callers: member discovery is expected
+     * within a registry, but not open to unauthenticated scraping.
      *
      * @generated from rpc hades.api.identity.v1.UserService.ListUsers
      */

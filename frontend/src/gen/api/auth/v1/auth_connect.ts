@@ -16,9 +16,11 @@ import { MethodKind } from "@bufbuild/protobuf";
 /**
  * AuthenticationService covers the full credential lifecycle for Hades accounts.
  *
- * Login and Register are reachable without a session. All other RPCs require a
- * valid Bearer token in the Authorization header, except VerifyEmail and the
- * password-reset pair which use single-use tokens that embed their own auth.
+ * Login, Register, and Signin are reachable without a session, as are
+ * VerifyEmail and the password-reset pair, which carry their own single-use
+ * tokens. The remaining RPCs require a valid Bearer token in the Authorization
+ * header; ChangePassword and Logout additionally require an interactive session
+ * token (hds_sess_) and reject personal API tokens.
  *
  * @generated from service hades.api.auth.v1.AuthenticationService
  */
@@ -30,6 +32,10 @@ export const AuthenticationService = {
      * token. When the account has TOTP enabled the response sets pending_totp and
      * the caller must complete VerifyTOTP before the token grants full access.
      *
+     * Returns UNAUTHENTICATED for bad credentials, PERMISSION_DENIED when the
+     * account is locked out or its email address is not yet verified, and
+     * RESOURCE_EXHAUSTED past the per-IP rate limit.
+     *
      * @generated from rpc hades.api.auth.v1.AuthenticationService.Login
      */
     login: {
@@ -40,7 +46,12 @@ export const AuthenticationService = {
     },
     /**
      * Register creates a new user account and sends a verification email.
-     * Returns ALREADY_EXISTS if the username or email is taken.
+     *
+     * Returns ALREADY_EXISTS if the username or email is taken,
+     * INVALID_ARGUMENT if the username is reserved or the password is shorter
+     * than the configured minimum, and RESOURCE_EXHAUSTED past the per-IP rate
+     * limit. Registration succeeds even if the verification email cannot be sent;
+     * use ResendVerificationEmail in that case.
      *
      * @generated from rpc hades.api.auth.v1.AuthenticationService.Register
      */
@@ -53,6 +64,9 @@ export const AuthenticationService = {
     /**
      * Signin is kept for backwards compatibility. New clients must use Register.
      *
+     * Deprecated: it delegates to Register with identical behaviour and rate
+     * limits, and reports only success or failure instead of the new user id.
+     *
      * @generated from rpc hades.api.auth.v1.AuthenticationService.Signin
      */
     signin: {
@@ -63,6 +77,8 @@ export const AuthenticationService = {
     },
     /**
      * Logout revokes the session associated with the caller's Bearer token.
+     * Callable while a session is still pending TOTP verification, so a session
+     * stuck at the second-factor prompt can be ended rather than left to expire.
      *
      * @generated from rpc hades.api.auth.v1.AuthenticationService.Logout
      */
@@ -76,6 +92,9 @@ export const AuthenticationService = {
      * VerifyEmail consumes the single-use token from a verification email and
      * marks the account's email address as verified.
      *
+     * Returns NOT_FOUND if the token was never issued and INVALID_ARGUMENT if it
+     * has already been used or has expired.
+     *
      * @generated from rpc hades.api.auth.v1.AuthenticationService.VerifyEmail
      */
     verifyEmail: {
@@ -86,7 +105,11 @@ export const AuthenticationService = {
     },
     /**
      * ResendVerificationEmail sends a new verification email to the authenticated
-     * user. Can be called before email_verified_at is set.
+     * user. Callable while the account's email is still unverified, which is the
+     * only other state in which a session may act.
+     *
+     * Returns INVALID_ARGUMENT if the address is already verified and
+     * RESOURCE_EXHAUSTED past the per-user rate limit.
      *
      * @generated from rpc hades.api.auth.v1.AuthenticationService.ResendVerificationEmail
      */
@@ -97,8 +120,9 @@ export const AuthenticationService = {
       kind: MethodKind.Unary,
     },
     /**
-     * RequestPasswordReset sends a password-reset email to the given address.
-     * Always succeeds to avoid leaking whether an address is registered.
+     * RequestPasswordReset emails a single-use reset token to the given address.
+     * Always succeeds to avoid leaking whether an address is registered, except
+     * for RESOURCE_EXHAUSTED past the per-IP rate limit.
      *
      * @generated from rpc hades.api.auth.v1.AuthenticationService.RequestPasswordReset
      */
@@ -110,7 +134,11 @@ export const AuthenticationService = {
     },
     /**
      * ResetPassword consumes a single-use reset token and replaces the password.
-     * Returns UNAUTHENTICATED if the token is expired or already used.
+     * All of the account's existing sessions are revoked, and any login lockout
+     * is cleared so the owner can sign in again immediately.
+     *
+     * Returns NOT_FOUND if the token was never issued and INVALID_ARGUMENT if it
+     * has already been used, has expired, or the new password is too short.
      *
      * @generated from rpc hades.api.auth.v1.AuthenticationService.ResetPassword
      */
@@ -123,6 +151,8 @@ export const AuthenticationService = {
     /**
      * ChangePassword updates the password for the authenticated user.
      * Optionally revokes all other active sessions.
+     *
+     * Returns UNAUTHENTICATED if old_password does not match.
      *
      * @generated from rpc hades.api.auth.v1.AuthenticationService.ChangePassword
      */

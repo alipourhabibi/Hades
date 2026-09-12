@@ -46,9 +46,11 @@ const (
 
 // SDKServiceClient is a client for the hades.api.registry.v1.SDKService service.
 type SDKServiceClient interface {
-	// ListSDKs returns all SDK generation jobs for the given module, ordered
-	// newest first. Returns NOT_FOUND if the module does not exist or the
-	// caller cannot read it.
+	// ListSDKs returns every SDK generation job for the given module, ordered
+	// newest first, including jobs that are still pending or have failed. There
+	// is no pagination.
+	//
+	// Returns NOT_FOUND if the module does not exist or the caller cannot read it.
 	ListSDKs(context.Context, *connect.Request[v1.ListSDKsRequest]) (*connect.Response[v1.ListSDKsResponse], error)
 }
 
@@ -84,9 +86,11 @@ func (c *sDKServiceClient) ListSDKs(ctx context.Context, req *connect.Request[v1
 
 // SDKServiceHandler is an implementation of the hades.api.registry.v1.SDKService service.
 type SDKServiceHandler interface {
-	// ListSDKs returns all SDK generation jobs for the given module, ordered
-	// newest first. Returns NOT_FOUND if the module does not exist or the
-	// caller cannot read it.
+	// ListSDKs returns every SDK generation job for the given module, ordered
+	// newest first, including jobs that are still pending or have failed. There
+	// is no pagination.
+	//
+	// Returns NOT_FOUND if the module does not exist or the caller cannot read it.
 	ListSDKs(context.Context, *connect.Request[v1.ListSDKsRequest]) (*connect.Response[v1.ListSDKsResponse], error)
 }
 

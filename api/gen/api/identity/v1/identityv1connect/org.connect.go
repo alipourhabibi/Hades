@@ -64,25 +64,36 @@ const (
 // OrgServiceClient is a client for the hades.api.identity.v1.OrgService service.
 type OrgServiceClient interface {
 	// GetOrg returns the organization record for the given username.
+	// Readable anonymously.
 	// Returns NOT_FOUND if no organization with that name exists.
 	GetOrg(context.Context, *connect.Request[v1.GetOrgRequest]) (*connect.Response[v1.GetOrgResponse], error)
-	// ListOrgMembers returns all members of the given organization with their roles.
+	// ListOrgMembers returns all members of the given organization with their
+	// roles. Readable anonymously.
 	ListOrgMembers(context.Context, *connect.Request[v1.ListOrgMembersRequest]) (*connect.Response[v1.ListOrgMembersResponse], error)
 	// CreateOrg creates a new organization. The caller becomes its first admin.
-	// Returns ALREADY_EXISTS if the username is taken.
+	//
+	// Returns ALREADY_EXISTS if the name is taken by any user or organization,
+	// and INVALID_ARGUMENT if it is reserved.
 	CreateOrg(context.Context, *connect.Request[v1.CreateOrgRequest]) (*connect.Response[v1.CreateOrgResponse], error)
 	// UpdateOrg updates the description and URL of an organization.
-	// Requires the caller to be an admin of the org.
+	// Returns PERMISSION_DENIED unless the caller is an admin of the org.
 	UpdateOrg(context.Context, *connect.Request[v1.UpdateOrgRequest]) (*connect.Response[v1.UpdateOrgResponse], error)
 	// AddOrgMember adds a user to an organization with the given role.
-	// Requires the caller to be an admin of the org.
+	// Calling it for an existing member updates their role.
+	// Returns PERMISSION_DENIED unless the caller is an admin of the org, and
+	// NOT_FOUND if the org or the target user does not exist.
 	AddOrgMember(context.Context, *connect.Request[v1.AddOrgMemberRequest]) (*connect.Response[v1.AddOrgMemberResponse], error)
-	// RemoveOrgMember removes a user from an organization.
-	// Requires the caller to be an admin of the org, or the member themselves.
+	// RemoveOrgMember removes a user from an organization. The caller must be an
+	// admin of the org, or the member themselves.
+	//
+	// Returns PERMISSION_DENIED otherwise, NOT_FOUND if the target is not a
+	// member, and FAILED_PRECONDITION when the target is the org's last admin:
+	// removing them would leave nobody able to appoint a replacement.
 	RemoveOrgMember(context.Context, *connect.Request[v1.RemoveOrgMemberRequest]) (*connect.Response[v1.RemoveOrgMemberResponse], error)
-	// ListOrganizations returns organizations matching an optional query.
+	// ListOrganizations returns up to 50 organizations matching an optional query.
 	ListOrganizations(context.Context, *connect.Request[v1.ListOrganizationsRequest]) (*connect.Response[v1.ListOrganizationsResponse], error)
 	// GetUserOrgs returns all organizations the given user belongs to.
+	// Returns NOT_FOUND if no account with that username exists.
 	GetUserOrgs(context.Context, *connect.Request[v1.GetUserOrgsRequest]) (*connect.Response[v1.GetUserOrgsResponse], error)
 }
 
@@ -203,25 +214,36 @@ func (c *orgServiceClient) GetUserOrgs(ctx context.Context, req *connect.Request
 // OrgServiceHandler is an implementation of the hades.api.identity.v1.OrgService service.
 type OrgServiceHandler interface {
 	// GetOrg returns the organization record for the given username.
+	// Readable anonymously.
 	// Returns NOT_FOUND if no organization with that name exists.
 	GetOrg(context.Context, *connect.Request[v1.GetOrgRequest]) (*connect.Response[v1.GetOrgResponse], error)
-	// ListOrgMembers returns all members of the given organization with their roles.
+	// ListOrgMembers returns all members of the given organization with their
+	// roles. Readable anonymously.
 	ListOrgMembers(context.Context, *connect.Request[v1.ListOrgMembersRequest]) (*connect.Response[v1.ListOrgMembersResponse], error)
 	// CreateOrg creates a new organization. The caller becomes its first admin.
-	// Returns ALREADY_EXISTS if the username is taken.
+	//
+	// Returns ALREADY_EXISTS if the name is taken by any user or organization,
+	// and INVALID_ARGUMENT if it is reserved.
 	CreateOrg(context.Context, *connect.Request[v1.CreateOrgRequest]) (*connect.Response[v1.CreateOrgResponse], error)
 	// UpdateOrg updates the description and URL of an organization.
-	// Requires the caller to be an admin of the org.
+	// Returns PERMISSION_DENIED unless the caller is an admin of the org.
 	UpdateOrg(context.Context, *connect.Request[v1.UpdateOrgRequest]) (*connect.Response[v1.UpdateOrgResponse], error)
 	// AddOrgMember adds a user to an organization with the given role.
-	// Requires the caller to be an admin of the org.
+	// Calling it for an existing member updates their role.
+	// Returns PERMISSION_DENIED unless the caller is an admin of the org, and
+	// NOT_FOUND if the org or the target user does not exist.
 	AddOrgMember(context.Context, *connect.Request[v1.AddOrgMemberRequest]) (*connect.Response[v1.AddOrgMemberResponse], error)
-	// RemoveOrgMember removes a user from an organization.
-	// Requires the caller to be an admin of the org, or the member themselves.
+	// RemoveOrgMember removes a user from an organization. The caller must be an
+	// admin of the org, or the member themselves.
+	//
+	// Returns PERMISSION_DENIED otherwise, NOT_FOUND if the target is not a
+	// member, and FAILED_PRECONDITION when the target is the org's last admin:
+	// removing them would leave nobody able to appoint a replacement.
 	RemoveOrgMember(context.Context, *connect.Request[v1.RemoveOrgMemberRequest]) (*connect.Response[v1.RemoveOrgMemberResponse], error)
-	// ListOrganizations returns organizations matching an optional query.
+	// ListOrganizations returns up to 50 organizations matching an optional query.
 	ListOrganizations(context.Context, *connect.Request[v1.ListOrganizationsRequest]) (*connect.Response[v1.ListOrganizationsResponse], error)
 	// GetUserOrgs returns all organizations the given user belongs to.
+	// Returns NOT_FOUND if no account with that username exists.
 	GetUserOrgs(context.Context, *connect.Request[v1.GetUserOrgsRequest]) (*connect.Response[v1.GetUserOrgsResponse], error)
 }
 

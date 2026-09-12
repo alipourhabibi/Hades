@@ -159,13 +159,21 @@ func (s *SQLiteSDKJobStorage) GetByCommitAndLang(ctx context.Context, commitID, 
 }
 
 func (s *SQLiteSDKJobStorage) RecoverStaleJobs(ctx context.Context, stalenessTimeout time.Duration) (int64, error) {
+	// datetime() on both sides, and the threshold as a bound parameter.
+	//
+	// started_at is written by datetime('now') as "2026-08-07 13:55:49" while
+	// the threshold formats as RFC3339 with a 'T'. Compared as strings, ' '
+	// sorts below 'T', so the old form matched every running job however
+	// recently it had started: the recovery pass reset live jobs to pending
+	// once a minute, and a job taking longer than that was picked up and
+	// generated a second time in parallel.
 	threshold := time.Now().Add(-stalenessTimeout).Format(time.RFC3339)
 	result, err := s.q(ctx).ExecContext(ctx, fmt.Sprintf(`
 UPDATE sdk_jobs
 SET status = 'pending', started_at = NULL
 WHERE status = 'running'
-  AND started_at < '%s'
-  AND attempts < %d`, threshold, sdkjob.MaxAttempts))
+  AND datetime(started_at) < datetime(?)
+  AND attempts < %d`, sdkjob.MaxAttempts), threshold)
 	if err != nil {
 		return 0, err
 	}

@@ -21,13 +21,18 @@ import { MethodKind } from "@bufbuild/protobuf";
  * Commits are immutable once created. The digest field allows clients to
  * verify content integrity independent of the transport layer.
  *
+ * Every RPC here is readable anonymously and enforces read access per module,
+ * so a private module a caller cannot read is reported as NOT_FOUND rather
+ * than PERMISSION_DENIED. Commit hashes are unique registry-wide, so any RPC
+ * taking one also checks that the commit belongs to the named module.
+ *
  * @generated from service hades.api.registry.v1.CommitService
  */
 export const CommitService = {
   typeName: "hades.api.registry.v1.CommitService",
   methods: {
     /**
-     * ListCommits returns all commits for the given module, ordered newest first.
+     * ListCommits returns a page of commits for the given module, newest first.
      * Returns NOT_FOUND if the module does not exist or the caller cannot read it.
      *
      * @generated from rpc hades.api.registry.v1.CommitService.ListCommits
@@ -65,9 +70,12 @@ export const CommitService = {
       kind: MethodKind.Unary,
     },
     /**
-     * ListModuleFiles returns the depth-1 contents of a directory inside the
-     * latest commit of a module repository.
-     * Returns NOT_FOUND if the module or path does not exist.
+     * ListModuleFiles returns the depth-1 contents of a directory in the module
+     * repository, read from commit_hash or from the default branch head when
+     * that is empty.
+     *
+     * Returns NOT_FOUND if the module or path does not exist, or if commit_hash
+     * is unknown or belongs to a different module.
      *
      * @generated from rpc hades.api.registry.v1.CommitService.ListModuleFiles
      */
@@ -78,8 +86,9 @@ export const CommitService = {
       kind: MethodKind.Unary,
     },
     /**
-     * GetFileContent returns the raw content of a single file by its path.
-     * Returns NOT_FOUND if the module or file path does not exist.
+     * GetFileContent returns the raw content of a single file by its path, read
+     * from commit_hash or from the default branch head when that is empty.
+     * Returns NOT_FOUND if the module, commit, or file path does not exist.
      *
      * @generated from rpc hades.api.registry.v1.CommitService.GetFileContent
      */

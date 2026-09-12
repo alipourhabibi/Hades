@@ -25,7 +25,7 @@ import (
 // Server implements the Authorization Connect-RPC service and provides internal
 // helpers used by other handlers and the auth middleware.
 type Server struct {
-	authorizationv1connect.AuthorizationHandler
+	authorizationv1connect.UnimplementedAuthorizationHandler
 
 	logger *log.LoggerWrapper
 
@@ -97,17 +97,31 @@ func (s *Server) DeleteOrgBinding(ctx context.Context, subject, orgName string) 
 	return s.engine.DeleteBinding(ctx, subject, orgName+"/*")
 }
 
-// scopeCovers reports whether scopes grants resource_type:action.
-// An empty scopes slice means unrestricted (full access).
-// Wildcard "resource_type:*" covers any action on that resource.
-func scopeCovers(scopes []string, resourceType, action string) bool {
+// scopeCovers reports whether scopes grants resource_type:action on domain.
+//
+// An empty scopes slice means unrestricted (full access), which is the state of
+// every token issued before scopes were enforced.
+//
+// A scope entry is "resource:action" (any domain) or "resource:action:domain"
+// (one module, or one namespace via "owner/*"). The action may be "*".
+//
+// domain is the module full name the request targets. Pass "" when the caller
+// cannot name one: a domain-restricted scope will then not match, because
+// stretching it to cover an unidentified resource is exactly the mistake this
+// grammar exists to prevent.
+func scopeCovers(scopes []string, resourceType, action, domain string) bool {
 	if len(scopes) == 0 {
 		return true
 	}
-	exact := resourceType + ":" + action
-	wildcard := resourceType + ":*"
 	for _, s := range scopes {
-		if s == exact || s == wildcard {
+		scopeResource, scopeAction, scopeDomain, ok := constants.ParseScope(s)
+		if !ok || scopeResource != resourceType {
+			continue
+		}
+		if scopeAction != action && scopeAction != "*" {
+			continue
+		}
+		if constants.DomainMatches(scopeDomain, domain) {
 			return true
 		}
 	}
@@ -119,10 +133,15 @@ func scopeCovers(scopes []string, resourceType, action string) bool {
 // covered by the token's declared scopes (empty scopes = full access).
 func (s *Server) Can(ctx context.Context, in *constants.Policy) (*constants.CanResponse, error) {
 	if scopes, ok := ctx.Value(constants.ContextKeyTokenScopes).([]string); ok && len(scopes) > 0 {
-		if !scopeCovers(scopes, in.ResourceType, in.Action) {
+		if !scopeCovers(scopes, in.ResourceType, in.Action, in.Domain) {
 			return &constants.CanResponse{Allowed: false, Policy: in}, nil
 		}
 	}
+	// Visibility is set to private for every write check. Reads are gated by
+	// CheckReadAccess, which is the only path where a module being public
+	// changes the answer; for create/update/push/delete, public visibility never
+	// grants access, so evaluating them as private is the correct and
+	// conservative input.
 	p := *in
 	p.Visibility = constants.VisibilityPrivate
 	allowed, err := s.engine.Allow(ctx, p)
@@ -146,11 +165,13 @@ func (s *Server) BatchCan(ctx context.Context, policies []*constants.Policy) (*c
 	scopes, _ := ctx.Value(constants.ContextKeyTokenScopes).([]string)
 	if len(scopes) > 0 {
 		for _, p := range policies {
-			if !scopeCovers(scopes, p.ResourceType, p.Action) {
+			if !scopeCovers(scopes, p.ResourceType, p.Action, p.Domain) {
 				return &constants.CanResponse{Allowed: false, Policy: p}, nil
 			}
 		}
 	}
+	// See Can: write actions are always evaluated as private, which is the
+	// conservative input. Only CheckReadAccess branches on real visibility.
 	inputs := make([]constants.Policy, len(policies))
 	for i, p := range policies {
 		inputs[i] = *p
@@ -175,7 +196,24 @@ func (s *Server) BatchCan(ctx context.Context, policies []*constants.Policy) (*c
 // cannot access private ones - those are surfaced as NotFound so that the
 // existence of private modules is never revealed to unauthenticated callers.
 func (s *Server) CheckReadAccess(ctx context.Context, user *identityv1.User, modules []*registryv1.Module) error {
+	// A scoped API token must carry module:read for each module it touches.
+	// Without this the scope list would be enforced only on Can/BatchCan
+	// (writes), so a token issued for pushing alone could read every private
+	// module its owner can see. The check is per module because a scope may name
+	// a single module or namespace.
+	scopes, scoped := ctx.Value(constants.ContextKeyTokenScopes).([]string)
+	scoped = scoped && len(scopes) > 0
+
 	for _, m := range modules {
+		if scoped && !scopeCovers(scopes, string(constants.ResourceModule), string(constants.ActionRead), m.Name) {
+			// NotFound for private modules keeps their existence hidden, matching
+			// the rest of this function; a public module the token may not read is
+			// simply refused.
+			if m.Visibility == registryv1.ModuleVisibility_MODULE_VISIBILITY_PRIVATE {
+				return connErr.NotFound("not found")
+			}
+			return connErr.PermissionDenied("token is not authorised to read this module")
+		}
 		if m.Visibility != registryv1.ModuleVisibility_MODULE_VISIBILITY_PRIVATE {
 			continue // public: always accessible
 		}
@@ -202,8 +240,11 @@ func (s *Server) CheckReadAccess(ctx context.Context, user *identityv1.User, mod
 	return nil
 }
 
-// AddPoliciesRoles inserts arbitrary role bindings via the OPA engine.
-func (s *Server) AddPoliciesRoles(ctx context.Context, policies []*constants.Policy, roles []*constants.Role) error {
+// AddRoleBindings inserts role bindings via the OPA engine.
+//
+// This replaces AddPoliciesRoles, which also accepted a []*constants.Policy
+// argument that was never read: any caller passing policies got a silent no-op.
+func (s *Server) AddRoleBindings(ctx context.Context, roles []*constants.Role) error {
 	for _, r := range roles {
 		if err := s.engine.AddBinding(ctx, r.User, r.Role, r.Domain); err != nil {
 			return err

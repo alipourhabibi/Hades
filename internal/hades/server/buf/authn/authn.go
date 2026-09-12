@@ -21,7 +21,7 @@ import (
 // The auth middleware validates the token and sets the user in context
 // before this handler runs; GetCurrentUser just reads it back out.
 type Server struct {
-	registryv1alpha1connect.AuthnServiceHandler
+	registryv1alpha1connect.UnimplementedAuthnServiceHandler
 
 	logger *log.LoggerWrapper
 }

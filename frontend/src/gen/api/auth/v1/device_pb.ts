@@ -73,8 +73,10 @@ export type RequestDeviceCodeResponse = Message<"hades.api.auth.v1.RequestDevice
   expiresInSeconds: number;
 
   /**
-   * Minimum interval in seconds between PollDeviceToken calls.
-   * Polling faster will result in SLOW_DOWN errors from the server.
+   * Minimum interval in seconds between PollDeviceToken calls. Polling faster
+   * than roughly twenty times a minute is refused with RESOURCE_EXHAUSTED for
+   * the rest of the minute; this server does not implement the RFC 8628
+   * slow_down response.
    *
    * @generated from field: int32 poll_interval_seconds = 5;
    */
@@ -110,13 +112,20 @@ export const PollDeviceTokenRequestSchema: GenMessage<PollDeviceTokenRequest> = 
   messageDesc(file_api_auth_v1_device, 2);
 
 /**
- * PollDeviceTokenResponse carries the session token when the grant is approved.
+ * PollDeviceTokenResponse carries the credential once the grant is approved.
  *
  * @generated from message hades.api.auth.v1.PollDeviceTokenResponse
  */
 export type PollDeviceTokenResponse = Message<"hades.api.auth.v1.PollDeviceTokenResponse"> & {
   /**
-   * Bearer token for the approved session. Empty while pending is true.
+   * Personal API token (hades1_ prefix) for the approving user, not a session
+   * token. It is created on the first poll after approval and is scoped to
+   * "module:read" and "module:push", which is what the buf CLI needs; creating
+   * and updating modules stays an interactive operation.
+   *
+   * Empty while pending is true. A device_code that has already had its token
+   * issued yields the literal "already_issued" rather than the value again:
+   * the plaintext exists only in the response that minted it.
    *
    * @generated from field: string token = 1;
    */
@@ -178,8 +187,10 @@ export const ApproveDeviceGrantResponseSchema: GenMessage<ApproveDeviceGrantResp
  * DeviceService implements the OAuth 2.0 Device Authorization Grant (RFC 8628).
  *
  * RequestDeviceCode and PollDeviceToken are reachable without authentication
- * because no session exists at that point. ApproveDeviceGrant requires the
- * operator to be authenticated with a full browser session.
+ * because no session exists at that point. ApproveDeviceGrant requires an
+ * interactive session token (hds_sess_) and rejects personal API tokens:
+ * approving a grant mints a new token, so allowing it would be an indirect way
+ * for one API token to create another.
  *
  * @generated from service hades.api.auth.v1.DeviceService
  */
@@ -197,8 +208,10 @@ export const DeviceService: GenService<{
   },
   /**
    * PollDeviceToken checks whether the user has approved the pending grant.
-   * Returns a session token when approved, or sets pending=true while waiting.
-   * Returns NOT_FOUND if the device_code has expired or never existed.
+   * Returns a token when approved, or sets pending=true while waiting.
+   *
+   * Returns NOT_FOUND if the device_code never existed, INVALID_ARGUMENT once
+   * it has expired, and RESOURCE_EXHAUSTED when polled too fast.
    *
    * @generated from rpc hades.api.auth.v1.DeviceService.PollDeviceToken
    */
@@ -209,8 +222,10 @@ export const DeviceService: GenService<{
   },
   /**
    * ApproveDeviceGrant approves the grant identified by user_code.
-   * The authenticated user becomes the owner of the resulting session.
-   * Returns NOT_FOUND if the user_code is invalid or expired.
+   * The authenticated user becomes the owner of the token the device receives.
+   *
+   * Returns NOT_FOUND if the user_code is unknown and INVALID_ARGUMENT once
+   * the grant has expired.
    *
    * @generated from rpc hades.api.auth.v1.DeviceService.ApproveDeviceGrant
    */

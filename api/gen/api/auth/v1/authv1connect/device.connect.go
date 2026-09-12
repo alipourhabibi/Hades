@@ -58,12 +58,16 @@ type DeviceServiceClient interface {
 	// codes the device needs for polling and the operator needs for approval.
 	RequestDeviceCode(context.Context, *connect.Request[v1.RequestDeviceCodeRequest]) (*connect.Response[v1.RequestDeviceCodeResponse], error)
 	// PollDeviceToken checks whether the user has approved the pending grant.
-	// Returns a session token when approved, or sets pending=true while waiting.
-	// Returns NOT_FOUND if the device_code has expired or never existed.
+	// Returns a token when approved, or sets pending=true while waiting.
+	//
+	// Returns NOT_FOUND if the device_code never existed, INVALID_ARGUMENT once
+	// it has expired, and RESOURCE_EXHAUSTED when polled too fast.
 	PollDeviceToken(context.Context, *connect.Request[v1.PollDeviceTokenRequest]) (*connect.Response[v1.PollDeviceTokenResponse], error)
 	// ApproveDeviceGrant approves the grant identified by user_code.
-	// The authenticated user becomes the owner of the resulting session.
-	// Returns NOT_FOUND if the user_code is invalid or expired.
+	// The authenticated user becomes the owner of the token the device receives.
+	//
+	// Returns NOT_FOUND if the user_code is unknown and INVALID_ARGUMENT once
+	// the grant has expired.
 	ApproveDeviceGrant(context.Context, *connect.Request[v1.ApproveDeviceGrantRequest]) (*connect.Response[v1.ApproveDeviceGrantResponse], error)
 }
 
@@ -127,12 +131,16 @@ type DeviceServiceHandler interface {
 	// codes the device needs for polling and the operator needs for approval.
 	RequestDeviceCode(context.Context, *connect.Request[v1.RequestDeviceCodeRequest]) (*connect.Response[v1.RequestDeviceCodeResponse], error)
 	// PollDeviceToken checks whether the user has approved the pending grant.
-	// Returns a session token when approved, or sets pending=true while waiting.
-	// Returns NOT_FOUND if the device_code has expired or never existed.
+	// Returns a token when approved, or sets pending=true while waiting.
+	//
+	// Returns NOT_FOUND if the device_code never existed, INVALID_ARGUMENT once
+	// it has expired, and RESOURCE_EXHAUSTED when polled too fast.
 	PollDeviceToken(context.Context, *connect.Request[v1.PollDeviceTokenRequest]) (*connect.Response[v1.PollDeviceTokenResponse], error)
 	// ApproveDeviceGrant approves the grant identified by user_code.
-	// The authenticated user becomes the owner of the resulting session.
-	// Returns NOT_FOUND if the user_code is invalid or expired.
+	// The authenticated user becomes the owner of the token the device receives.
+	//
+	// Returns NOT_FOUND if the user_code is unknown and INVALID_ARGUMENT once
+	// the grant has expired.
 	ApproveDeviceGrant(context.Context, *connect.Request[v1.ApproveDeviceGrantRequest]) (*connect.Response[v1.ApproveDeviceGrantResponse], error)
 }
 

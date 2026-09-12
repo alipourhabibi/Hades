@@ -36,7 +36,7 @@ export type OrgMember = Message<"hades.api.identity.v1.OrgMember"> & {
   user?: User;
 
   /**
-   * Role of the member (e.g. "admin", "member").
+   * Role of the member: "admin" or "member".
    *
    * @generated from field: string role = 2;
    */
@@ -83,7 +83,8 @@ export type GetOrgResponse = Message<"hades.api.identity.v1.GetOrgResponse"> & {
   org?: User;
 
   /**
-   * Number of modules owned by this organization.
+   * Number of modules owned by this organization, including private ones the
+   * caller cannot read.
    *
    * @generated from field: int32 module_count = 2;
    */
@@ -151,7 +152,10 @@ export const ListOrgMembersResponseSchema: GenMessage<ListOrgMembersResponse> = 
  */
 export type CreateOrgRequest = Message<"hades.api.identity.v1.CreateOrgRequest"> & {
   /**
-   * Desired organization username. Must be unique in the registry.
+   * Desired organization username. Must be unique across the whole identity
+   * namespace, which users and organizations share, and must not be one of the
+   * reserved route names: an org name is the first path segment of every module
+   * it owns.
    *
    * @generated from field: string name = 1;
    */
@@ -212,14 +216,15 @@ export type UpdateOrgRequest = Message<"hades.api.identity.v1.UpdateOrgRequest">
   orgName: string;
 
   /**
-   * New description. Empty leaves the field unchanged.
+   * New description. Both fields are written on every call, so passing an empty
+   * string clears the stored value rather than leaving it unchanged.
    *
    * @generated from field: string description = 2;
    */
   description: string;
 
   /**
-   * New URL. Empty leaves the field unchanged.
+   * New URL. Cleared by an empty string, as with description.
    *
    * @generated from field: string url = 3;
    */
@@ -274,6 +279,8 @@ export type AddOrgMemberRequest = Message<"hades.api.identity.v1.AddOrgMemberReq
 
   /**
    * Role to assign. Valid values: "member", "admin". Defaults to "member".
+   * "member" grants the contributor role over the org's namespace; "admin"
+   * additionally allows managing the org and its membership.
    *
    * @generated from field: string role = 3;
    */
@@ -352,7 +359,8 @@ export const RemoveOrgMemberResponseSchema: GenMessage<RemoveOrgMemberResponse> 
  */
 export type ListOrganizationsRequest = Message<"hades.api.identity.v1.ListOrganizationsRequest"> & {
   /**
-   * Optional substring search on org username. Empty returns the first 50 orgs.
+   * Optional substring search on org username. Empty matches every
+   * organization. At most 50 are returned either way; there is no pagination.
    *
    * @generated from field: string query = 1;
    */
@@ -432,11 +440,17 @@ export const GetUserOrgsResponseSchema: GenMessage<GetUserOrgsResponse> = /*@__P
  * messages with type = USER_TYPE_ORGANIZATION. Module ownership and RBAC
  * treat user and org UUIDs identically.
  *
+ * Membership is authorised from the membership table rather than through OPA,
+ * because the table is where org roles live. Every write below is atomic across
+ * the membership row and the matching OPA binding: half the pair would be a
+ * member who cannot act, or permissions with no membership record.
+ *
  * @generated from service hades.api.identity.v1.OrgService
  */
 export const OrgService: GenService<{
   /**
    * GetOrg returns the organization record for the given username.
+   * Readable anonymously.
    * Returns NOT_FOUND if no organization with that name exists.
    *
    * @generated from rpc hades.api.identity.v1.OrgService.GetOrg
@@ -447,7 +461,8 @@ export const OrgService: GenService<{
     output: typeof GetOrgResponseSchema;
   },
   /**
-   * ListOrgMembers returns all members of the given organization with their roles.
+   * ListOrgMembers returns all members of the given organization with their
+   * roles. Readable anonymously.
    *
    * @generated from rpc hades.api.identity.v1.OrgService.ListOrgMembers
    */
@@ -458,7 +473,9 @@ export const OrgService: GenService<{
   },
   /**
    * CreateOrg creates a new organization. The caller becomes its first admin.
-   * Returns ALREADY_EXISTS if the username is taken.
+   *
+   * Returns ALREADY_EXISTS if the name is taken by any user or organization,
+   * and INVALID_ARGUMENT if it is reserved.
    *
    * @generated from rpc hades.api.identity.v1.OrgService.CreateOrg
    */
@@ -469,7 +486,7 @@ export const OrgService: GenService<{
   },
   /**
    * UpdateOrg updates the description and URL of an organization.
-   * Requires the caller to be an admin of the org.
+   * Returns PERMISSION_DENIED unless the caller is an admin of the org.
    *
    * @generated from rpc hades.api.identity.v1.OrgService.UpdateOrg
    */
@@ -480,7 +497,9 @@ export const OrgService: GenService<{
   },
   /**
    * AddOrgMember adds a user to an organization with the given role.
-   * Requires the caller to be an admin of the org.
+   * Calling it for an existing member updates their role.
+   * Returns PERMISSION_DENIED unless the caller is an admin of the org, and
+   * NOT_FOUND if the org or the target user does not exist.
    *
    * @generated from rpc hades.api.identity.v1.OrgService.AddOrgMember
    */
@@ -490,8 +509,12 @@ export const OrgService: GenService<{
     output: typeof AddOrgMemberResponseSchema;
   },
   /**
-   * RemoveOrgMember removes a user from an organization.
-   * Requires the caller to be an admin of the org, or the member themselves.
+   * RemoveOrgMember removes a user from an organization. The caller must be an
+   * admin of the org, or the member themselves.
+   *
+   * Returns PERMISSION_DENIED otherwise, NOT_FOUND if the target is not a
+   * member, and FAILED_PRECONDITION when the target is the org's last admin:
+   * removing them would leave nobody able to appoint a replacement.
    *
    * @generated from rpc hades.api.identity.v1.OrgService.RemoveOrgMember
    */
@@ -501,7 +524,7 @@ export const OrgService: GenService<{
     output: typeof RemoveOrgMemberResponseSchema;
   },
   /**
-   * ListOrganizations returns organizations matching an optional query.
+   * ListOrganizations returns up to 50 organizations matching an optional query.
    *
    * @generated from rpc hades.api.identity.v1.OrgService.ListOrganizations
    */
@@ -512,6 +535,7 @@ export const OrgService: GenService<{
   },
   /**
    * GetUserOrgs returns all organizations the given user belongs to.
+   * Returns NOT_FOUND if no account with that username exists.
    *
    * @generated from rpc hades.api.identity.v1.OrgService.GetUserOrgs
    */

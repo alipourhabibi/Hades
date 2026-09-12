@@ -24,7 +24,7 @@ func (f *fakeModuleStorage) GetModulesByRefs(_ context.Context, _ ...*registrypb
 	return f.modules, f.err
 }
 
-func (f *fakeModuleStorage) ListModules(_ context.Context, _ string, _, _ int) ([]*registrypbv1.Module, error) {
+func (f *fakeModuleStorage) ListVisibleModules(_ context.Context, _, _, _ string, _, _ int) ([]*registrypbv1.Module, error) {
 	return f.modules, f.err
 }
 

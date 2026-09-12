@@ -5,6 +5,19 @@ server:
   certFile: "config/example.com.pem"
   # Serves the unauthenticated gRPC reflection API. Development only.
   enableReflection: false
+  # CIDR ranges (or bare IPs) whose X-Forwarded-For / X-Real-IP headers are
+  # believed when determining the client IP. The client IP drives login,
+  # registration and password-reset rate limiting and is written to the audit
+  # log, and these headers are trivially forged, so leave this empty unless
+  # Hades sits behind a reverse proxy you control.
+  trustedProxies: []
+  # Listener timeouts. Empty values use the built-in defaults
+  # (15s / 5m / 120s / 30s). There is deliberately no write timeout: the Go
+  # module proxy streams SDK zips of unknown size.
+  readHeaderTimeout: 15s
+  readTimeout: 5m
+  idleTimeout: 120s
+  shutdownTimeout: 30s
 
 logger:
   engine: zap # slog, zap
@@ -47,7 +60,7 @@ gitStorage:
   root: ./data/repos
 
 diskStorage:
-  path: ./data/artifacts
+  path: ./_data/artifacts
 
 gitaly:
   port: 9999
@@ -62,6 +75,10 @@ telemetry:
   otlpEndpoint: "localhost:4317"
   prometheusPort: 9090
   pprofPort: 6060
+  # Interface the metrics and pprof listeners bind to. Empty means 127.0.0.1.
+  # Both are unauthenticated and pprof dumps process memory, so exposing
+  # them on a public interface has to be deliberate.
+  bindAddr: "127.0.0.1"
   samplingRatio: 1.0
 
 auth:
@@ -71,7 +88,6 @@ auth:
   session:
     idleTimeoutDays: 7
     absoluteTimeoutDays: 14
-    rotationGraceSeconds: 30
   lockout:
     maxAttempts: 5
     cooldownMinutes: 30
@@ -102,7 +118,10 @@ redis:
 # IMPORTANT: generate a random 64-char hex key before deploying
 # openssl rand -hex 32
 totp:
-  encryptionKey: "CHANGE_ME_generate_with_openssl_rand_hex_32_output_here_000000000"
+  # 32-byte AES-256 key as 64 hex characters: openssl rand -hex 32
+  # Supplied through the environment so the key is not written to disk.
+  # Leaving it unset disables TOTP enrolment rather than failing startup.
+  encryptionKey: "${HADES_TOTP_ENCRYPTION_KEY}"
   issuer: "Hades"
 
 # OPA authorization engine tuning.

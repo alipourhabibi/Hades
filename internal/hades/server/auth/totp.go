@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"time"
 
 	"connectrpc.com/connect"
 	"golang.org/x/crypto/bcrypt"
@@ -18,11 +19,80 @@ import (
 
 const backupCodeCount = 10
 
+// requirePassword re-authenticates the caller with their current password
+// before a security-sensitive change. Accounts created through OAuth have no
+// password, so they are told to set one rather than being silently allowed
+// through on an empty hash.
+func (s *Server) requirePassword(ctx context.Context, user *identityv1.User, password, procedure string) error {
+	af, err := s.userStorage.GetAuthFieldsByID(ctx, user.Id)
+	if err != nil {
+		s.logger.Error("failed to get user auth fields", "error", err, "procedure", procedure, "user_id", user.Id)
+		return connErr.FromDB(err)
+	}
+	if af.PasswordHash == "" {
+		return connErr.FailedPrecondition("this account has no password; set one before changing two-factor settings")
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(af.PasswordHash), []byte(password)); err != nil {
+		s.logger.Warn("password re-authentication failed", "procedure", procedure, "user_id", user.Id)
+		return connErr.Unauthenticated("invalid password")
+	}
+	return nil
+}
+
+const (
+	// totpAttemptLimit and totpAttemptWindow bound how many codes may be tried
+	// against one account. A TOTP code is six digits and several codes are live
+	// at once, so an unbounded endpoint is brute-forceable by anyone holding a
+	// password-authenticated (TOTP-pending) session.
+	totpAttemptLimit  = 5
+	totpAttemptWindow = 5 * time.Minute
+)
+
+// checkTOTPAttempt consumes one code-verification attempt for the user.
+// It returns an error when the account has exhausted its attempt budget.
+func (s *Server) checkTOTPAttempt(ctx context.Context, userID, procedure string) error {
+	if s.cache == nil {
+		return nil
+	}
+	allowed, err := s.cache.Allow(ctx, "totp:attempt:"+userID, totpAttemptLimit, totpAttemptWindow)
+	if err != nil {
+		s.logger.Error("TOTP attempt limiter unavailable", "error", err, "procedure", procedure, "user_id", userID)
+		return nil
+	}
+	if !allowed {
+		s.logger.Warn("TOTP attempt limit exceeded", "procedure", procedure, "user_id", userID)
+		if s.auditLogDB != nil {
+			_ = s.auditLogDB.Create(ctx, &userID, v1.AuditEventType_AUDIT_EVENT_TYPE_LOGIN_FAILED, "", "", map[string]any{"reason": "totp_rate_limited"})
+		}
+		return connErr.ResourceExhausted("too many verification attempts, try again later")
+	}
+	return nil
+}
+
+// BeginEnrollTOTP starts TOTP enrolment and returns the secret, provisioning
+// URL, and a fresh set of backup codes.
+//
+// The current password is required. Without it, anyone holding a session could
+// call this endpoint against an account that already has TOTP enabled: the
+// upsert resets `enabled` to false and the backup codes are replaced, which
+// silently strips the account's second factor.
+//
+// Re-enrolment on an account that already has TOTP enabled is refused outright.
+// Rotating an active secret must go through DisableTOTP first, so the account
+// is never left in a half-configured state by a single call.
 func (s *Server) BeginEnrollTOTP(ctx context.Context, in *connect.Request[v1.BeginEnrollTOTPRequest]) (*connect.Response[v1.BeginEnrollTOTPResponse], error) {
 	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "BeginEnrollTOTP")
 		return nil, connErr.Unauthenticated("not authenticated")
+	}
+
+	if err := s.requirePassword(ctx, user, in.Msg.Password, "BeginEnrollTOTP"); err != nil {
+		return nil, err
+	}
+
+	if existing, err := s.totpSecretDB.GetByUserID(ctx, user.Id); err == nil && existing.Enabled {
+		return nil, connErr.FailedPrecondition("TOTP is already enabled; disable it before enrolling again")
 	}
 
 	issuer := s.totpCfg.Issuer
@@ -43,7 +113,7 @@ func (s *Server) BeginEnrollTOTP(ctx context.Context, in *connect.Request[v1.Beg
 
 	if err := s.totpSecretDB.Upsert(ctx, user.Id, secretEnc); err != nil {
 		s.logger.Error("failed to store TOTP secret", "error", err, "procedure", "BeginEnrollTOTP", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
 	plainCodes, err := utilstotp.GenerateBackupCodes(backupCodeCount)
@@ -58,11 +128,11 @@ func (s *Server) BeginEnrollTOTP(ctx context.Context, in *connect.Request[v1.Beg
 	}
 	if err := s.backupCodeDB.DeleteAllForUser(ctx, user.Id); err != nil {
 		s.logger.Error("failed to delete old backup codes", "error", err, "procedure", "BeginEnrollTOTP", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 	if err := s.backupCodeDB.CreateBatch(ctx, user.Id, hashes); err != nil {
 		s.logger.Error("failed to store backup codes", "error", err, "procedure", "BeginEnrollTOTP", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
 	return &connect.Response[v1.BeginEnrollTOTPResponse]{
@@ -79,6 +149,10 @@ func (s *Server) ConfirmEnrollTOTP(ctx context.Context, in *connect.Request[v1.C
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "ConfirmEnrollTOTP")
 		return nil, connErr.Unauthenticated("not authenticated")
+	}
+
+	if err := s.checkTOTPAttempt(ctx, user.Id, "ConfirmEnrollTOTP"); err != nil {
+		return nil, err
 	}
 
 	row, err := s.totpSecretDB.GetByUserID(ctx, user.Id)
@@ -100,7 +174,7 @@ func (s *Server) ConfirmEnrollTOTP(ctx context.Context, in *connect.Request[v1.C
 
 	if err := s.totpSecretDB.Enable(ctx, user.Id); err != nil {
 		s.logger.Error("failed to enable TOTP", "error", err, "procedure", "ConfirmEnrollTOTP", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
 	if s.auditLogDB != nil {
@@ -114,6 +188,10 @@ func (s *Server) VerifyTOTP(ctx context.Context, in *connect.Request[v1.VerifyTO
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "VerifyTOTP")
 		return nil, connErr.Unauthenticated("not authenticated")
+	}
+
+	if err := s.checkTOTPAttempt(ctx, user.Id, "VerifyTOTP"); err != nil {
+		return nil, err
 	}
 
 	row, err := s.totpSecretDB.GetByUserID(ctx, user.Id)
@@ -148,11 +226,11 @@ func (s *Server) VerifyTOTP(ctx context.Context, in *connect.Request[v1.VerifyTO
 	sess, err := s.sessionStorage.GetByTokenHash(ctx, utilscrypto.HashToken(rawToken))
 	if err != nil {
 		s.logger.Error("failed to load session", "error", err, "procedure", "VerifyTOTP", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 	if err := s.sessionStorage.MarkTOTPVerified(ctx, sess.ID); err != nil {
 		s.logger.Error("failed to mark session TOTP-verified", "error", err, "procedure", "VerifyTOTP", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
 	if s.auditLogDB != nil {
@@ -174,22 +252,17 @@ func (s *Server) DisableTOTP(ctx context.Context, in *connect.Request[v1.Disable
 		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
-	af, err := s.userStorage.GetAuthFieldsByUsername(ctx, user.Username)
-	if err != nil {
-		s.logger.Error("failed to get user auth fields", "error", err, "procedure", "DisableTOTP", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(af.PasswordHash), []byte(in.Msg.Password)); err != nil {
-		return nil, connErr.Unauthenticated("invalid password")
+	if err := s.requirePassword(ctx, user, in.Msg.Password, "DisableTOTP"); err != nil {
+		return nil, err
 	}
 
 	if err := s.totpSecretDB.Delete(ctx, user.Id); err != nil {
 		s.logger.Error("failed to delete TOTP secret", "error", err, "procedure", "DisableTOTP", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 	if err := s.backupCodeDB.DeleteAllForUser(ctx, user.Id); err != nil {
 		s.logger.Error("failed to delete backup codes", "error", err, "procedure", "DisableTOTP", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 	if s.auditLogDB != nil {
 		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_TOTP_DISABLED, "", "", nil)
@@ -207,7 +280,7 @@ func (s *Server) ListBackupCodes(ctx context.Context, in *connect.Request[v1.Lis
 	rows, err := s.backupCodeDB.ListByUserID(ctx, user.Id)
 	if err != nil {
 		s.logger.Error("failed to list backup codes", "error", err, "procedure", "ListBackupCodes", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
 	codes := make([]*v1.BackupCode, 0, len(rows))
@@ -230,13 +303,8 @@ func (s *Server) RegenerateBackupCodes(ctx context.Context, in *connect.Request[
 		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
-	af, err := s.userStorage.GetAuthFieldsByUsername(ctx, user.Username)
-	if err != nil {
-		s.logger.Error("failed to get user auth fields", "error", err, "procedure", "RegenerateBackupCodes", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(af.PasswordHash), []byte(in.Msg.Password)); err != nil {
-		return nil, connErr.Unauthenticated("invalid password")
+	if err := s.requirePassword(ctx, user, in.Msg.Password, "RegenerateBackupCodes"); err != nil {
+		return nil, err
 	}
 
 	plainCodes, err := utilstotp.GenerateBackupCodes(backupCodeCount)
@@ -250,11 +318,11 @@ func (s *Server) RegenerateBackupCodes(ctx context.Context, in *connect.Request[
 	}
 	if err := s.backupCodeDB.DeleteAllForUser(ctx, user.Id); err != nil {
 		s.logger.Error("failed to delete old backup codes", "error", err, "procedure", "RegenerateBackupCodes", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 	if err := s.backupCodeDB.CreateBatch(ctx, user.Id, hashes); err != nil {
 		s.logger.Error("failed to store backup codes", "error", err, "procedure", "RegenerateBackupCodes", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 	return &connect.Response[v1.RegenerateBackupCodesResponse]{
 		Msg: &v1.RegenerateBackupCodesResponse{BackupCodes: plainCodes},

@@ -12,13 +12,27 @@ syntax = "proto3";
 package hades.api.registry.v1;
 
 import "api/registry/v1/commit.proto";
+import "buf/validate/validate.proto";
 
 option go_package = "gen/api/registry/v1";
 
 // File is a single .proto file returned in a download response.
 message File {
   // Path of the file relative to the module root (e.g. "proto/foo/bar.proto").
-  string path = 1;
+  //
+  // Must be a relative path with no "." or ".." segment and no leading slash.
+  // The server writes these paths to disk during lint and breaking checks, so
+  // an unconstrained path would escape the working directory.
+  string path = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 4096,
+    (buf.validate.field).string.pattern = "^[^/\\\\][^\\\\]*$",
+    (buf.validate.field).cel = {
+      id: "file.path.no_traversal"
+      message: "path must not contain a . or .. segment"
+      expression: "!(this.split('/').exists(seg, seg == '' || seg == '.' || seg == '..'))"
+    }
+  ];
   // Raw file content.
   bytes content = 2;
 }

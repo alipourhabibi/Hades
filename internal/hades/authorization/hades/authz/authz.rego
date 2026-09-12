@@ -63,7 +63,7 @@ domain_matches(pattern, domain) if {
 domain_matches("*", _)
 
 # ---------------------------------------------------------------------------
-# Role–permission matrix
+# Role and permission matrix
 #
 # Roles (hierarchical, each includes everything below):
 #   owner       - namespace-wide (bound to "username/*")
@@ -77,6 +77,29 @@ domain_matches("*", _)
 #   module  - a versioned proto module (like a git repo)
 #   label   - a named pointer to a commit (branch / tag)
 #   commit  - an immutable snapshot of module files
+#
+# What the server actually asks about today
+#
+# Every call site passes resource_type "module" and one of four actions:
+#
+#   module:create  ModuleService.CreateModuleByName
+#   module:update  ModuleService.UpdateModule
+#   module:push    UploadService.Upload (batched, one policy per module)
+#   module:read    CheckReadAccess, on every private module any read touches
+#
+# The label and commit rows, and the module actions list, delete, admin and
+# transfer, are not reached by any handler. They are the intended model for
+# operations that do not exist yet, not permissions being enforced. Two
+# consequences worth knowing:
+#
+#   - "list" is never asked, so ListModules filters with module:read per row.
+#     reader and contributor therefore see the same set.
+#   - a role's label and commit entries have no effect at all.
+#
+# API token scopes are narrower still: constants.scopedResources admits only
+# "module", because a scope naming a resource type nobody asks about would be a
+# credential that can do nothing. Widen that list in the same change that starts
+# asking about the resource type.
 # ---------------------------------------------------------------------------
 
 role_permissions := {

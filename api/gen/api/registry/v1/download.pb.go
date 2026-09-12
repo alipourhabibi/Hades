@@ -16,6 +16,7 @@
 package registryv1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -34,6 +35,10 @@ const (
 type File struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Path of the file relative to the module root (e.g. "proto/foo/bar.proto").
+	//
+	// Must be a relative path with no "." or ".." segment and no leading slash.
+	// The server writes these paths to disk during lint and breaking checks, so
+	// an unconstrained path would escape the working directory.
 	Path string `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
 	// Raw file content.
 	Content       []byte `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
@@ -190,9 +195,10 @@ var File_api_registry_v1_download_proto protoreflect.FileDescriptor
 
 const file_api_registry_v1_download_proto_rawDesc = "" +
 	"\n" +
-	"\x1eapi/registry/v1/download.proto\x12\x15hades.api.registry.v1\x1a\x1capi/registry/v1/commit.proto\"4\n" +
-	"\x04File\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
+	"\x1eapi/registry/v1/download.proto\x12\x15hades.api.registry.v1\x1a\x1capi/registry/v1/commit.proto\x1a\x1bbuf/validate/validate.proto\"\xe0\x01\n" +
+	"\x04File\x12\xbd\x01\n" +
+	"\x04path\x18\x01 \x01(\tB\xa8\x01\xbaH\xa4\x01\xba\x01\x89\x01\n" +
+	"\x16file.path.no_traversal\x12'path must not contain a . or .. segment\x1aF!(this.split('/').exists(seg, seg == '' || seg == '.' || seg == '..'))r\x15\x10\x01\x18\x80 2\x0e^[^/\\\\][^\\\\]*$R\x04path\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\fR\acontent\"\x83\x01\n" +
 	"\x17DownloadResponseContent\x125\n" +
 	"\x06commit\x18\x01 \x01(\v2\x1d.hades.api.registry.v1.CommitR\x06commit\x121\n" +

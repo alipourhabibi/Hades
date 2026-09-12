@@ -111,7 +111,17 @@ func (s *SQLiteSessionStorage) RevokeAllForUser(ctx context.Context, userID, exc
 }
 
 func (s *SQLiteSessionStorage) ListByUserID(ctx context.Context, userID string) ([]*session.SessionRow, error) {
-	rows, err := s.q(ctx).QueryContext(ctx, `SELECT `+sqliteSessionCols+` WHERE user_id = ? AND revoked_at IS NULL AND expires_at > datetime('now') ORDER BY last_activity_at DESC`, userID)
+	// datetime() on both sides, not a bare column comparison.
+	//
+	// The driver stores a time.Time as RFC3339 with a numeric offset
+	// ("2026-08-07T16:55:49.22+04:00") while datetime('now') yields
+	// "2026-08-07 13:55:49". SQLite compares those as strings, and 'T' sorts
+	// above ' ', so the bare form was true for every row whatever the actual
+	// time: expired sessions stayed in the listing forever. datetime() parses
+	// both spellings and normalises them to UTC.
+	rows, err := s.q(ctx).QueryContext(ctx, `SELECT `+sqliteSessionCols+`
+WHERE user_id = ? AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')
+ORDER BY last_activity_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}

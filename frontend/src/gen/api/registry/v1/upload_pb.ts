@@ -67,6 +67,10 @@ export const UploadRequestContentSchema: GenMessage<UploadRequestContent> = /*@_
 /**
  * UploadRequest is the input for a batch module push.
  *
+ * Unused: the buf.build adapter passes the UploadRequestContent list straight
+ * to the upload handler and never builds this wrapper, so dep_commit_ids is
+ * not read anywhere. It is kept for the eventual internal upload entry point.
+ *
  * @generated from message hades.api.registry.v1.UploadRequest
  */
 export type UploadRequest = Message<"hades.api.registry.v1.UploadRequest"> & {
@@ -78,8 +82,8 @@ export type UploadRequest = Message<"hades.api.registry.v1.UploadRequest"> & {
   contents: UploadRequestContent[];
 
   /**
-   * UUIDs of commits this push depends on. Used to record cross-module
-   * dependency edges.
+   * UUIDs of commits this push depends on. Intended to record cross-module
+   * dependency edges; see the note on this message.
    *
    * @generated from field: repeated string dep_commit_ids = 2;
    */

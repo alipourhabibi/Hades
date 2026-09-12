@@ -114,6 +114,11 @@ type GitStorageConfig struct {
 // DiskStorageConfig holds configuration for the local disk SDK artifact backend.
 type DiskStorageConfig struct {
 	// Path is the directory under which SDK artifacts are stored.
-	// Defaults to "./data/artifacts" when empty.
+	// Defaults to "./_data/artifacts" when empty.
+	//
+	// The leading underscore matters: generated SDKs are Go source trees, and
+	// the go tool would otherwise try to build them as packages of this module.
+	// Two generated files in one directory can declare different package names,
+	// which breaks `go build ./...` for the whole repository.
 	Path string `json:"path" yaml:"path"`
 }

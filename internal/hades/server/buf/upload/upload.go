@@ -27,7 +27,7 @@ type uploadProvider interface {
 // logic to upload.Handler, then converts the result back.
 // The own CLI will call upload.Handler.Upload directly.
 type Server struct {
-	modulev1connect.UploadServiceHandler
+	modulev1connect.UnimplementedUploadServiceHandler
 
 	handler uploadProvider
 	logger  *log.LoggerWrapper

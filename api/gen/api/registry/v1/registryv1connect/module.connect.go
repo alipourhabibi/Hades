@@ -54,18 +54,27 @@ const (
 
 // ModuleServiceClient is a client for the hades.api.registry.v1.ModuleService service.
 type ModuleServiceClient interface {
-	// CreateModuleByName creates a new module owned by the authenticated user.
-	// Returns ALREADY_EXISTS if the name is taken within the owner's namespace.
+	// CreateModuleByName creates a new module in the requested namespace and
+	// seeds it with a README.md and a buf.yaml reflecting the lint and breaking
+	// settings.
+	//
+	// Returns ALREADY_EXISTS if the name is taken within the owner's namespace,
+	// NOT_FOUND if the named owner namespace does not exist, and
+	// PERMISSION_DENIED if the caller may not create modules there.
 	CreateModuleByName(context.Context, *connect.Request[v1.CreateModuleByNameRequest]) (*connect.Response[v1.CreateModuleByNameResponse], error)
-	// ListModules returns modules matching the optional owner filter.
-	// Private modules are included only when the caller has read access.
+	// ListModules returns a page of modules matching the optional owner filter.
+	// Private modules are included only when the caller has read access; modules
+	// they cannot read are filtered out rather than erroring the call.
 	ListModules(context.Context, *connect.Request[v1.ListModulesRequest]) (*connect.Response[v1.ListModulesResponse], error)
 	// GetModule returns the module identified by owner and short name.
-	// Returns NOT_FOUND if the module is private and the caller lacks read access.
+	// Returns NOT_FOUND if the module is private and the caller lacks read
+	// access, so that a private name is indistinguishable from a missing one.
 	GetModule(context.Context, *connect.Request[v1.GetModuleRequest]) (*connect.Response[v1.GetModuleResponse], error)
 	// UpdateModule updates mutable metadata fields of an existing module.
-	// Returns NOT_FOUND if the module does not exist or the caller cannot read it.
-	// Returns PERMISSION_DENIED if the caller does not have update access.
+	//
+	// Returns PERMISSION_DENIED if the caller does not have update access, which
+	// is also the answer for a module that does not exist, since no caller holds
+	// update rights over a name that was never created.
 	UpdateModule(context.Context, *connect.Request[v1.UpdateModuleRequest]) (*connect.Response[v1.UpdateModuleResponse], error)
 }
 
@@ -137,18 +146,27 @@ func (c *moduleServiceClient) UpdateModule(ctx context.Context, req *connect.Req
 
 // ModuleServiceHandler is an implementation of the hades.api.registry.v1.ModuleService service.
 type ModuleServiceHandler interface {
-	// CreateModuleByName creates a new module owned by the authenticated user.
-	// Returns ALREADY_EXISTS if the name is taken within the owner's namespace.
+	// CreateModuleByName creates a new module in the requested namespace and
+	// seeds it with a README.md and a buf.yaml reflecting the lint and breaking
+	// settings.
+	//
+	// Returns ALREADY_EXISTS if the name is taken within the owner's namespace,
+	// NOT_FOUND if the named owner namespace does not exist, and
+	// PERMISSION_DENIED if the caller may not create modules there.
 	CreateModuleByName(context.Context, *connect.Request[v1.CreateModuleByNameRequest]) (*connect.Response[v1.CreateModuleByNameResponse], error)
-	// ListModules returns modules matching the optional owner filter.
-	// Private modules are included only when the caller has read access.
+	// ListModules returns a page of modules matching the optional owner filter.
+	// Private modules are included only when the caller has read access; modules
+	// they cannot read are filtered out rather than erroring the call.
 	ListModules(context.Context, *connect.Request[v1.ListModulesRequest]) (*connect.Response[v1.ListModulesResponse], error)
 	// GetModule returns the module identified by owner and short name.
-	// Returns NOT_FOUND if the module is private and the caller lacks read access.
+	// Returns NOT_FOUND if the module is private and the caller lacks read
+	// access, so that a private name is indistinguishable from a missing one.
 	GetModule(context.Context, *connect.Request[v1.GetModuleRequest]) (*connect.Response[v1.GetModuleResponse], error)
 	// UpdateModule updates mutable metadata fields of an existing module.
-	// Returns NOT_FOUND if the module does not exist or the caller cannot read it.
-	// Returns PERMISSION_DENIED if the caller does not have update access.
+	//
+	// Returns PERMISSION_DENIED if the caller does not have update access, which
+	// is also the answer for a module that does not exist, since no caller holds
+	// update rights over a name that was never created.
 	UpdateModule(context.Context, *connect.Request[v1.UpdateModuleRequest]) (*connect.Response[v1.UpdateModuleResponse], error)
 }
 

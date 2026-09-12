@@ -11,8 +11,8 @@ import (
 	"connectrpc.com/connect"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/buf/dto"
-	commit "github.com/alipourhabibi/Hades/internal/hades/server/commit"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
+	commit "github.com/alipourhabibi/Hades/internal/hades/server/commit"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/alipourhabibi/Hades/utils/log"
@@ -32,7 +32,7 @@ type resourceResolver interface {
 // Server is the buf.build protocol adapter for the graph query.
 // All business logic lives in graph.Handler (own handler).
 type Server struct {
-	modulev1connect.GraphServiceHandler
+	modulev1connect.UnimplementedGraphServiceHandler
 
 	handler  graphProvider
 	resolver resourceResolver

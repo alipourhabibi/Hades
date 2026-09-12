@@ -16,9 +16,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -178,23 +180,30 @@ func (h *Handler) authorize(r *http.Request, owner, modName string) (*registryv1
 	}
 
 	var user *identityv1.User
+	var scopes []string
 	if cred := credentialFromRequest(r); cred != "" {
-		u, scopes, err := h.authz.UserFromToken(ctx, cred)
+		u, s, err := h.authz.UserFromToken(ctx, cred)
 		if err != nil {
 			h.logger.Debug("goproxy: credential rejected", "err", err)
 			return nil, http.StatusUnauthorized
 		}
-		// A scoped PAT must carry module:read to fetch module content.
-		if !authorization.ScopesAllow(scopes, string(constants.ResourceModule), string(constants.ActionRead)) {
-			return nil, http.StatusForbidden
-		}
-		user = u
+		user, scopes = u, s
 	}
 
 	mod, err := h.moduleDB.GetModuleByOwnerAndName(ctx, owner, modName)
 	if err != nil || mod == nil {
 		return nil, http.StatusNotFound
 	}
+
+	// A scoped PAT must carry module:read for this module. The check runs after
+	// the lookup because a scope may name a single module, so the module's full
+	// name is needed to evaluate it. Resolving the module first also means a
+	// request for a module that does not exist gets 404 rather than 403, which
+	// avoids answering "does this exist" for callers whose token cannot read it.
+	if !authorization.ScopesAllow(scopes, string(constants.ResourceModule), string(constants.ActionRead), mod.Name) {
+		return nil, http.StatusForbidden
+	}
+
 	if err := h.authz.CheckReadAccess(ctx, user, []*registryv1.Module{mod}); err != nil {
 		return nil, http.StatusNotFound
 	}
@@ -214,7 +223,52 @@ func (h *Handler) parseModulePath(modulePath string) (owner, modName string, err
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", fmt.Errorf("invalid module path %q: expected {host}/gen/go/{owner}/{module}", modulePath)
 	}
-	return parts[0], parts[1], nil
+	owner, err = unescapeModulePath(parts[0])
+	if err != nil {
+		return "", "", err
+	}
+	modName, err = unescapeModulePath(parts[1])
+	if err != nil {
+		return "", "", err
+	}
+	return owner, modName, nil
+}
+
+// unescapeModulePath reverses the GOPROXY case encoding.
+//
+// The protocol encodes an uppercase letter as "!" followed by its lowercase
+// form, so "Alice/MyMod" arrives as "!alice/!my!mod". Usernames and module
+// names are lowercased on creation today, but nothing in the storage layer
+// enforces that, and a path left escaped would simply fail to resolve.
+// A raw uppercase letter is rejected rather than passed through: the encoding
+// requires it to be escaped, so its presence means the path was not produced by
+// a conforming client and decoding it would guess at the caller's intent.
+func unescapeModulePath(escaped string) (string, error) {
+	if !strings.ContainsAny(escaped, "!ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+		return escaped, nil // common case: already lowercase, nothing to decode
+	}
+	var b strings.Builder
+	b.Grow(len(escaped))
+	for i := 0; i < len(escaped); i++ {
+		c := escaped[i]
+		if c != '!' {
+			if c >= 'A' && c <= 'Z' {
+				return "", fmt.Errorf("invalid module path %q: unescaped uppercase letter", escaped)
+			}
+			b.WriteByte(c)
+			continue
+		}
+		i++
+		if i >= len(escaped) {
+			return "", fmt.Errorf("invalid module path %q: trailing escape character", escaped)
+		}
+		next := escaped[i]
+		if next < 'a' || next > 'z' {
+			return "", fmt.Errorf("invalid module path %q: %q is not an escapable character", escaped, next)
+		}
+		b.WriteByte(next - ('a' - 'A'))
+	}
+	return b.String(), nil
 }
 
 // toPseudoVersion converts a commit to a Go pseudo-version:
@@ -283,25 +337,55 @@ func (h *Handler) GoImportHandler() http.Handler {
 			return
 		}
 
+		// The path is reflected into the response, so it is matched against a
+		// strict pattern first. Without this an attacker-controlled path is
+		// interpolated into an HTML attribute on the registry's own origin,
+		// which is a reflected XSS against every session held in that browser.
+		if !goImportPathPattern.MatchString(r.URL.Path) {
+			http.NotFound(w, r)
+			return
+		}
+
 		// Full module path = registryHost + request path
 		// e.g. path="/gen/go/owner/module" → "example.com/gen/go/owner/module"
 		modPath := h.registryHost + r.URL.Path
 
-		// Determine scheme: X-Forwarded-Proto (behind reverse proxy) → TLS → http
+		// Determine scheme: X-Forwarded-Proto (behind reverse proxy) → TLS → http.
+		// The header value is attacker-controlled unless a proxy overwrites it,
+		// so only the two schemes this server can actually serve are accepted.
 		scheme := "http"
-		if fwd := r.Header.Get("X-Forwarded-Proto"); fwd != "" {
-			scheme = fwd
-		} else if r.TLS != nil {
+		if r.TLS != nil {
 			scheme = "https"
+		}
+		if fwd := r.Header.Get("X-Forwarded-Proto"); fwd == "https" || fwd == "http" {
+			scheme = fwd
 		}
 		proxyURL := fmt.Sprintf("%s://%s/go", scheme, h.registryHost)
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w,
-			`<!DOCTYPE html><html><head><meta name="go-import" content="%s mod %s"></head><body></body></html>`,
-			modPath, proxyURL)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		// Escaped as well as pattern-matched: the pattern is the guarantee, the
+		// escaping is what keeps this safe if the pattern is ever loosened.
+		if err := goImportTemplate.Execute(w, goImportData{ModulePath: modPath, ProxyURL: proxyURL}); err != nil {
+			h.logger.Error("goproxy: go-import template", "err", err)
+		}
 	})
 }
+
+// goImportPathPattern constrains the go-get discovery path to exactly the shape
+// this registry serves: /gen/go/{owner}/{module}.
+var goImportPathPattern = regexp.MustCompile(`^/gen/go/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/?$`)
+
+type goImportData struct {
+	ModulePath string
+	ProxyURL   string
+}
+
+// goImportTemplate renders the go-import discovery document. html/template
+// applies context-aware escaping to both interpolations.
+var goImportTemplate = template.Must(template.New("goimport").Parse(
+	`<!DOCTYPE html><html><head><meta name="go-import" content="{{.ModulePath}} mod {{.ProxyURL}}"></head><body></body></html>`,
+))
 
 // handleList serves /@v/list - newline-separated pseudo-versions, newest first.
 func (h *Handler) handleList(w http.ResponseWriter, r *http.Request, mod *registryv1.Module) {
@@ -394,16 +478,28 @@ func (h *Handler) handleZip(w http.ResponseWriter, r *http.Request, mod *registr
 		return
 	}
 
-	// Fetch all files from MinIO at "{owner/module}/{commit_hash}/go/".
+	// List the artifact keys without reading any content. Files are streamed one
+	// at a time below, so peak memory is one file rather than the whole SDK
+	// multiplied by the number of concurrent downloads.
 	s3Prefix := fmt.Sprintf("%s/%s/go", commit.Module.Name, commit.CommitHash)
-	files, err := h.backend.Download(ctx, s3Prefix)
+	paths, err := h.backend.ListFiles(ctx, s3Prefix)
 	if err != nil {
-		h.logger.Error("goproxy: Download from S3", "err", err)
+		h.logger.Error("goproxy: list SDK artifacts", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if len(files) == 0 {
+	if len(paths) == 0 {
 		http.Error(w, "no Go SDK files found in storage", http.StatusNotFound)
+		return
+	}
+
+	// SDK output for a commit is immutable, so the response can be cached hard.
+	// This is what keeps repeated `go get` and CI runs from re-reading the whole
+	// artifact set out of object storage on every request.
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("ETag", `"`+commit.CommitHash+`-go"`)
+	if match := r.Header.Get("If-None-Match"); match != "" && match == `"`+commit.CommitHash+`-go"` {
+		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 
@@ -411,8 +507,8 @@ func (h *Handler) handleZip(w http.ResponseWriter, r *http.Request, mod *registr
 	dirPrefix := modulePath + "@" + ver + "/"
 
 	hasGoMod := false
-	for _, f := range files {
-		if f.Path == "go.mod" {
+	for _, p := range paths {
+		if p == "go.mod" {
 			hasGoMod = true
 			break
 		}
@@ -428,16 +524,36 @@ func (h *Handler) handleZip(w http.ResponseWriter, r *http.Request, mod *registr
 		}
 	}
 
-	for _, file := range files {
-		f, err := zw.Create(dirPrefix + file.Path)
-		if err != nil {
-			h.logger.Error("goproxy: zip Create", "path", file.Path, "err", err)
-			continue
+	for _, p := range paths {
+		if err := h.streamIntoZip(ctx, zw, s3Prefix+"/"+p, dirPrefix+p); err != nil {
+			// The response body is already partially written, so the status is
+			// long since sent. Abandoning the zip leaves the client with a
+			// truncated archive it will reject, which is the correct outcome:
+			// completing it would hand over a silently incomplete module.
+			h.logger.Error("goproxy: stream SDK file", "path", p, "err", err)
+			return
 		}
-		_, _ = f.Write(file.Content)
 	}
 
-	_ = zw.Close()
+	if err := zw.Close(); err != nil {
+		h.logger.Error("goproxy: close zip", "err", err)
+	}
+}
+
+// streamIntoZip copies one stored object into the zip without buffering it.
+func (h *Handler) streamIntoZip(ctx context.Context, zw *zip.Writer, srcKey, zipPath string) error {
+	rc, _, err := h.backend.GetFile(ctx, srcKey)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	entry, err := zw.Create(zipPath)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(entry, rc)
+	return err
 }
 
 // handleLatest serves /@latest - version info for the newest Go SDK.

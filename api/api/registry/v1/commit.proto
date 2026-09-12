@@ -45,13 +45,17 @@ message Commit {
   google.protobuf.Timestamp update_time = 4;
   // UUID of the user or organization that owns the module.
   string owner_id = 5;
-  // Full owner record, populated in read responses.
+  // Owner record. Only username is populated; use UserService.GetUser or
+  // OrgService.GetOrg for the full profile.
   hades.api.identity.v1.User owner = 6;
   // UUID of the module this commit belongs to.
   string module_id = 7;
-  // Full module record, populated in read responses.
+  // Module record. Only name is populated; use ModuleService.GetModule for the
+  // full record.
   hades.api.registry.v1.Module module = 8;
-  // Content digest for integrity verification.
+  // Content digest for integrity verification. The value is empty on the
+  // initial commit that CreateModuleByName seeds, which carries no uploaded
+  // files to digest.
   Digest digest = 9;
   // UUID of the user who pushed this commit.
   string created_by_user_id = 10;
@@ -163,6 +167,9 @@ message ListModuleFilesRequest {
   string module = 2 [(buf.validate.field).string.min_len = 1];
   // Directory to list. Empty string or "." means the repository root.
   string path = 3;
+  // Commit to read the tree from. Empty means the default branch head.
+  // The commit must belong to the requested module.
+  string commit_hash = 4;
 }
 
 // ListModuleFilesResponse carries the entries at the requested path.
@@ -178,6 +185,9 @@ message GetFileContentRequest {
   string module = 2 [(buf.validate.field).string.min_len = 1];
   // Full file path from the repository root.
   string path = 3 [(buf.validate.field).string.min_len = 1];
+  // Commit to read the file from. Empty means the default branch head.
+  // The commit must belong to the requested module.
+  string commit_hash = 4;
 }
 
 // GetFileContentResponse carries the raw content of the requested file.
@@ -192,8 +202,13 @@ message GetFileContentResponse {
 //
 // Commits are immutable once created. The digest field allows clients to
 // verify content integrity independent of the transport layer.
+//
+// Every RPC here is readable anonymously and enforces read access per module,
+// so a private module a caller cannot read is reported as NOT_FOUND rather
+// than PERMISSION_DENIED. Commit hashes are unique registry-wide, so any RPC
+// taking one also checks that the commit belongs to the named module.
 service CommitService {
-  // ListCommits returns all commits for the given module, ordered newest first.
+  // ListCommits returns a page of commits for the given module, newest first.
   // Returns NOT_FOUND if the module does not exist or the caller cannot read it.
   rpc ListCommits(ListCommitsRequest) returns (ListCommitsResponse);
 
@@ -207,12 +222,16 @@ service CommitService {
   // as additions. Returns NOT_FOUND if the commit hash does not exist.
   rpc GetCommitDiff(GetCommitDiffRequest) returns (GetCommitDiffResponse);
 
-  // ListModuleFiles returns the depth-1 contents of a directory inside the
-  // latest commit of a module repository.
-  // Returns NOT_FOUND if the module or path does not exist.
+  // ListModuleFiles returns the depth-1 contents of a directory in the module
+  // repository, read from commit_hash or from the default branch head when
+  // that is empty.
+  //
+  // Returns NOT_FOUND if the module or path does not exist, or if commit_hash
+  // is unknown or belongs to a different module.
   rpc ListModuleFiles(ListModuleFilesRequest) returns (ListModuleFilesResponse);
 
-  // GetFileContent returns the raw content of a single file by its path.
-  // Returns NOT_FOUND if the module or file path does not exist.
+  // GetFileContent returns the raw content of a single file by its path, read
+  // from commit_hash or from the default branch head when that is empty.
+  // Returns NOT_FOUND if the module, commit, or file path does not exist.
   rpc GetFileContent(GetFileContentRequest) returns (GetFileContentResponse);
 }

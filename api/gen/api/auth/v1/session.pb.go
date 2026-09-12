@@ -162,6 +162,7 @@ func (*ListSessionsRequest) Descriptor() ([]byte, []int) {
 type ListSessionsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Active sessions for the caller, ordered by last_activity_at descending.
+	// Revoked and expired sessions are omitted.
 	Sessions      []*Session `protobuf:"bytes,1,rep,name=sessions,proto3" json:"sessions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

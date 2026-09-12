@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
-	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
+	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/gitalyoplog"
+	notificationdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/notification"
 	gitstorage "github.com/alipourhabibi/Hades/internal/hades/storage/git"
 	"github.com/alipourhabibi/Hades/internal/telemetry"
 	connErr "github.com/alipourhabibi/Hades/utils/errors"
@@ -36,12 +36,61 @@ type uploadWorkItem struct {
 	moduleId     string
 	previousHead string
 	prevFiles    []*registryv1.File
+	checks       ciResult
+}
+
+// ciResult records what the pre-push checks actually did, so the outcome can be
+// persisted against the commit they cleared.
+//
+// Only a passing run is ever recorded. A lint or breaking violation rejects the
+// push, and CIRun rows are keyed by (module, commit_hash), so a rejected push
+// has no commit to key a record on.
+type ciResult struct {
+	// ran is false when linting is switched off for the deployment, in which
+	// case no record is written: a row claiming "passed" for checks that never
+	// executed would be worse than no row.
+	ran bool
+	// breakingRan is false when the module has breaking checks disabled or the
+	// push has no predecessor to compare against. breaking_passed is still
+	// recorded as true in that case, since nothing was found to break.
+	breakingRan bool
+}
+
+const (
+	// defaultMaxUploadFiles and defaultMaxUploadBytes bound a single push.
+	// Upload merges the incoming set over every blob of the previous commit and
+	// holds the result in memory, so without a cap one request can exhaust the
+	// process. Overridable via sdk config.
+	defaultMaxUploadFiles = 10_000
+	defaultMaxUploadBytes = 256 << 20 // 256 MiB
+)
+
+// checkUploadLimits rejects a push that exceeds the configured file count or
+// total byte size.
+func (h *Handler) checkUploadLimits(files []*registryv1.File) error {
+	maxFiles := h.sdkConfig.MaxUploadFiles
+	if maxFiles <= 0 {
+		maxFiles = defaultMaxUploadFiles
+	}
+	maxBytes := h.sdkConfig.MaxUploadBytes
+	if maxBytes <= 0 {
+		maxBytes = defaultMaxUploadBytes
+	}
+	if len(files) > maxFiles {
+		return connErr.ResourceExhausted(fmt.Sprintf("upload contains %d files, limit is %d", len(files), maxFiles))
+	}
+	var total int64
+	for _, f := range files {
+		total += int64(len(f.Content))
+		if total > maxBytes {
+			return connErr.ResourceExhausted(fmt.Sprintf("upload exceeds the %d byte limit", maxBytes))
+		}
+	}
+	return nil
 }
 
 func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadRequestContent) ([]*registryv1.Commit, error) {
 	start := time.Now()
-	var memBefore runtime.MemStats
-	runtime.ReadMemStats(&memBefore)
 
 	tracer := telemetry.Tracer("hades/upload")
 	ctx, span := tracer.Start(ctx, "upload")
@@ -57,6 +106,24 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 		span.SetStatus(codes.Error, "no user in context")
 		telemetry.UploadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
 		return nil, err
+	}
+
+	// Validate every path before any work happens. The buf.build protocol
+	// adapter carries buf's own wire types, which protovalidate cannot
+	// constrain, so this is the only check covering both upload routes.
+	for _, content := range contents {
+		if err := paths.Validate(content.Files); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "invalid file path")
+			telemetry.UploadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
+			return nil, connErr.InvalidArgument(err.Error())
+		}
+		if err := h.checkUploadLimits(content.Files); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "upload too large")
+			telemetry.UploadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
+			return nil, err
+		}
 	}
 
 	policies := make([]*constants.Policy, 0, len(contents))
@@ -102,7 +169,7 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 
 		moduleCommit, err := h.commitDB.GetCommitByOwnerModule(ctx, []*registryv1.ModuleRef{content.ModuleRef})
 		if err != nil {
-			return nil, connErr.FromPgx(err)
+			return nil, connErr.FromDB(err)
 		}
 		emptyCommit := len(moduleCommit) == 0
 		var previousHead string
@@ -169,7 +236,7 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 		dig, _ := strings.CutPrefix(digest.String(), "shake256:")
 		commit, err := h.commitDB.GetCommitByDigest(ctx, module[0].Id, dig)
 		if err != nil {
-			return nil, connErr.FromPgx(err)
+			return nil, connErr.FromDB(err)
 		}
 		if commit != nil {
 			dedupCommits = append(dedupCommits, commit)
@@ -186,9 +253,15 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 			gitFiles[i] = &gitstorage.File{Path: f.Path, Content: f.Content}
 		}
 
-		if !emptyCommit && h.protoLinter != nil && h.sdkConfig.LintEnabled {
+		// Lint runs on every push including the first. Only the breaking check
+		// needs a predecessor, and runProtoChecks already guards that on
+		// len(prevFiles) > 0.
+		var checks ciResult
+		if h.protoLinter != nil && h.sdkConfig.LintEnabled {
 			_, checksSpan := tracer.Start(ctx, "upload.proto_checks")
-			if err := h.runProtoChecks(ctx, checksSpan, files, prevFiles, lintPresetToRule(module[0].LintPreset), module[0].BreakingEnabled); err != nil {
+			var err error
+			checks, err = h.runProtoChecks(ctx, checksSpan, files, prevFiles, lintPresetToRule(module[0].LintPreset), module[0].BreakingEnabled)
+			if err != nil {
 				checksSpan.End()
 				return nil, err
 			}
@@ -206,11 +279,11 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 			moduleId:     module[0].Id,
 			previousHead: previousHead,
 			prevFiles:    prevFiles,
+			checks:       checks,
 		})
 	}
 
 	var newCommits []*registryv1.Commit
-	var totalGitalyAllocBytes int64
 
 	for _, w := range workItems {
 		var logID uuid.UUID
@@ -218,8 +291,6 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 			logID, _ = h.gitalyOpLog.CreatePending(ctx, gitalyoplog.OpCommitFiles, w.module.Name, w.userId)
 		}
 
-		var gitalyMemBefore runtime.MemStats
-		runtime.ReadMemStats(&gitalyMemBefore)
 		_, gitalySpan := tracer.Start(ctx, "upload.gitaly_write")
 
 		wCopy := w
@@ -246,9 +317,6 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 			return nil, connErr.Internal("cannot parse commit UUID")
 		}
 
-		var gitalyMemAfter runtime.MemStats
-		runtime.ReadMemStats(&gitalyMemAfter)
-		totalGitalyAllocBytes += int64(gitalyMemAfter.TotalAlloc - gitalyMemBefore.TotalAlloc)
 		gitalySpan.End()
 
 		result, err := h.uow.Do(ctx, func(txCtx context.Context) (interface{}, error) {
@@ -259,13 +327,26 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 				wCopy.digestStr, wCopy.userId, "",
 			); err != nil {
 				_ = h.gitStorage.RollbackCommit(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, commitId, wCopy.previousHead)
-				return nil, connErr.FromPgx(err)
+				return nil, connErr.FromDB(err)
+			}
+
+			// The CI record goes in with the commit rather than after it. It is
+			// the answer to "did this commit pass the checks", and a commit
+			// without one is exactly the gap that made GetCIRun always 404.
+			if h.ciRunDB != nil && wCopy.checks.ran {
+				if _, err := h.ciRunDB.Create(
+					txCtx, wCopy.moduleId, commitId,
+					true, true, nil, nil,
+				); err != nil {
+					_ = h.gitStorage.RollbackCommit(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, commitId, wCopy.previousHead)
+					return nil, connErr.FromDB(err)
+				}
 			}
 
 			if h.sdkConfig.Enabled && len(h.sdkConfig.Generators) > 0 {
 				if err := h.sdkJobDB.CreateBatch(txCtx, id.String(), wCopy.moduleId, h.sdkConfig.Generators); err != nil {
 					_ = h.gitStorage.RollbackCommit(ctx, wCopy.module.Name, wCopy.module.DefaultBranch, commitId, wCopy.previousHead)
-					return nil, connErr.FromPgx(err)
+					return nil, connErr.FromDB(err)
 				}
 				telemetry.SDKJobsEnqueued.Add(ctx, int64(len(h.sdkConfig.Generators)),
 					metric.WithAttributes(attribute.String("module", wCopy.moduleId)),
@@ -295,6 +376,7 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 		if h.gitalyOpLog != nil && logID != uuid.Nil {
 			_ = h.gitalyOpLog.UpdateStatus(ctx, logID, gitalyoplog.StatusCompleted, newCommit.CommitHash, "")
 		}
+		h.notifyCommitPushed(ctx, wCopy.module, newCommit, user)
 		newCommits = append(newCommits, newCommit)
 	}
 
@@ -302,29 +384,31 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 	commits = append(commits, dedupCommits...)
 	commits = append(commits, newCommits...)
 
-	var memAfter runtime.MemStats
-	runtime.ReadMemStats(&memAfter)
-	allocDelta := int64(memAfter.TotalAlloc - memBefore.TotalAlloc)
-	gcRuns := int64(memAfter.NumGC - memBefore.NumGC)
-	gcPauseMs := float64(memAfter.PauseTotalNs-memBefore.PauseTotalNs) / 1e6
-
+	// Process-wide allocation and GC counters are deliberately not sampled here.
+	// runtime.ReadMemStats stops the world, and under any concurrency its
+	// deltas attribute every goroutine's allocations to whichever request
+	// happened to bracket them. Runtime memory is exported once per interval by
+	// the telemetry package instead.
 	telemetry.UploadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "ok")))
 	telemetry.UploadProtoBytes.Record(ctx, totalProtoBytes)
 	telemetry.UploadFileCount.Record(ctx, totalFileCount)
-	telemetry.UploadAllocBytes.Record(ctx, allocDelta)
-	telemetry.UploadGitalyAllocBytes.Record(ctx, totalGitalyAllocBytes)
-	telemetry.UploadGCRuns.Record(ctx, gcRuns)
-	telemetry.UploadGCPauseMs.Record(ctx, gcPauseMs)
 
 	return commits, nil
 }
 
-func (h *Handler) runProtoChecks(ctx context.Context, checksSpan trace.Span, files, prevFiles []*registryv1.File, lintPreset string, breakingEnabled bool) error {
+// runProtoChecks lints the incoming file set and, when the module asks for it
+// and a predecessor exists, checks it for breaking changes against that
+// predecessor. A violation is returned as an error and rejects the push.
+//
+// The returned ciResult describes what ran, so a cleared push can record it.
+func (h *Handler) runProtoChecks(ctx context.Context, checksSpan trace.Span, files, prevFiles []*registryv1.File, lintPreset string, breakingEnabled bool) (ciResult, error) {
+	var result ciResult
+
 	tmpDir, err := os.MkdirTemp("", "hades-proto-*")
 	if err != nil {
 		checksSpan.RecordError(err)
 		checksSpan.SetStatus(codes.Error, "mktemp")
-		return connErr.Internal("failed to create temp directory")
+		return result, connErr.Internal("failed to create temp directory")
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
@@ -332,7 +416,7 @@ func (h *Handler) runProtoChecks(ctx context.Context, checksSpan trace.Span, fil
 		if err := writeProtoFile(tmpDir, f.Path, f.Content); err != nil {
 			checksSpan.RecordError(err)
 			checksSpan.SetStatus(codes.Error, "write proto file")
-			return connErr.Internal("failed to write proto file")
+			return result, connErr.Internal("failed to write proto file")
 		}
 	}
 
@@ -341,21 +425,22 @@ func (h *Handler) runProtoChecks(ctx context.Context, checksSpan trace.Span, fil
 	if err := ensureBufYAML(tmpDir, lintPreset, breakingEnabled); err != nil {
 		checksSpan.RecordError(err)
 		checksSpan.SetStatus(codes.Error, "write buf.yaml")
-		return connErr.Internal("failed to write buf.yaml")
+		return result, connErr.Internal("failed to write buf.yaml")
 	}
 
 	if err := h.protoLinter.Lint(ctx, tmpDir); err != nil {
 		checksSpan.RecordError(err)
 		checksSpan.SetStatus(codes.Error, "lint")
-		return connErr.InvalidArgument(err.Error())
+		return result, connErr.InvalidArgument(err.Error())
 	}
+	result.ran = true
 
 	if h.breakingChecker != nil && h.sdkConfig.BreakingEnabled && breakingEnabled && len(prevFiles) > 0 {
 		prevTmpDir, err := os.MkdirTemp("", "hades-prev-*")
 		if err != nil {
 			checksSpan.RecordError(err)
 			checksSpan.SetStatus(codes.Error, "mktemp prev")
-			return connErr.Internal("failed to create temp directory for previous files")
+			return result, connErr.Internal("failed to create temp directory for previous files")
 		}
 		defer func() { _ = os.RemoveAll(prevTmpDir) }()
 
@@ -363,16 +448,67 @@ func (h *Handler) runProtoChecks(ctx context.Context, checksSpan trace.Span, fil
 			if err := writeProtoFile(prevTmpDir, f.Path, f.Content); err != nil {
 				checksSpan.RecordError(err)
 				checksSpan.SetStatus(codes.Error, "write prev proto file")
-				return connErr.Internal("failed to write previous proto file")
+				return result, connErr.Internal("failed to write previous proto file")
 			}
 		}
 		if err := h.breakingChecker.Check(ctx, tmpDir, prevTmpDir); err != nil {
 			checksSpan.RecordError(err)
 			checksSpan.SetStatus(codes.Error, "breaking check")
-			return connErr.InvalidArgument(err.Error())
+			return result, connErr.InvalidArgument(err.Error())
+		}
+		result.breakingRan = true
+	}
+	return result, nil
+}
+
+// notifyCommitPushed raises a notification on everyone with a stake in the
+// module except the person who pushed.
+//
+// Best effort by design: a notification that cannot be written must not fail a
+// push that has already been committed to git and to the database.
+func (h *Handler) notifyCommitPushed(ctx context.Context, module *registryv1.Module, commit *registryv1.Commit, pusher *identityv1.User) {
+	if h.notificationDB == nil || module == nil || commit == nil {
+		return
+	}
+
+	// An organisation owns modules but nobody signs in as one, so the members
+	// are the real recipients. ListMembers is empty for a personal namespace,
+	// where the owner is a person who can be notified directly.
+	recipients := []string{}
+	if h.orgDB != nil {
+		if members, err := h.orgDB.ListMembers(ctx, module.OwnerId); err == nil {
+			for _, m := range members {
+				if m.User != nil {
+					recipients = append(recipients, m.User.Id)
+				}
+			}
+		} else {
+			h.logger.Error("failed to list org members for push notification", "error", err, "module", module.Name)
 		}
 	}
-	return nil
+	if len(recipients) == 0 {
+		recipients = append(recipients, module.OwnerId)
+	}
+
+	title := fmt.Sprintf("New commit on %s", module.Name)
+	body := fmt.Sprintf("%s pushed %s to %s.", pusher.Username, shortHash(commit.CommitHash), module.Name)
+
+	for _, userID := range recipients {
+		if userID == "" || userID == pusher.Id {
+			continue
+		}
+		if err := h.notificationDB.Create(ctx, userID, notificationdb.TypeCommitPushed, title, body, commit.Id); err != nil {
+			h.logger.Error("failed to create push notification", "error", err, "user_id", userID, "module", module.Name)
+		}
+	}
+}
+
+// shortHash abbreviates a git commit hash for display.
+func shortHash(hash string) string {
+	if len(hash) > 12 {
+		return hash[:12]
+	}
+	return hash
 }
 
 // generateBufYAML builds buf.yaml content from the module's current DB settings.
@@ -412,8 +548,21 @@ func ensureBufYAML(dir, lintPreset string, breakingEnabled bool) error {
 	return os.WriteFile(filepath.Join(dir, "buf.yaml"), []byte(content), 0o644)
 }
 
-func writeProtoFile(dir, path string, content []byte) error {
-	dest := filepath.Join(dir, path)
+// writeProtoFile writes one upload file into dir.
+//
+// The path is validated and the resolved destination is confirmed to still be
+// under dir. Upload rejects unsafe paths before reaching this point; the check
+// is repeated here because this function turns caller-supplied strings into
+// filesystem writes and must not depend on a caller doing the right thing.
+func writeProtoFile(dir, relPath string, content []byte) error {
+	if err := paths.ValidatePath(relPath); err != nil {
+		return err
+	}
+	dest := filepath.Join(dir, relPath)
+	cleanDir := filepath.Clean(dir) + string(os.PathSeparator)
+	if !strings.HasPrefix(filepath.Clean(dest), cleanDir) {
+		return fmt.Errorf("refusing to write outside the working directory: %q", relPath)
+	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}

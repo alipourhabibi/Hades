@@ -27,6 +27,9 @@ func Unimplemented(msg string) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New(msg))
 }
 func Unavailable(msg string) error { return connect.NewError(connect.CodeUnavailable, errors.New(msg)) }
+func FailedPrecondition(msg string) error {
+	return connect.NewError(connect.CodeFailedPrecondition, errors.New(msg))
+}
 func ResourceExhausted(msg string) error {
 	return connect.NewError(connect.CodeResourceExhausted, errors.New(msg))
 }

@@ -2,6 +2,7 @@ package gitaly
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -12,6 +13,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+// ErrTreeNotFound is returned when a requested path or revision is absent from
+// the repository. GitalyStorage maps it onto git.ErrNotFound, which is the
+// error the git.Storage interface documents.
+var ErrTreeNotFound = errors.New("gitaly: tree entry not found")
 
 // TreeService wraps Gitaly's CommitServiceClient and BlobServiceClient.
 type TreeService struct {
@@ -32,8 +38,21 @@ func newTreeService(c config.Gitaly) (*TreeService, error) {
 	}, nil
 }
 
-// GetFileContent fetches the raw byte content of a single file at the latest commit.
-func (s *TreeService) GetFileContent(ctx context.Context, owner, module, filePath string) ([]byte, int64, error) {
+// revisionOrHead returns the git revision to read, defaulting to HEAD.
+//
+// Callers pass a commit hash when the request named one. Reading HEAD in that
+// case would silently answer from the default branch, so the caller would get
+// content from a commit other than the one it asked for.
+func revisionOrHead(ref string) []byte {
+	if ref == "" {
+		return []byte("HEAD")
+	}
+	return []byte(ref)
+}
+
+// GetFileContent fetches the raw byte content of a single file at ref.
+// An empty ref reads the repository HEAD.
+func (s *TreeService) GetFileContent(ctx context.Context, owner, module, ref, filePath string) ([]byte, int64, error) {
 	repoPath := owner + "/" + module
 	repo := &pb.Repository{
 		StorageName:  s.defaultStorageName,
@@ -49,7 +68,7 @@ func (s *TreeService) GetFileContent(ctx context.Context, owner, module, filePat
 
 	stream, err := s.commitClient.GetTreeEntries(ctx, &pb.GetTreeEntriesRequest{
 		Repository: repo,
-		Revision:   []byte("HEAD"),
+		Revision:   revisionOrHead(ref),
 		Path:       []byte(dir),
 		Recursive:  false,
 	})
@@ -78,7 +97,7 @@ func (s *TreeService) GetFileContent(ctx context.Context, owner, module, filePat
 	}
 
 	if oid == "" {
-		return nil, 0, fmt.Errorf("file not found: %s", filePath)
+		return nil, 0, ErrTreeNotFound
 	}
 
 	blobStream, err := s.blobClient.GetBlob(ctx, &pb.GetBlobRequest{
@@ -109,8 +128,9 @@ func (s *TreeService) GetFileContent(ctx context.Context, owner, module, filePat
 	return content, size, nil
 }
 
-// GetTreeEntries returns the depth-1 contents of dir at the latest commit.
-func (s *TreeService) GetTreeEntries(ctx context.Context, owner, module, dir string) ([]*registryv1.FileEntry, error) {
+// GetTreeEntries returns the depth-1 contents of dir at ref.
+// An empty ref reads the repository HEAD.
+func (s *TreeService) GetTreeEntries(ctx context.Context, owner, module, ref, dir string) ([]*registryv1.FileEntry, error) {
 	repoPath := owner + "/" + module
 	repo := &pb.Repository{
 		StorageName:  s.defaultStorageName,
@@ -125,7 +145,7 @@ func (s *TreeService) GetTreeEntries(ctx context.Context, owner, module, dir str
 
 	stream, err := s.commitClient.GetTreeEntries(ctx, &pb.GetTreeEntriesRequest{
 		Repository: repo,
-		Revision:   []byte("HEAD"),
+		Revision:   revisionOrHead(ref),
 		Path:       []byte(dir),
 		Recursive:  false,
 	})
@@ -157,6 +177,13 @@ func (s *TreeService) GetTreeEntries(ctx context.Context, owner, module, dir str
 			}
 			entries = append(entries, entry)
 		}
+	}
+
+	// Git cannot store an empty directory, so no entries under a named path
+	// means the path is not in the tree. Reporting that as an empty listing
+	// would make a typo look like an empty package.
+	if len(entries) == 0 && dir != "." {
+		return nil, ErrTreeNotFound
 	}
 
 	return entries, nil

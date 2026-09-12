@@ -19,7 +19,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file api/registry/v1/module.proto.
  */
 export const file_api_registry_v1_module: GenFile = /*@__PURE__*/
-  fileDesc("ChxhcGkvcmVnaXN0cnkvdjEvbW9kdWxlLnByb3RvEhVoYWRlcy5hcGkucmVnaXN0cnkudjEirgMKBk1vZHVsZRIKCgJpZBgBIAEoCRIvCgtjcmVhdGVfdGltZRgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLdXBkYXRlX3RpbWUYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgwKBG5hbWUYBCABKAkSEAoIb3duZXJfaWQYBSABKAkSOwoKdmlzaWJpbGl0eRgGIAEoDjInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGVWaXNpYmlsaXR5EhMKC2Rlc2NyaXB0aW9uGAcgASgJEhYKDmRlZmF1bHRfYnJhbmNoGAggASgJEjEKBXN0YXRlGAkgASgOMiIuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZVN0YXRlEgsKA3VybBgKIAEoCRIaChJkZWZhdWx0X2xhYmVsX25hbWUYCyABKAkSNgoLbGludF9wcmVzZXQYDCABKA4yIS5oYWRlcy5hcGkucmVnaXN0cnkudjEuTGludFByZXNldBIYChBicmVha2luZ19lbmFibGVkGA0gASgIIjYKCU1vZHVsZVJlZhIKCgJpZBgBIAEoCRINCgVvd25lchgCIAEoCRIOCgZtb2R1bGUYAyABKAki7QEKGUNyZWF0ZU1vZHVsZUJ5TmFtZVJlcXVlc3QSFAoEbmFtZRgBIAEoCUIGukgDyAEBEjsKCnZpc2liaWxpdHkYAiABKA4yJy5oYWRlcy5hcGkucmVnaXN0cnkudjEuTW9kdWxlVmlzaWJpbGl0eRITCgtkZXNjcmlwdGlvbhgDIAEoCRIWCg5kZWZhdWx0X2JyYW5jaBgEIAEoCRI2CgtsaW50X3ByZXNldBgFIAEoDjIhLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5MaW50UHJlc2V0EhgKEGJyZWFraW5nX2VuYWJsZWQYBiABKAgiSwoaQ3JlYXRlTW9kdWxlQnlOYW1lUmVzcG9uc2USLQoGbW9kdWxlGAEgASgLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZSJKChJMaXN0TW9kdWxlc1JlcXVlc3QSDQoFb3duZXIYASABKAkSEQoJcGFnZV9zaXplGAIgASgFEhIKCnBhZ2VfdG9rZW4YAyABKAkiXgoTTGlzdE1vZHVsZXNSZXNwb25zZRIuCgdtb2R1bGVzGAEgAygLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZRIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkivgIKE1VwZGF0ZU1vZHVsZVJlcXVlc3QSFQoFb3duZXIYASABKAlCBrpIA8gBARIUCgRuYW1lGAIgASgJQga6SAPIAQESGAoLZGVzY3JpcHRpb24YAyABKAlIAIgBARJACgp2aXNpYmlsaXR5GAQgASgOMicuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZVZpc2liaWxpdHlIAYgBARI7CgtsaW50X3ByZXNldBgFIAEoDjIhLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5MaW50UHJlc2V0SAKIAQESHQoQYnJlYWtpbmdfZW5hYmxlZBgGIAEoCEgDiAEBQg4KDF9kZXNjcmlwdGlvbkINCgtfdmlzaWJpbGl0eUIOCgxfbGludF9wcmVzZXRCEwoRX2JyZWFraW5nX2VuYWJsZWQiRQoUVXBkYXRlTW9kdWxlUmVzcG9uc2USLQoGbW9kdWxlGAEgASgLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZSI/ChBHZXRNb2R1bGVSZXF1ZXN0EhUKBW93bmVyGAEgASgJQga6SAPIAQESFAoEbmFtZRgCIAEoCUIGukgDyAEBIkIKEUdldE1vZHVsZVJlc3BvbnNlEi0KBm1vZHVsZRgBIAEoCzIdLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGUqcgoQTW9kdWxlVmlzaWJpbGl0eRIhCh1NT0RVTEVfVklTSUJJTElUWV9VTlNQRUNJRklFRBAAEhwKGE1PRFVMRV9WSVNJQklMSVRZX1BVQkxJQxABEh0KGU1PRFVMRV9WSVNJQklMSVRZX1BSSVZBVEUQAiphCgtNb2R1bGVTdGF0ZRIcChhNT0RVTEVfU1RBVEVfVU5TUEVDSUZJRUQQABIXChNNT0RVTEVfU1RBVEVfQUNUSVZFEAESGwoXTU9EVUxFX1NUQVRFX0RFUFJFQ0FURUQQAiqMAQoKTGludFByZXNldBIbChdMSU5UX1BSRVNFVF9VTlNQRUNJRklFRBAAEhcKE0xJTlRfUFJFU0VUX0RFRkFVTFQQARIVChFMSU5UX1BSRVNFVF9CQVNJQxACEhcKE0xJTlRfUFJFU0VUX01JTklNQUwQAxIYChRMSU5UX1BSRVNFVF9DT01NRU5UUxAEMrkDCg1Nb2R1bGVTZXJ2aWNlEnkKEkNyZWF0ZU1vZHVsZUJ5TmFtZRIwLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5DcmVhdGVNb2R1bGVCeU5hbWVSZXF1ZXN0GjEuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkNyZWF0ZU1vZHVsZUJ5TmFtZVJlc3BvbnNlEmQKC0xpc3RNb2R1bGVzEikuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkxpc3RNb2R1bGVzUmVxdWVzdBoqLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5MaXN0TW9kdWxlc1Jlc3BvbnNlEl4KCUdldE1vZHVsZRInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5HZXRNb2R1bGVSZXF1ZXN0GiguaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkdldE1vZHVsZVJlc3BvbnNlEmcKDFVwZGF0ZU1vZHVsZRIqLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5VcGRhdGVNb2R1bGVSZXF1ZXN0GisuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLlVwZGF0ZU1vZHVsZVJlc3BvbnNlQuIBChljb20uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxQgtNb2R1bGVQcm90b1ABWkFnaXRodWIuY29tL2FsaXBvdXJoYWJpYmkvSGFkZXMvYXBpL2dlbi9hcGkvcmVnaXN0cnkvdjE7cmVnaXN0cnl2MaICA0hBUqoCFUhhZGVzLkFwaS5SZWdpc3RyeS5WMcoCFUhhZGVzXEFwaVxSZWdpc3RyeVxWMeICIUhhZGVzXEFwaVxSZWdpc3RyeVxWMVxHUEJNZXRhZGF0YeoCGEhhZGVzOjpBcGk6OlJlZ2lzdHJ5OjpWMWIGcHJvdG8z", [file_buf_validate_validate, file_google_protobuf_timestamp]);
+  fileDesc("ChxhcGkvcmVnaXN0cnkvdjEvbW9kdWxlLnByb3RvEhVoYWRlcy5hcGkucmVnaXN0cnkudjEirgMKBk1vZHVsZRIKCgJpZBgBIAEoCRIvCgtjcmVhdGVfdGltZRgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLdXBkYXRlX3RpbWUYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgwKBG5hbWUYBCABKAkSEAoIb3duZXJfaWQYBSABKAkSOwoKdmlzaWJpbGl0eRgGIAEoDjInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGVWaXNpYmlsaXR5EhMKC2Rlc2NyaXB0aW9uGAcgASgJEhYKDmRlZmF1bHRfYnJhbmNoGAggASgJEjEKBXN0YXRlGAkgASgOMiIuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZVN0YXRlEgsKA3VybBgKIAEoCRIaChJkZWZhdWx0X2xhYmVsX25hbWUYCyABKAkSNgoLbGludF9wcmVzZXQYDCABKA4yIS5oYWRlcy5hcGkucmVnaXN0cnkudjEuTGludFByZXNldBIYChBicmVha2luZ19lbmFibGVkGA0gASgIIjYKCU1vZHVsZVJlZhIKCgJpZBgBIAEoCRINCgVvd25lchgCIAEoCRIOCgZtb2R1bGUYAyABKAki/AEKGUNyZWF0ZU1vZHVsZUJ5TmFtZVJlcXVlc3QSFAoEbmFtZRgBIAEoCUIGukgDyAEBEg0KBW93bmVyGAcgASgJEjsKCnZpc2liaWxpdHkYAiABKA4yJy5oYWRlcy5hcGkucmVnaXN0cnkudjEuTW9kdWxlVmlzaWJpbGl0eRITCgtkZXNjcmlwdGlvbhgDIAEoCRIWCg5kZWZhdWx0X2JyYW5jaBgEIAEoCRI2CgtsaW50X3ByZXNldBgFIAEoDjIhLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5MaW50UHJlc2V0EhgKEGJyZWFraW5nX2VuYWJsZWQYBiABKAgiSwoaQ3JlYXRlTW9kdWxlQnlOYW1lUmVzcG9uc2USLQoGbW9kdWxlGAEgASgLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZSJKChJMaXN0TW9kdWxlc1JlcXVlc3QSDQoFb3duZXIYASABKAkSEQoJcGFnZV9zaXplGAIgASgFEhIKCnBhZ2VfdG9rZW4YAyABKAkiXgoTTGlzdE1vZHVsZXNSZXNwb25zZRIuCgdtb2R1bGVzGAEgAygLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZRIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkivgIKE1VwZGF0ZU1vZHVsZVJlcXVlc3QSFQoFb3duZXIYASABKAlCBrpIA8gBARIUCgRuYW1lGAIgASgJQga6SAPIAQESGAoLZGVzY3JpcHRpb24YAyABKAlIAIgBARJACgp2aXNpYmlsaXR5GAQgASgOMicuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZVZpc2liaWxpdHlIAYgBARI7CgtsaW50X3ByZXNldBgFIAEoDjIhLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5MaW50UHJlc2V0SAKIAQESHQoQYnJlYWtpbmdfZW5hYmxlZBgGIAEoCEgDiAEBQg4KDF9kZXNjcmlwdGlvbkINCgtfdmlzaWJpbGl0eUIOCgxfbGludF9wcmVzZXRCEwoRX2JyZWFraW5nX2VuYWJsZWQiRQoUVXBkYXRlTW9kdWxlUmVzcG9uc2USLQoGbW9kdWxlGAEgASgLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZSI/ChBHZXRNb2R1bGVSZXF1ZXN0EhUKBW93bmVyGAEgASgJQga6SAPIAQESFAoEbmFtZRgCIAEoCUIGukgDyAEBIkIKEUdldE1vZHVsZVJlc3BvbnNlEi0KBm1vZHVsZRgBIAEoCzIdLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGUqcgoQTW9kdWxlVmlzaWJpbGl0eRIhCh1NT0RVTEVfVklTSUJJTElUWV9VTlNQRUNJRklFRBAAEhwKGE1PRFVMRV9WSVNJQklMSVRZX1BVQkxJQxABEh0KGU1PRFVMRV9WSVNJQklMSVRZX1BSSVZBVEUQAiphCgtNb2R1bGVTdGF0ZRIcChhNT0RVTEVfU1RBVEVfVU5TUEVDSUZJRUQQABIXChNNT0RVTEVfU1RBVEVfQUNUSVZFEAESGwoXTU9EVUxFX1NUQVRFX0RFUFJFQ0FURUQQAiqMAQoKTGludFByZXNldBIbChdMSU5UX1BSRVNFVF9VTlNQRUNJRklFRBAAEhcKE0xJTlRfUFJFU0VUX0RFRkFVTFQQARIVChFMSU5UX1BSRVNFVF9CQVNJQxACEhcKE0xJTlRfUFJFU0VUX01JTklNQUwQAxIYChRMSU5UX1BSRVNFVF9DT01NRU5UUxAEMrkDCg1Nb2R1bGVTZXJ2aWNlEnkKEkNyZWF0ZU1vZHVsZUJ5TmFtZRIwLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5DcmVhdGVNb2R1bGVCeU5hbWVSZXF1ZXN0GjEuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkNyZWF0ZU1vZHVsZUJ5TmFtZVJlc3BvbnNlEmQKC0xpc3RNb2R1bGVzEikuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkxpc3RNb2R1bGVzUmVxdWVzdBoqLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5MaXN0TW9kdWxlc1Jlc3BvbnNlEl4KCUdldE1vZHVsZRInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5HZXRNb2R1bGVSZXF1ZXN0GiguaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkdldE1vZHVsZVJlc3BvbnNlEmcKDFVwZGF0ZU1vZHVsZRIqLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5VcGRhdGVNb2R1bGVSZXF1ZXN0GisuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLlVwZGF0ZU1vZHVsZVJlc3BvbnNlQuIBChljb20uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxQgtNb2R1bGVQcm90b1ABWkFnaXRodWIuY29tL2FsaXBvdXJoYWJpYmkvSGFkZXMvYXBpL2dlbi9hcGkvcmVnaXN0cnkvdjE7cmVnaXN0cnl2MaICA0hBUqoCFUhhZGVzLkFwaS5SZWdpc3RyeS5WMcoCFUhhZGVzXEFwaVxSZWdpc3RyeVxWMeICIUhhZGVzXEFwaVxSZWdpc3RyeVxWMVxHUEJNZXRhZGF0YeoCGEhhZGVzOjpBcGk6OlJlZ2lzdHJ5OjpWMWIGcHJvdG8z", [file_buf_validate_validate, file_google_protobuf_timestamp]);
 
 /**
  * Module is the metadata record for a Hades schema repository.
@@ -49,7 +49,7 @@ export type Module = Message<"hades.api.registry.v1.Module"> & {
   updateTime?: Timestamp;
 
   /**
-   * Fully qualified module name in the form "{owner}/{module}".
+   * Fully qualified module name in the form "{owner}/{module}", lowercase.
    * Unique across the registry.
    *
    * @generated from field: string name = 4;
@@ -163,20 +163,33 @@ export const ModuleRefSchema: GenMessage<ModuleRef> = /*@__PURE__*/
   messageDesc(file_api_registry_v1_module, 1);
 
 /**
- * CreateModuleByNameRequest creates a new module owned by the authenticated user.
+ * CreateModuleByNameRequest creates a new module in the caller's namespace or
+ * in an organisation they may write to.
  *
  * @generated from message hades.api.registry.v1.CreateModuleByNameRequest
  */
 export type CreateModuleByNameRequest = Message<"hades.api.registry.v1.CreateModuleByNameRequest"> & {
   /**
-   * Short module name. Must be unique within the owner's namespace.
+   * Short module name, lowercased by the server. Must be unique within the
+   * owner's namespace.
    *
    * @generated from field: string name = 1;
    */
   name: string;
 
   /**
-   * Visibility for the new module. Defaults to PUBLIC when unspecified.
+   * Namespace to create the module in: either the caller's own username or an
+   * organisation the caller may create modules in. Lowercased and trimmed;
+   * empty means the caller's own namespace.
+   *
+   * @generated from field: string owner = 7;
+   */
+  owner: string;
+
+  /**
+   * Visibility for the new module. Stored as given: leaving it UNSPECIFIED
+   * records UNSPECIFIED, which no read path treats as public. Set it
+   * explicitly.
    *
    * @generated from field: hades.api.registry.v1.ModuleVisibility visibility = 2;
    */
@@ -204,7 +217,9 @@ export type CreateModuleByNameRequest = Message<"hades.api.registry.v1.CreateMod
   lintPreset: LintPreset;
 
   /**
-   * Whether backward-compatibility checks are enforced on upload. Defaults to true.
+   * Whether backward-compatibility checks are enforced on upload. Defaults to
+   * false, since an unset proto3 bool is indistinguishable from an explicit
+   * false; send true to enable them.
    *
    * @generated from field: bool breaking_enabled = 6;
    */
@@ -536,16 +551,27 @@ export const LintPresetSchema: GenEnum<LintPreset> = /*@__PURE__*/
 /**
  * ModuleService manages Protobuf schema modules (repositories).
  *
- * Module creation allocates both a metadata row in PostgreSQL and a Git
- * repository in Gitaly. If the DB insert fails after the repository is
- * created, the repository is cleaned up before the error is returned.
+ * Module creation allocates a Git repository in Gitaly and a metadata row in
+ * the configured database (SQLite by default, PostgreSQL when selected). The
+ * git work happens first and the database writes follow in one short
+ * transaction, so no Gitaly round trip is made while a transaction is open.
+ * Compensation is saga-style: if any step after repository creation fails, the
+ * repository is deleted before the error is returned.
+ *
+ * ListModules and GetModule are readable anonymously and return only public
+ * modules in that case.
  *
  * @generated from service hades.api.registry.v1.ModuleService
  */
 export const ModuleService: GenService<{
   /**
-   * CreateModuleByName creates a new module owned by the authenticated user.
-   * Returns ALREADY_EXISTS if the name is taken within the owner's namespace.
+   * CreateModuleByName creates a new module in the requested namespace and
+   * seeds it with a README.md and a buf.yaml reflecting the lint and breaking
+   * settings.
+   *
+   * Returns ALREADY_EXISTS if the name is taken within the owner's namespace,
+   * NOT_FOUND if the named owner namespace does not exist, and
+   * PERMISSION_DENIED if the caller may not create modules there.
    *
    * @generated from rpc hades.api.registry.v1.ModuleService.CreateModuleByName
    */
@@ -555,8 +581,9 @@ export const ModuleService: GenService<{
     output: typeof CreateModuleByNameResponseSchema;
   },
   /**
-   * ListModules returns modules matching the optional owner filter.
-   * Private modules are included only when the caller has read access.
+   * ListModules returns a page of modules matching the optional owner filter.
+   * Private modules are included only when the caller has read access; modules
+   * they cannot read are filtered out rather than erroring the call.
    *
    * @generated from rpc hades.api.registry.v1.ModuleService.ListModules
    */
@@ -567,7 +594,8 @@ export const ModuleService: GenService<{
   },
   /**
    * GetModule returns the module identified by owner and short name.
-   * Returns NOT_FOUND if the module is private and the caller lacks read access.
+   * Returns NOT_FOUND if the module is private and the caller lacks read
+   * access, so that a private name is indistinguishable from a missing one.
    *
    * @generated from rpc hades.api.registry.v1.ModuleService.GetModule
    */
@@ -578,8 +606,10 @@ export const ModuleService: GenService<{
   },
   /**
    * UpdateModule updates mutable metadata fields of an existing module.
-   * Returns NOT_FOUND if the module does not exist or the caller cannot read it.
-   * Returns PERMISSION_DENIED if the caller does not have update access.
+   *
+   * Returns PERMISSION_DENIED if the caller does not have update access, which
+   * is also the answer for a module that does not exist, since no caller holds
+   * update rights over a name that was never created.
    *
    * @generated from rpc hades.api.registry.v1.ModuleService.UpdateModule
    */

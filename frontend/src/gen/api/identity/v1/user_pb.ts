@@ -25,10 +25,6 @@ export const file_api_identity_v1_user: GenFile = /*@__PURE__*/
 /**
  * User is the canonical account record shared by individuals and organizations.
  *
- * Note: the password field is intentionally empty in all read responses.
- * It exists in this message only for internal service-to-service use; it is
- * never populated in responses returned to external callers.
- *
  * @generated from message hades.api.identity.v1.User
  */
 export type User = Message<"hades.api.identity.v1.User"> & {
@@ -54,21 +50,27 @@ export type User = Message<"hades.api.identity.v1.User"> & {
   updateTime?: Timestamp;
 
   /**
-   * Unique username used in module paths and mentions.
+   * Unique username used in module paths and mentions. Always lowercase.
    *
    * @generated from field: string username = 4;
    */
   username: string;
 
   /**
-   * Email address. Not returned in public read responses.
+   * Email address of the account.
+   *
+   * Returned only on the caller's own record. On anyone else's it is cleared,
+   * in profile reads and in listings alike, so the registry cannot be used to
+   * harvest addresses. Also empty for organization accounts, which have no
+   * address of their own.
    *
    * @generated from field: string email = 5;
    */
   email: string;
 
   /**
-   * Reserved for internal use. Always empty in external responses.
+   * Reserved. Always empty: the password hash is read through a separate
+   * internal path and is never carried on this message.
    *
    * @generated from field: string password = 6;
    */
@@ -112,8 +114,10 @@ export const UserSchema: GenMessage<User> = /*@__PURE__*/
 
 /**
  * CreateUserRequest creates a new user account.
- * New clients should use AuthenticationService.Register instead, which also
- * sends a verification email. This RPC exists for internal/admin use.
+ *
+ * Not implemented: this RPC returns UNIMPLEMENTED. Use
+ * AuthenticationService.Register, which also validates the password against the
+ * configured policy and sends a verification email.
  *
  * @generated from message hades.api.identity.v1.CreateUserRequest
  */
@@ -200,14 +204,15 @@ export type GetUserResponse = Message<"hades.api.identity.v1.GetUserResponse"> &
   user?: User;
 
   /**
-   * Number of modules owned by this user or organization.
+   * Number of modules owned by this user, including private ones the caller
+   * cannot read.
    *
    * @generated from field: int32 module_count = 2;
    */
   moduleCount: number;
 
   /**
-   * Organizations the user belongs to. Empty for organization accounts.
+   * Organizations the user belongs to.
    *
    * @generated from field: repeated hades.api.identity.v1.User organizations = 3;
    */
@@ -228,7 +233,8 @@ export const GetUserResponseSchema: GenMessage<GetUserResponse> = /*@__PURE__*/
  */
 export type ListUsersRequest = Message<"hades.api.identity.v1.ListUsersRequest"> & {
   /**
-   * Optional substring search on username. Empty returns the first 50 users.
+   * Optional substring search on username. Empty matches every account.
+   * At most 50 accounts are returned either way; there is no pagination.
    *
    * @generated from field: string query = 1;
    */
@@ -269,14 +275,15 @@ export const ListUsersResponseSchema: GenMessage<ListUsersResponse> = /*@__PURE_
  */
 export type UpdateUserRequest = Message<"hades.api.identity.v1.UpdateUserRequest"> & {
   /**
-   * New description. Empty leaves the field unchanged.
+   * New description. Both fields are written on every call, so passing an empty
+   * string clears the stored value rather than leaving it unchanged.
    *
    * @generated from field: string description = 1;
    */
   description: string;
 
   /**
-   * New URL. Empty leaves the field unchanged.
+   * New URL. Cleared by an empty string, as with description.
    *
    * @generated from field: string url = 2;
    */
@@ -376,16 +383,15 @@ export const UserStateSchema: GenEnum<UserState> = /*@__PURE__*/
 /**
  * UserService manages user account profiles.
  *
- * Account creation for end-users should go through AuthenticationService.Register
- * which also handles email verification. CreateUser here is for internal/admin
- * use only.
+ * Account creation for end-users goes through AuthenticationService.Register,
+ * which also handles email verification. CreateUser here is not implemented.
  *
  * @generated from service hades.api.identity.v1.UserService
  */
 export const UserService: GenService<{
   /**
-   * CreateUser creates a user account without sending a verification email.
-   * Prefer AuthenticationService.Register for end-user registration.
+   * CreateUser is not implemented and returns UNIMPLEMENTED.
+   * Use AuthenticationService.Register instead.
    *
    * @generated from rpc hades.api.identity.v1.UserService.CreateUser
    */
@@ -396,7 +402,10 @@ export const UserService: GenService<{
   },
   /**
    * GetUser returns the profile and summary counts for the given username.
-   * Returns NOT_FOUND if no account with that username exists.
+   * Readable anonymously.
+   *
+   * Returns NOT_FOUND if no account with that username exists, and also for
+   * organization accounts: look those up with OrgService.GetOrg.
    *
    * @generated from rpc hades.api.identity.v1.UserService.GetUser
    */
@@ -406,7 +415,11 @@ export const UserService: GenService<{
     output: typeof GetUserResponseSchema;
   },
   /**
-   * ListUsers returns user accounts matching an optional username query.
+   * ListUsers returns up to 50 user accounts matching an optional username
+   * query. Organization accounts are excluded.
+   *
+   * Returns UNAUTHENTICATED to anonymous callers: member discovery is expected
+   * within a registry, but not open to unauthenticated scraping.
    *
    * @generated from rpc hades.api.identity.v1.UserService.ListUsers
    */

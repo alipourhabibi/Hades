@@ -32,20 +32,23 @@ func (s *OrgStorage) q(ctx context.Context) txkeys.PgxQuerier {
 	return s.pool
 }
 
+// The password column is deliberately absent from every read below.
+// identityv1.User is what read handlers return to the caller, so a hash loaded
+// into User.Password would travel out over the wire.
 const userSelectColumns = `
-  id, create_time, update_time, username, email, password, type, state, description, url`
+  id, create_time, update_time, username, email, type, state, description, url`
 
 const userSelectColumnsQualified = `
-  u.id, u.create_time, u.update_time, u.username, u.email, u.password, u.type, u.state, u.description, u.url`
+  u.id, u.create_time, u.update_time, u.username, u.email, u.type, u.state, u.description, u.url`
 
-const returningUserColumns = `id, create_time, update_time, username, email, password, type, state, description, url`
+const returningUserColumns = `id, create_time, update_time, username, email, type, state, description, url`
 
 func scanUser(row pgx.Row) (*identityv1.User, error) {
 	usr := &identityv1.User{}
 	var createTime, updateTime time.Time
 	err := row.Scan(
 		&usr.Id, &createTime, &updateTime,
-		&usr.Username, &usr.Email, &usr.Password,
+		&usr.Username, &usr.Email,
 		&usr.Type, &usr.State, &usr.Description, &usr.Url,
 	)
 	if err != nil {
@@ -83,7 +86,7 @@ LIMIT 50`, query)
 		var createTime, updateTime time.Time
 		if err := rows.Scan(
 			&usr.Id, &createTime, &updateTime,
-			&usr.Username, &usr.Email, &usr.Password,
+			&usr.Username, &usr.Email,
 			&usr.Type, &usr.State, &usr.Description, &usr.Url,
 		); err != nil {
 			return nil, err
@@ -164,7 +167,7 @@ ORDER BY u.username`, memberID)
 		var createTime, updateTime time.Time
 		if err := rows.Scan(
 			&usr.Id, &createTime, &updateTime,
-			&usr.Username, &usr.Email, &usr.Password,
+			&usr.Username, &usr.Email,
 			&usr.Type, &usr.State, &usr.Description, &usr.Url,
 		); err != nil {
 			return nil, err
@@ -191,7 +194,9 @@ func (s *OrgStorage) GetMemberRole(ctx context.Context, orgID, memberID string) 
 		orgID, memberID,
 	).Scan(&role)
 	if err != nil {
-		return "", nil
+		// See the SQLite implementation: absence and failure must be
+		// distinguishable, and both are the caller's to interpret.
+		return "", err
 	}
 	return role, nil
 }
@@ -217,7 +222,7 @@ ORDER BY u.username`
 		var role string
 		if err := rows.Scan(
 			&usr.Id, &createTime, &updateTime,
-			&usr.Username, &usr.Email, &usr.Password,
+			&usr.Username, &usr.Email,
 			&usr.Type, &usr.State, &usr.Description, &usr.Url,
 			&role,
 		); err != nil {

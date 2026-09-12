@@ -33,7 +33,7 @@ func (s *Server) ListSessions(ctx context.Context, in *connect.Request[v1.ListSe
 	rows, err := s.sessionStorage.ListByUserID(ctx, user.Id)
 	if err != nil {
 		s.logger.Error("failed to list sessions", "error", err, "procedure", "ListSessions", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
 	sessions := make([]*v1.Session, 0, len(rows))
@@ -73,7 +73,7 @@ func (s *Server) RevokeSession(ctx context.Context, in *connect.Request[v1.Revok
 
 	if err := s.sessionStorage.Revoke(ctx, in.Msg.SessionId); err != nil {
 		s.logger.Error("failed to revoke session", "error", err, "procedure", "RevokeSession", "user_id", user.Id, "session_id", in.Msg.SessionId)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 	if s.auditLogDB != nil {
 		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_SESSION_REVOKED, "", "", map[string]any{"session_id": in.Msg.SessionId})
@@ -101,7 +101,7 @@ func (s *Server) RevokeAllOtherSessions(ctx context.Context, in *connect.Request
 
 	if err := s.sessionStorage.RevokeAllForUser(ctx, user.Id, currentID); err != nil {
 		s.logger.Error("failed to revoke all other sessions", "error", err, "procedure", "RevokeAllOtherSessions", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 	if s.auditLogDB != nil {
 		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_SESSION_REVOKED, "", "", map[string]any{"scope": "all_other"})

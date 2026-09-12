@@ -22,6 +22,7 @@ import (
 	dbsession "github.com/alipourhabibi/Hades/internal/hades/storage/db/session"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/totpsecret"
 	dbuser "github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
+	"github.com/alipourhabibi/Hades/utils/clientip"
 	"github.com/alipourhabibi/Hades/utils/email"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
@@ -30,13 +31,13 @@ var dummyHash, _ = bcryptHash("x", bcrypt.DefaultCost)
 
 // Server implements all auth-domain Connect-RPC service handlers.
 type Server struct {
-	v1connect.AuthenticationServiceHandler
-	v1connect.SessionServiceHandler
-	v1connect.APITokenServiceHandler
-	v1connect.OAuthServiceHandler
-	v1connect.DeviceServiceHandler
-	v1connect.TOTPServiceHandler
-	v1connect.AuditServiceHandler
+	v1connect.UnimplementedAuthenticationServiceHandler
+	v1connect.UnimplementedSessionServiceHandler
+	v1connect.UnimplementedAPITokenServiceHandler
+	v1connect.UnimplementedOAuthServiceHandler
+	v1connect.UnimplementedDeviceServiceHandler
+	v1connect.UnimplementedTOTPServiceHandler
+	v1connect.UnimplementedAuditServiceHandler
 
 	logger               *log.LoggerWrapper
 	userStorage          dbuser.Storage
@@ -57,10 +58,14 @@ type Server struct {
 	totpSecretDB         totpsecret.Storage
 	backupCodeDB         backupcode.Storage
 	totpCfg              config.TOTPConfig
+	// trustedProxies gates whether forwarding headers are honoured when
+	// determining the client IP; see utils/clientip.
+	trustedProxies clientip.TrustedProxies
 }
 
 func NewServer(deps *server.Dependencies) *Server {
 	return &Server{
+		trustedProxies:       deps.TrustedProxies,
 		logger:               deps.Logger,
 		userStorage:          deps.UserDB,
 		sessionStorage:       deps.SessionDB,

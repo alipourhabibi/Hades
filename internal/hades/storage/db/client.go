@@ -5,9 +5,7 @@ package db
 import (
 	"context"
 	"database/sql"
-	_ "embed"
 	"fmt"
-	"strings"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -171,44 +169,48 @@ func New(c config.DB, logger *log.LoggerWrapper) (Store, error) {
 	}, nil
 }
 
-//go:embed sqlite_schema.sql
-var sqliteMigration string
-
 // NewSQLite opens a SQLite database and returns a Store backed by SQLite.
 func NewSQLite(cfg config.Config, logger *log.LoggerWrapper) (Store, error) {
 	path := cfg.SQLite.Path
 	if path == "" {
 		path = ":memory:"
 	}
-	dsn := path + "?_time_format=sqlite"
+
+	// Pragmas belong in the DSN, not in a one-off Exec.
+	//
+	// foreign_keys and busy_timeout are per-connection state, and database/sql
+	// hands out connections from a pool: setting them with sqlDB.Exec applies
+	// them to whichever single connection served that call, leaving foreign keys
+	// disabled on every other connection in the pool. Driver support for
+	// multi-statement Exec also varies, so the second pragma may never have run
+	// at all.
+	//
+	// busy_timeout is what turns a concurrent-write SQLITE_BUSY into a short
+	// wait instead of an immediate error.
+	pragmas := "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_time_format=sqlite"
+	dsn := path + "?" + pragmas
 	if path == ":memory:" {
-		dsn = "file::memory:?mode=memory&cache=shared&_time_format=sqlite"
+		dsn = "file::memory:?mode=memory&cache=shared&" + pragmas
 	}
 	sqlDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("db: sqlite: open: %w", err)
 	}
+
+	// SQLite serialises writes at the file level. Allowing the pool to open many
+	// connections converts that into SQLITE_BUSY errors under load rather than
+	// throughput, so writes are funnelled through a single connection.
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+	sqlDB.SetConnMaxLifetime(0)
+
 	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("db: sqlite: ping: %w", err)
 	}
-	if _, err := sqlDB.Exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;`); err != nil {
-		return nil, fmt.Errorf("db: sqlite: pragma: %w", err)
-	}
-	if _, err := sqlDB.Exec(sqliteMigration); err != nil {
-		return nil, fmt.Errorf("db: sqlite: migrate: %w", err)
-	}
-
-	// Apply incremental column additions for existing databases.
-	// SQLite lacks ALTER TABLE ADD COLUMN IF NOT EXISTS, so we run each statement
-	// and ignore the "duplicate column name" error that fires for fresh DBs
-	// (whose schema already includes the column in CREATE TABLE).
-	for _, stmt := range []string{
-		`ALTER TABLE modules ADD COLUMN lint_preset INTEGER NOT NULL DEFAULT 1`,
-		`ALTER TABLE modules ADD COLUMN breaking_enabled INTEGER NOT NULL DEFAULT 1`,
-	} {
-		if _, err := sqlDB.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
-			return nil, fmt.Errorf("db: sqlite: column migration: %w", err)
-		}
+	// One versioned migration runner is the only thing that changes the schema.
+	// See internal/hades/storage/db/sqlitemigrate.go.
+	if err := migrateSQLite(sqlDB); err != nil {
+		return nil, err
 	}
 
 	sqRes := resourcesq.NewResource(sqlDB)

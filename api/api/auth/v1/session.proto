@@ -36,6 +36,7 @@ message ListSessionsRequest {}
 // ListSessionsResponse carries the caller's active sessions.
 message ListSessionsResponse {
   // Active sessions for the caller, ordered by last_activity_at descending.
+  // Revoked and expired sessions are omitted.
   repeated Session sessions = 1;
 }
 
@@ -58,6 +59,9 @@ message RevokeAllOtherSessionsResponse {}
 //
 // Ownership is enforced server-side: callers can only operate on sessions that
 // belong to them. Attempting to revoke another user's session returns NOT_FOUND.
+//
+// Every RPC here requires an interactive session token (hds_sess_) and rejects
+// personal API tokens, so a leaked API token cannot evict the account owner.
 service SessionService {
   // ListSessions returns all active sessions for the authenticated user,
   // with the current session identified by is_current.

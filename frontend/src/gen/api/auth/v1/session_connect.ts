@@ -19,6 +19,9 @@ import { MethodKind } from "@bufbuild/protobuf";
  * Ownership is enforced server-side: callers can only operate on sessions that
  * belong to them. Attempting to revoke another user's session returns NOT_FOUND.
  *
+ * Every RPC here requires an interactive session token (hds_sess_) and rejects
+ * personal API tokens, so a leaked API token cannot evict the account owner.
+ *
  * @generated from service hades.api.auth.v1.SessionService
  */
 export const SessionService = {

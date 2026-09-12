@@ -105,6 +105,21 @@ func (b *Backend) GetFile(ctx context.Context, key string) (io.ReadCloser, int64
 	return obj, info.Size, nil
 }
 
+// ListFiles returns the relative keys of every object under keyPrefix.
+func (b *Backend) ListFiles(ctx context.Context, keyPrefix string) ([]string, error) {
+	var paths []string
+	for obj := range b.client.ListObjects(ctx, b.bucket, minio.ListObjectsOptions{
+		Prefix:    keyPrefix + "/",
+		Recursive: true,
+	}) {
+		if obj.Err != nil {
+			return nil, fmt.Errorf("s3 list %s: %w", keyPrefix, obj.Err)
+		}
+		paths = append(paths, obj.Key[len(keyPrefix)+1:])
+	}
+	return paths, nil
+}
+
 // Download retrieves all objects under the given key prefix.
 func (b *Backend) Download(ctx context.Context, key string) ([]*storage.File, error) {
 	var files []*storage.File

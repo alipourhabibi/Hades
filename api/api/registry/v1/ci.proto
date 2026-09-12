@@ -1,8 +1,18 @@
 // CI (lint and breaking-change) run results for the Hades schema registry.
 //
-// When a commit is pushed, the server runs buf lint and buf breaking against
-// the previous commit. The results are stored as a CIRun record keyed by
-// (module, commit_hash). Re-running CI upserts the existing row.
+// When a commit is pushed, the upload handler runs buf lint, and buf breaking
+// against the previous commit when the module has breaking checks enabled.
+// Both run synchronously and a violation rejects the push, so a commit that
+// exists in the registry has already passed the checks configured for its
+// module at that time. The result is recorded as a CIRun keyed by
+// (module, commit_hash), in the same transaction that creates the commit.
+//
+// It follows that every stored CIRun has passed. A rejected push produces no
+// commit, and a record is keyed by the commit hash, so there is nothing to
+// attach a failure to. The lint_errors and breaking_errors fields exist for a
+// future non-blocking check mode and are empty today. No record is written at
+// all when linting is disabled for the deployment: a row claiming "passed" for
+// checks that never ran would be worse than no row.
 
 syntax = "proto3";
 
@@ -25,7 +35,9 @@ message CIRun {
   string commit_hash = 3;
   // True when no lint violations were found.
   bool lint_passed = 4;
-  // True when no breaking changes were detected relative to the previous commit.
+  // True when no breaking changes were detected relative to the previous
+  // commit. Also true when the module has breaking checks disabled or the
+  // commit has no predecessor, since nothing was found to break.
   bool breaking_passed = 5;
   // Lint error messages. Empty when lint_passed is true.
   repeated string lint_errors = 6;
@@ -52,11 +64,15 @@ message GetCIRunResponse {
 
 // CIService exposes CI run results for schema module commits.
 //
-// Results are available immediately after a push; the lint and breaking checks
-// run synchronously as part of the upload handler.
+// Readable anonymously, subject to the same per-module read check as the rest
+// of the registry: a private module the caller cannot read is reported as
+// NOT_FOUND.
 service CIService {
   // GetCIRun returns the CI run result for the given owner/module/commit triple.
-  // Returns NOT_FOUND if no run record exists for that combination or the
-  // caller cannot read the module.
+  //
+  // Returns NOT_FOUND if the module does not exist, the caller cannot read it,
+  // or no run record exists for that commit. The last case covers commits
+  // pushed while linting was disabled, and the initial commit that
+  // CreateModuleByName seeds, which runs no checks.
   rpc GetCIRun(GetCIRunRequest) returns (GetCIRunResponse);
 }

@@ -80,8 +80,10 @@ type RequestDeviceCodeResponse struct {
 	VerificationUrl string `protobuf:"bytes,3,opt,name=verification_url,json=verificationUrl,proto3" json:"verification_url,omitempty"`
 	// Seconds until the device_code and user_code expire.
 	ExpiresInSeconds int32 `protobuf:"varint,4,opt,name=expires_in_seconds,json=expiresInSeconds,proto3" json:"expires_in_seconds,omitempty"`
-	// Minimum interval in seconds between PollDeviceToken calls.
-	// Polling faster will result in SLOW_DOWN errors from the server.
+	// Minimum interval in seconds between PollDeviceToken calls. Polling faster
+	// than roughly twenty times a minute is refused with RESOURCE_EXHAUSTED for
+	// the rest of the minute; this server does not implement the RFC 8628
+	// slow_down response.
 	PollIntervalSeconds int32 `protobuf:"varint,5,opt,name=poll_interval_seconds,json=pollIntervalSeconds,proto3" json:"poll_interval_seconds,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
@@ -198,10 +200,17 @@ func (x *PollDeviceTokenRequest) GetDeviceCode() string {
 	return ""
 }
 
-// PollDeviceTokenResponse carries the session token when the grant is approved.
+// PollDeviceTokenResponse carries the credential once the grant is approved.
 type PollDeviceTokenResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Bearer token for the approved session. Empty while pending is true.
+	// Personal API token (hades1_ prefix) for the approving user, not a session
+	// token. It is created on the first poll after approval and is scoped to
+	// "module:read" and "module:push", which is what the buf CLI needs; creating
+	// and updating modules stays an interactive operation.
+	//
+	// Empty while pending is true. A device_code that has already had its token
+	// issued yields the literal "already_issued" rather than the value again:
+	// the plaintext exists only in the response that minted it.
 	Token string `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
 	// True when the user has not yet approved the grant. The device should
 	// continue polling at the rate given by poll_interval_seconds.

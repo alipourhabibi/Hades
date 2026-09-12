@@ -99,12 +99,16 @@ func (x *UploadRequestContent) GetSourceControlUrl() string {
 }
 
 // UploadRequest is the input for a batch module push.
+//
+// Unused: the buf.build adapter passes the UploadRequestContent list straight
+// to the upload handler and never builds this wrapper, so dep_commit_ids is
+// not read anywhere. It is kept for the eventual internal upload entry point.
 type UploadRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// One entry per module being pushed. At least one content entry is required.
 	Contents []*UploadRequestContent `protobuf:"bytes,1,rep,name=contents,proto3" json:"contents,omitempty"`
-	// UUIDs of commits this push depends on. Used to record cross-module
-	// dependency edges.
+	// UUIDs of commits this push depends on. Intended to record cross-module
+	// dependency edges; see the note on this message.
 	DepCommitIds  []string `protobuf:"bytes,2,rep,name=dep_commit_ids,json=depCommitIds,proto3" json:"dep_commit_ids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

@@ -29,8 +29,10 @@ message RequestDeviceCodeResponse {
   string verification_url = 3;
   // Seconds until the device_code and user_code expire.
   int32 expires_in_seconds = 4;
-  // Minimum interval in seconds between PollDeviceToken calls.
-  // Polling faster will result in SLOW_DOWN errors from the server.
+  // Minimum interval in seconds between PollDeviceToken calls. Polling faster
+  // than roughly twenty times a minute is refused with RESOURCE_EXHAUSTED for
+  // the rest of the minute; this server does not implement the RFC 8628
+  // slow_down response.
   int32 poll_interval_seconds = 5;
 }
 
@@ -40,9 +42,16 @@ message PollDeviceTokenRequest {
   string device_code = 1 [(buf.validate.field).required = true];
 }
 
-// PollDeviceTokenResponse carries the session token when the grant is approved.
+// PollDeviceTokenResponse carries the credential once the grant is approved.
 message PollDeviceTokenResponse {
-  // Bearer token for the approved session. Empty while pending is true.
+  // Personal API token (hades1_ prefix) for the approving user, not a session
+  // token. It is created on the first poll after approval and is scoped to
+  // "module:read" and "module:push", which is what the buf CLI needs; creating
+  // and updating modules stays an interactive operation.
+  //
+  // Empty while pending is true. A device_code that has already had its token
+  // issued yields the literal "already_issued" rather than the value again:
+  // the plaintext exists only in the response that minted it.
   string token = 1;
   // True when the user has not yet approved the grant. The device should
   // continue polling at the rate given by poll_interval_seconds.
@@ -61,20 +70,26 @@ message ApproveDeviceGrantResponse {}
 // DeviceService implements the OAuth 2.0 Device Authorization Grant (RFC 8628).
 //
 // RequestDeviceCode and PollDeviceToken are reachable without authentication
-// because no session exists at that point. ApproveDeviceGrant requires the
-// operator to be authenticated with a full browser session.
+// because no session exists at that point. ApproveDeviceGrant requires an
+// interactive session token (hds_sess_) and rejects personal API tokens:
+// approving a grant mints a new token, so allowing it would be an indirect way
+// for one API token to create another.
 service DeviceService {
   // RequestDeviceCode initiates a device authorization flow and returns the
   // codes the device needs for polling and the operator needs for approval.
   rpc RequestDeviceCode(RequestDeviceCodeRequest) returns (RequestDeviceCodeResponse);
 
   // PollDeviceToken checks whether the user has approved the pending grant.
-  // Returns a session token when approved, or sets pending=true while waiting.
-  // Returns NOT_FOUND if the device_code has expired or never existed.
+  // Returns a token when approved, or sets pending=true while waiting.
+  //
+  // Returns NOT_FOUND if the device_code never existed, INVALID_ARGUMENT once
+  // it has expired, and RESOURCE_EXHAUSTED when polled too fast.
   rpc PollDeviceToken(PollDeviceTokenRequest) returns (PollDeviceTokenResponse);
 
   // ApproveDeviceGrant approves the grant identified by user_code.
-  // The authenticated user becomes the owner of the resulting session.
-  // Returns NOT_FOUND if the user_code is invalid or expired.
+  // The authenticated user becomes the owner of the token the device receives.
+  //
+  // Returns NOT_FOUND if the user_code is unknown and INVALID_ARGUMENT once
+  // the grant has expired.
   rpc ApproveDeviceGrant(ApproveDeviceGrantRequest) returns (ApproveDeviceGrantResponse);
 }

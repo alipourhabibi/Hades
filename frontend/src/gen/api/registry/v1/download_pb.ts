@@ -15,13 +15,14 @@ import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv1";
 import { fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv1";
 import type { Commit } from "./commit_pb";
 import { file_api_registry_v1_commit } from "./commit_pb";
+import { file_buf_validate_validate } from "../../../buf/validate/validate_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file api/registry/v1/download.proto.
  */
 export const file_api_registry_v1_download: GenFile = /*@__PURE__*/
-  fileDesc("Ch5hcGkvcmVnaXN0cnkvdjEvZG93bmxvYWQucHJvdG8SFWhhZGVzLmFwaS5yZWdpc3RyeS52MSIlCgRGaWxlEgwKBHBhdGgYASABKAkSDwoHY29udGVudBgCIAEoDCJ0ChdEb3dubG9hZFJlc3BvbnNlQ29udGVudBItCgZjb21taXQYASABKAsyHS5oYWRlcy5hcGkucmVnaXN0cnkudjEuQ29tbWl0EioKBWZpbGVzGAIgAygLMhsuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkZpbGUiVAoQRG93bmxvYWRSZXNwb25zZRJACghjb250ZW50cxgBIAMoCzIuLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Eb3dubG9hZFJlc3BvbnNlQ29udGVudELkAQoZY29tLmhhZGVzLmFwaS5yZWdpc3RyeS52MUINRG93bmxvYWRQcm90b1ABWkFnaXRodWIuY29tL2FsaXBvdXJoYWJpYmkvSGFkZXMvYXBpL2dlbi9hcGkvcmVnaXN0cnkvdjE7cmVnaXN0cnl2MaICA0hBUqoCFUhhZGVzLkFwaS5SZWdpc3RyeS5WMcoCFUhhZGVzXEFwaVxSZWdpc3RyeVxWMeICIUhhZGVzXEFwaVxSZWdpc3RyeVxWMVxHUEJNZXRhZGF0YeoCGEhhZGVzOjpBcGk6OlJlZ2lzdHJ5OjpWMWIGcHJvdG8z", [file_api_registry_v1_commit]);
+  fileDesc("Ch5hcGkvcmVnaXN0cnkvdjEvZG93bmxvYWQucHJvdG8SFWhhZGVzLmFwaS5yZWdpc3RyeS52MSLRAQoERmlsZRK3AQoEcGF0aBgBIAEoCUKoAbpIpAG6AYkBChZmaWxlLnBhdGgubm9fdHJhdmVyc2FsEidwYXRoIG11c3Qgbm90IGNvbnRhaW4gYSAuIG9yIC4uIHNlZ21lbnQaRiEodGhpcy5zcGxpdCgnLycpLmV4aXN0cyhzZWcsIHNlZyA9PSAnJyB8fCBzZWcgPT0gJy4nIHx8IHNlZyA9PSAnLi4nKSlyFRABGIAgMg5eW14vXFxdW15cXF0qJBIPCgdjb250ZW50GAIgASgMInQKF0Rvd25sb2FkUmVzcG9uc2VDb250ZW50Ei0KBmNvbW1pdBgBIAEoCzIdLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Db21taXQSKgoFZmlsZXMYAiADKAsyGy5oYWRlcy5hcGkucmVnaXN0cnkudjEuRmlsZSJUChBEb3dubG9hZFJlc3BvbnNlEkAKCGNvbnRlbnRzGAEgAygLMi4uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkRvd25sb2FkUmVzcG9uc2VDb250ZW50QuQBChljb20uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxQg1Eb3dubG9hZFByb3RvUAFaQWdpdGh1Yi5jb20vYWxpcG91cmhhYmliaS9IYWRlcy9hcGkvZ2VuL2FwaS9yZWdpc3RyeS92MTtyZWdpc3RyeXYxogIDSEFSqgIVSGFkZXMuQXBpLlJlZ2lzdHJ5LlYxygIVSGFkZXNcQXBpXFJlZ2lzdHJ5XFYx4gIhSGFkZXNcQXBpXFJlZ2lzdHJ5XFYxXEdQQk1ldGFkYXRh6gIYSGFkZXM6OkFwaTo6UmVnaXN0cnk6OlYxYgZwcm90bzM", [file_api_registry_v1_commit, file_buf_validate_validate]);
 
 /**
  * File is a single .proto file returned in a download response.
@@ -31,6 +32,10 @@ export const file_api_registry_v1_download: GenFile = /*@__PURE__*/
 export type File = Message<"hades.api.registry.v1.File"> & {
   /**
    * Path of the file relative to the module root (e.g. "proto/foo/bar.proto").
+   *
+   * Must be a relative path with no "." or ".." segment and no leading slash.
+   * The server writes these paths to disk during lint and breaking checks, so
+   * an unconstrained path would escape the working directory.
    *
    * @generated from field: string path = 1;
    */

@@ -8,6 +8,7 @@ import (
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -42,7 +43,6 @@ SELECT
   update_time,
   username,
   email,
-  password,
   type,
   state,
   description,
@@ -58,7 +58,6 @@ WHERE username = $1`
 		&updateTime,
 		&usr.Username,
 		&usr.Email,
-		&usr.Password,
 		&usr.Type,
 		&usr.State,
 		&usr.Description,
@@ -77,7 +76,7 @@ func (u *UserStorage) GetByID(ctx context.Context, id string) (*identityv1.User,
 	query := `
 SELECT
   id, create_time, update_time,
-  username, email, password,
+  username, email,
   type, state, description, url
 FROM users
 WHERE id = $1`
@@ -86,7 +85,7 @@ WHERE id = $1`
 	var createTime, updateTime time.Time
 	err := u.q(ctx).QueryRow(ctx, query, id).Scan(
 		&usr.Id, &createTime, &updateTime,
-		&usr.Username, &usr.Email, &usr.Password,
+		&usr.Username, &usr.Email,
 		&usr.Type, &usr.State, &usr.Description, &usr.Url,
 	)
 	if err != nil {
@@ -97,21 +96,29 @@ WHERE id = $1`
 	return usr, nil
 }
 
-// GetByEmail returns the user with the given email address.
+// GetByEmail returns the user account with the given email address.
+//
+// Only real user accounts are considered. Organisations live in the same table
+// with an empty email, so a lookup for "" would otherwise match an org row and
+// hand a caller an organisation identity; the empty-email guard and the type
+// filter each independently prevent that.
 func (u *UserStorage) GetByEmail(ctx context.Context, email string) (*identityv1.User, error) {
+	if email == "" {
+		return nil, pgx.ErrNoRows
+	}
 	query := `
 SELECT
   id, create_time, update_time,
-  username, email, password,
+  username, email,
   type, state, description, url
 FROM users
-WHERE email = $1`
+WHERE email = $1 AND email <> '' AND type = 2`
 
 	usr := &identityv1.User{}
 	var createTime, updateTime time.Time
 	err := u.q(ctx).QueryRow(ctx, query, email).Scan(
 		&usr.Id, &createTime, &updateTime,
-		&usr.Username, &usr.Email, &usr.Password,
+		&usr.Username, &usr.Email,
 		&usr.Type, &usr.State, &usr.Description, &usr.Url,
 	)
 	if err != nil {
@@ -131,10 +138,12 @@ func (u *UserStorage) IncrementFailedLogins(ctx context.Context, userID string) 
 	return err
 }
 
-// ResetFailedLogins resets the failed_login_count to zero.
+// ResetFailedLogins clears the failed-login counter and any active lockout.
+// The two are cleared together: a successful login or a password reset must
+// leave the account usable, and leaving locked_until set would keep it locked.
 func (u *UserStorage) ResetFailedLogins(ctx context.Context, userID string) error {
 	_, err := u.q(ctx).Exec(ctx,
-		`UPDATE users SET failed_login_count = 0, update_time = NOW() WHERE id = $1`,
+		`UPDATE users SET failed_login_count = 0, locked_until = NULL, update_time = NOW() WHERE id = $1`,
 		userID,
 	)
 	return err
@@ -229,7 +238,7 @@ INSERT INTO users (
 // List returns users (type=USER_TYPE_USER) whose username contains query (case-insensitive).
 func (u *UserStorage) List(ctx context.Context, query string) ([]*identityv1.User, error) {
 	rows, err := u.q(ctx).Query(ctx, `
-SELECT id, create_time, update_time, username, email, password, type, state, description, url
+SELECT id, create_time, update_time, username, email, type, state, description, url
 FROM users
 WHERE type = 2
   AND ($1 = '' OR username ILIKE '%' || $1 || '%')
@@ -246,7 +255,7 @@ LIMIT 50`, query)
 		var createTime, updateTime time.Time
 		if err := rows.Scan(
 			&usr.Id, &createTime, &updateTime,
-			&usr.Username, &usr.Email, &usr.Password,
+			&usr.Username, &usr.Email,
 			&usr.Type, &usr.State, &usr.Description, &usr.Url,
 		); err != nil {
 			return nil, err
@@ -265,11 +274,11 @@ func (u *UserStorage) Update(ctx context.Context, userID, description, url strin
 	err := u.q(ctx).QueryRow(ctx, `
 UPDATE users SET description=$1, url=$2, update_time=NOW()
 WHERE id=$3
-RETURNING id, create_time, update_time, username, email, password, type, state, description, url`,
+RETURNING id, create_time, update_time, username, email, type, state, description, url`,
 		description, url, userID,
 	).Scan(
 		&usr.Id, &createTime, &updateTime,
-		&usr.Username, &usr.Email, &usr.Password,
+		&usr.Username, &usr.Email,
 		&usr.Type, &usr.State, &usr.Description, &usr.Url,
 	)
 	if err != nil {

@@ -23,6 +23,9 @@ type Storage interface {
 	RemoveMember(ctx context.Context, orgID, memberID string) error
 	GetUserOrgs(ctx context.Context, memberID string) ([]*identityv1.User, error)
 	CountMembers(ctx context.Context, orgID string) (int32, error)
+	// GetMemberRole returns the caller's role in the organisation.
+	// Returns the driver's no-rows error when the user is not a member, so
+	// callers can tell absence from a lookup that failed.
 	GetMemberRole(ctx context.Context, orgID, memberID string) (string, error)
 	ListMembers(ctx context.Context, orgID string) ([]*OrgMember, error)
 }

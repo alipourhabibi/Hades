@@ -65,7 +65,7 @@ func (s *Server) RequestDeviceCode(ctx context.Context, in *connect.Request[v1.R
 	expiresAt := time.Now().Add(deviceCodeExpiry)
 	if _, err := s.deviceGrantDB.Create(ctx, deviceHash, userCode, expiresAt); err != nil {
 		s.logger.Error("failed to create device grant", "error", err, "procedure", "RequestDeviceCode")
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
 	return &connect.Response[v1.RequestDeviceCodeResponse]{
@@ -117,11 +117,11 @@ func (s *Server) PollDeviceToken(ctx context.Context, in *connect.Request[v1.Pol
 	tokenRow, err := s.apiTokenDB.Create(ctx, *grant.UserID, "device-flow", prefix, tokenHash, deviceTokenScopes, nil)
 	if err != nil {
 		s.logger.Error("failed to create API token for device flow", "error", err, "procedure", "PollDeviceToken")
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 	if err := s.deviceGrantDB.Approve(ctx, grant.ID, *grant.UserID, &tokenRow.ID); err != nil {
 		s.logger.Error("failed to approve device grant", "error", err, "procedure", "PollDeviceToken")
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 	return &connect.Response[v1.PollDeviceTokenResponse]{
 		Msg: &v1.PollDeviceTokenResponse{Token: fullToken},
@@ -145,7 +145,7 @@ func (s *Server) ApproveDeviceGrant(ctx context.Context, in *connect.Request[v1.
 	}
 	if err := s.deviceGrantDB.Approve(ctx, grant.ID, user.Id, (*uuid.UUID)(nil)); err != nil {
 		s.logger.Error("failed to approve device grant", "error", err, "procedure", "ApproveDeviceGrant", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 	s.logger.Info("device grant approved", "procedure", "ApproveDeviceGrant", "user_id", user.Id)
 	return &connect.Response[v1.ApproveDeviceGrantResponse]{Msg: &v1.ApproveDeviceGrantResponse{}}, nil

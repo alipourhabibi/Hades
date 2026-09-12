@@ -74,28 +74,56 @@ type AuthenticationServiceClient interface {
 	// Login authenticates a user with username and password and issues a session
 	// token. When the account has TOTP enabled the response sets pending_totp and
 	// the caller must complete VerifyTOTP before the token grants full access.
+	//
+	// Returns UNAUTHENTICATED for bad credentials, PERMISSION_DENIED when the
+	// account is locked out or its email address is not yet verified, and
+	// RESOURCE_EXHAUSTED past the per-IP rate limit.
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
 	// Register creates a new user account and sends a verification email.
-	// Returns ALREADY_EXISTS if the username or email is taken.
+	//
+	// Returns ALREADY_EXISTS if the username or email is taken,
+	// INVALID_ARGUMENT if the username is reserved or the password is shorter
+	// than the configured minimum, and RESOURCE_EXHAUSTED past the per-IP rate
+	// limit. Registration succeeds even if the verification email cannot be sent;
+	// use ResendVerificationEmail in that case.
 	Register(context.Context, *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error)
 	// Signin is kept for backwards compatibility. New clients must use Register.
+	//
+	// Deprecated: it delegates to Register with identical behaviour and rate
+	// limits, and reports only success or failure instead of the new user id.
 	Signin(context.Context, *connect.Request[v1.SigninRequest]) (*connect.Response[v1.SigninResponse], error)
 	// Logout revokes the session associated with the caller's Bearer token.
+	// Callable while a session is still pending TOTP verification, so a session
+	// stuck at the second-factor prompt can be ended rather than left to expire.
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
 	// VerifyEmail consumes the single-use token from a verification email and
 	// marks the account's email address as verified.
+	//
+	// Returns NOT_FOUND if the token was never issued and INVALID_ARGUMENT if it
+	// has already been used or has expired.
 	VerifyEmail(context.Context, *connect.Request[v1.VerifyEmailRequest]) (*connect.Response[v1.VerifyEmailResponse], error)
 	// ResendVerificationEmail sends a new verification email to the authenticated
-	// user. Can be called before email_verified_at is set.
+	// user. Callable while the account's email is still unverified, which is the
+	// only other state in which a session may act.
+	//
+	// Returns INVALID_ARGUMENT if the address is already verified and
+	// RESOURCE_EXHAUSTED past the per-user rate limit.
 	ResendVerificationEmail(context.Context, *connect.Request[v1.ResendVerificationEmailRequest]) (*connect.Response[v1.ResendVerificationEmailResponse], error)
-	// RequestPasswordReset sends a password-reset email to the given address.
-	// Always succeeds to avoid leaking whether an address is registered.
+	// RequestPasswordReset emails a single-use reset token to the given address.
+	// Always succeeds to avoid leaking whether an address is registered, except
+	// for RESOURCE_EXHAUSTED past the per-IP rate limit.
 	RequestPasswordReset(context.Context, *connect.Request[v1.RequestPasswordResetRequest]) (*connect.Response[v1.RequestPasswordResetResponse], error)
 	// ResetPassword consumes a single-use reset token and replaces the password.
-	// Returns UNAUTHENTICATED if the token is expired or already used.
+	// All of the account's existing sessions are revoked, and any login lockout
+	// is cleared so the owner can sign in again immediately.
+	//
+	// Returns NOT_FOUND if the token was never issued and INVALID_ARGUMENT if it
+	// has already been used, has expired, or the new password is too short.
 	ResetPassword(context.Context, *connect.Request[v1.ResetPasswordRequest]) (*connect.Response[v1.ResetPasswordResponse], error)
 	// ChangePassword updates the password for the authenticated user.
 	// Optionally revokes all other active sessions.
+	//
+	// Returns UNAUTHENTICATED if old_password does not match.
 	ChangePassword(context.Context, *connect.Request[v1.ChangePasswordRequest]) (*connect.Response[v1.ChangePasswordResponse], error)
 }
 
@@ -231,28 +259,56 @@ type AuthenticationServiceHandler interface {
 	// Login authenticates a user with username and password and issues a session
 	// token. When the account has TOTP enabled the response sets pending_totp and
 	// the caller must complete VerifyTOTP before the token grants full access.
+	//
+	// Returns UNAUTHENTICATED for bad credentials, PERMISSION_DENIED when the
+	// account is locked out or its email address is not yet verified, and
+	// RESOURCE_EXHAUSTED past the per-IP rate limit.
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
 	// Register creates a new user account and sends a verification email.
-	// Returns ALREADY_EXISTS if the username or email is taken.
+	//
+	// Returns ALREADY_EXISTS if the username or email is taken,
+	// INVALID_ARGUMENT if the username is reserved or the password is shorter
+	// than the configured minimum, and RESOURCE_EXHAUSTED past the per-IP rate
+	// limit. Registration succeeds even if the verification email cannot be sent;
+	// use ResendVerificationEmail in that case.
 	Register(context.Context, *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error)
 	// Signin is kept for backwards compatibility. New clients must use Register.
+	//
+	// Deprecated: it delegates to Register with identical behaviour and rate
+	// limits, and reports only success or failure instead of the new user id.
 	Signin(context.Context, *connect.Request[v1.SigninRequest]) (*connect.Response[v1.SigninResponse], error)
 	// Logout revokes the session associated with the caller's Bearer token.
+	// Callable while a session is still pending TOTP verification, so a session
+	// stuck at the second-factor prompt can be ended rather than left to expire.
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
 	// VerifyEmail consumes the single-use token from a verification email and
 	// marks the account's email address as verified.
+	//
+	// Returns NOT_FOUND if the token was never issued and INVALID_ARGUMENT if it
+	// has already been used or has expired.
 	VerifyEmail(context.Context, *connect.Request[v1.VerifyEmailRequest]) (*connect.Response[v1.VerifyEmailResponse], error)
 	// ResendVerificationEmail sends a new verification email to the authenticated
-	// user. Can be called before email_verified_at is set.
+	// user. Callable while the account's email is still unverified, which is the
+	// only other state in which a session may act.
+	//
+	// Returns INVALID_ARGUMENT if the address is already verified and
+	// RESOURCE_EXHAUSTED past the per-user rate limit.
 	ResendVerificationEmail(context.Context, *connect.Request[v1.ResendVerificationEmailRequest]) (*connect.Response[v1.ResendVerificationEmailResponse], error)
-	// RequestPasswordReset sends a password-reset email to the given address.
-	// Always succeeds to avoid leaking whether an address is registered.
+	// RequestPasswordReset emails a single-use reset token to the given address.
+	// Always succeeds to avoid leaking whether an address is registered, except
+	// for RESOURCE_EXHAUSTED past the per-IP rate limit.
 	RequestPasswordReset(context.Context, *connect.Request[v1.RequestPasswordResetRequest]) (*connect.Response[v1.RequestPasswordResetResponse], error)
 	// ResetPassword consumes a single-use reset token and replaces the password.
-	// Returns UNAUTHENTICATED if the token is expired or already used.
+	// All of the account's existing sessions are revoked, and any login lockout
+	// is cleared so the owner can sign in again immediately.
+	//
+	// Returns NOT_FOUND if the token was never issued and INVALID_ARGUMENT if it
+	// has already been used, has expired, or the new password is too short.
 	ResetPassword(context.Context, *connect.Request[v1.ResetPasswordRequest]) (*connect.Response[v1.ResetPasswordResponse], error)
 	// ChangePassword updates the password for the authenticated user.
 	// Optionally revokes all other active sessions.
+	//
+	// Returns UNAUTHENTICATED if old_password does not match.
 	ChangePassword(context.Context, *connect.Request[v1.ChangePasswordRequest]) (*connect.Response[v1.ChangePasswordResponse], error)
 }
 
