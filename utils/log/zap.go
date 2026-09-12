@@ -124,7 +124,9 @@ func NewZapWithConfig(c config.Logger) (*LoggerWrapper, error) {
 	case Stderr:
 		output = zapcore.AddSync(os.Stderr)
 	default:
-		file, err = os.OpenFile(c.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		file, err = os.OpenFile(c.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, logFileMode)
+		// 0600, not 0666. Debug-level output carries request metadata, and a
+		// world-writable log file is also a world-writable audit trail.
 		if err != nil {
 			return nil, fmt.Errorf("failed to open output file: %w", err)
 		}

@@ -16,7 +16,7 @@ import (
 	identityv1connect "github.com/alipourhabibi/Hades/api/gen/api/identity/v1/identityv1connect"
 	"github.com/alipourhabibi/Hades/api/gen/api/registry/v1/registryv1connect"
 	"github.com/alipourhabibi/Hades/internal/hades/server/middleware"
-	errorsutils "github.com/alipourhabibi/Hades/utils/errors"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 )
 
 // newServerMux registers all Connect-RPC and gRPC reflection handlers.
@@ -26,22 +26,46 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 		return nil, fmt.Errorf("protovalidate interceptor: %w", err)
 	}
 
-	otelInterceptor, _ := otelconnect.NewInterceptor(
+	otelInterceptor, err := otelconnect.NewInterceptor(
 		otelconnect.WithTracerProvider(otel.GetTracerProvider()),
 		otelconnect.WithMeterProvider(otel.GetMeterProvider()),
+		// net.peer.port is the client's ephemeral source port, so it is a
+		// different value for essentially every TCP connection. otelconnect
+		// puts it in the attribute set of five histogram instruments, and the
+		// metric SDK retains one time series per unique attribute set for the
+		// lifetime of the process. Left on, server memory grows with the total
+		// number of connections ever accepted and is never released: a 20
+		// second load stage took RSS from 61 MB to 6.55 GB during the E2E run.
+		// net.peer.name goes with it, which is fine here: the useful dimensions
+		// are the procedure and the status code, both of which are kept.
+		otelconnect.WithoutServerPeerAttributes(),
 	)
-
-	base := []connect.Interceptor{
-		middleware.NewRequestLoggingInterceptor(s.logger),
-		protovalidateInterceptor,
-		otelInterceptor,
-		errorsutils.NewErrorInterceptor(),
+	if err != nil {
+		return nil, fmt.Errorf("otel interceptor: %w", err)
 	}
 
-	withAuth := connect.WithInterceptors(append(
-		[]connect.Interceptor{s.serverSet.AuthorizationServer.NewAuthorizationInterceptor()},
-		base...,
-	)...)
+	// Interceptor order. The first element is the outermost.
+	//
+	//  1. otel            - outside authentication, so requests rejected by authn
+	//                       or authz still produce a span and an RPC metric. A
+	//                       credential-stuffing run is meant to be visible in the
+	//                       dashboards that exist to show it.
+	//  2. error           - a translation layer belongs at the boundary, so that
+	//                       errors raised by authorization, protovalidate and the
+	//                       request logger also pass through ToConnectError.
+	//  3. authorization   - authenticate and authorize before anything reads the
+	//                       message.
+	//  4. protovalidate   - reject malformed messages...
+	//  5. request logging - ...before the logger serialises them.
+	chain := []connect.Interceptor{
+		otelInterceptor,
+		connerr.NewErrorInterceptor(),
+		s.serverSet.AuthorizationServer.NewAuthorizationInterceptor(),
+		protovalidateInterceptor,
+		middleware.NewRequestLoggingInterceptor(s.logger),
+	}
+
+	withAuth := connect.WithInterceptors(chain...)
 
 	reflector := grpcreflect.NewStaticReflector(
 		authv1connect.AuthenticationServiceName,
@@ -60,9 +84,32 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 		identityv1connect.OrgServiceName,
 		identityv1connect.NotificationServiceName,
 		registryv1alpha1connect.AuthnServiceName,
+		// The buf protocol is the compatibility surface people integrate
+		// against, and these five were mounted below without being advertised
+		// here: a reflection-driven client or a grpcurl exploration could not
+		// see the services that matter most. The v1alpha AuthnService was in
+		// the list, so the omission was drift as the buf services were added
+		// rather than a decision.
+		modulev1connect.ModuleServiceName,
+		modulev1connect.CommitServiceName,
+		modulev1connect.UploadServiceName,
+		modulev1connect.GraphServiceName,
+		modulev1connect.DownloadServiceName,
 	)
 
 	mux := http.NewServeMux()
+
+	// Liveness endpoint.
+	//
+	// It exists so the container HEALTHCHECK and any orchestrator probe have
+	// something cheap and unauthenticated to ask. It reports that the process
+	// is up and routing, and deliberately nothing else: a readiness check that
+	// touched the database would make a database blip restart the server.
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+	})
 
 	// Auth-domain handlers - all served by the single *auth.Server
 	mux.Handle(authv1connect.NewAuthenticationServiceHandler(s.serverSet.AuthServer, withAuth))
@@ -105,6 +152,11 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 	// gRPC reflection publishes the full service and method schema to anyone who
 	// can reach the port, so it is opt-in via server.enableReflection.
 	if s.config != nil && s.config.Server.EnableReflection {
+		// Both handlers. grpc.reflection.v1 is the stable API and v1alpha is
+		// the deprecated one; only v1alpha was registered, so the v1 path was
+		// a 404 and a client that speaks only v1 got Unimplemented. grpcurl
+		// falls back to v1alpha, which is what hid this.
+		mux.Handle(grpcreflect.NewHandlerV1(reflector))
 		mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector))
 	}
 

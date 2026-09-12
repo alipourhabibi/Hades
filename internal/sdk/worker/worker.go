@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
@@ -85,13 +86,21 @@ func New(
 	}
 }
 
-// Run starts the polling loop. Blocks until ctx is cancelled.
+// Run starts the polling loop. It blocks until ctx is cancelled and every
+// in-flight job has finished.
 func (w *Worker) Run(ctx context.Context) {
 	sem := make(chan struct{}, w.concurrency)
+	var wg sync.WaitGroup
 	pollTicker := time.NewTicker(w.pollInterval)
 	recoveryTicker := time.NewTicker(recoveryInterval)
 	defer pollTicker.Stop()
 	defer recoveryTicker.Stop()
+
+	// Wait for in-flight generation to finish rather than returning the moment
+	// the context is cancelled. Returning immediately killed jobs mid-flight
+	// and left their rows in 'running' until stale recovery reclaimed them
+	// minutes later.
+	defer wg.Wait()
 
 	// Recover any jobs left stuck in 'running' from a previous crash.
 	w.recoverStale(ctx)
@@ -104,27 +113,55 @@ func (w *Worker) Run(ctx context.Context) {
 		case <-recoveryTicker.C:
 			w.recoverStale(ctx)
 		case <-pollTicker.C:
-			jobs, err := w.jobStorage.ClaimPending(ctx, w.concurrency)
-			if err != nil {
-				w.logger.Error("SDK worker: failed to claim jobs", "error", err)
+			// Capacity is reserved BEFORE anything is claimed, and exactly as
+			// many jobs are claimed as there are free slots. Claiming first and
+			// then blocking on the semaphore marked jobs 'running' that this
+			// worker might never start: if the context was cancelled while
+			// blocked, they stayed 'running' until stale recovery reclaimed
+			// them.
+			slots := acquireAvailable(sem, w.concurrency)
+			if slots == 0 {
 				continue
 			}
-			for _, job := range jobs {
-				// Acquire in a select so a full worker pool does not stop the
-				// loop from observing cancellation: blocking on a bare channel
-				// send here made shutdown wait for a job to finish.
-				select {
-				case sem <- struct{}{}:
-				case <-ctx.Done():
-					return
+
+			jobs, err := w.jobStorage.ClaimPending(ctx, slots)
+			if err != nil {
+				w.logger.Error("SDK worker: failed to claim jobs", "error", err)
+				for i := 0; i < slots; i++ {
+					<-sem
 				}
+				continue
+			}
+			// Give back the slots no job was claimed for.
+			for i := len(jobs); i < slots; i++ {
+				<-sem
+			}
+
+			for _, job := range jobs {
+				wg.Add(1)
 				go func(j *sdkjob.SDKJob) {
+					defer wg.Done()
 					defer func() { <-sem }()
 					w.process(ctx, j)
 				}(job)
 			}
 		}
 	}
+}
+
+// acquireAvailable takes up to max slots from sem without blocking and returns
+// how many it got.
+func acquireAvailable(sem chan struct{}, max int) int {
+	n := 0
+	for n < max {
+		select {
+		case sem <- struct{}{}:
+			n++
+		default:
+			return n
+		}
+	}
+	return n
 }
 
 func (w *Worker) recoverStale(ctx context.Context) {
@@ -141,11 +178,14 @@ func (w *Worker) recoverStale(ctx context.Context) {
 // dirBytes returns the total size in bytes of all regular files under dir.
 func dirBytes(dir string) int64 {
 	var total int64
-	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil
+	// A walk error is ignored on purpose: this is a metric, and failing a
+	// finished job because a size could not be measured would be worse than an
+	// under-reported number.
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil || d.IsDir() {
+			return nil //nolint:nilerr // see above: measurement is best effort
 		}
-		if info, err := d.Info(); err == nil {
+		if info, infoErr := d.Info(); infoErr == nil {
 			total += info.Size()
 		}
 		return nil
@@ -259,7 +299,10 @@ func (w *Worker) process(ctx context.Context, job *sdkjob.SDKJob) {
 	genStart := time.Now()
 
 	_, genSpan := tracer.Start(ctx, "sdk.generate")
-	outDir, err := gen.Generate(ctx, protoDir)
+	// job.PluginOptions overrides the statically configured options. The column
+	// was written, selected and scanned but never read, so a job that recorded
+	// its own options silently used the server-wide ones instead.
+	outDir, err := gen.Generate(ctx, protoDir, job.PluginOptions)
 	if err != nil {
 		genSpan.RecordError(err)
 		genSpan.SetStatus(codes.Error, "generate")

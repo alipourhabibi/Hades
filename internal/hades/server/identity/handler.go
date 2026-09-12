@@ -3,6 +3,7 @@ package identity
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -15,7 +16,7 @@ import (
 	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	orgdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/org"
 	userdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
@@ -24,6 +25,38 @@ type orgAuthz interface {
 	AddOrgOwner(ctx context.Context, subject, orgName string) error
 	AddOrgMemberBinding(ctx context.Context, subject, role, orgName string) error
 	DeleteOrgBinding(ctx context.Context, subject, orgName string) error
+	Can(ctx context.Context, in *constants.Policy) (*constants.CanResponse, error)
+}
+
+// requireOrgPermission asks the authorization engine whether caller may perform
+// action on the organisation.
+//
+// Organisation mutations used to authorise themselves by reading org_memberships
+// directly, which left two sources of truth for the same question: the
+// membership row and the OPA binding written alongside it. They are written in
+// one transaction, so the binding is authoritative and is what every other
+// mutation in the server is checked against.
+//
+// The engine error is returned, not discarded. RemoveOrgMember did
+// `callerRole, _ :=`, which made a database failure indistinguishable from
+// "the caller is not an admin": it happened to fail closed there, but that is
+// a coin flip in general.
+func (h *Handler) requireOrgPermission(ctx context.Context, caller *registrypbv1.User, orgName string, action constants.Action, procedure string) error {
+	resp, err := h.authz.Can(ctx, &constants.Policy{
+		Subject:      caller.Username,
+		Domain:       orgName + "/*",
+		ResourceType: string(constants.ResourceOrg),
+		Action:       string(action),
+	})
+	if err != nil {
+		h.logger.Error("authorization check failed", "error", err,
+			"procedure", procedure, "org", orgName, "subject", caller.Username)
+		return connerr.Unavailable("authorization service unavailable")
+	}
+	if !resp.Allowed {
+		return connerr.PermissionDenied("permission denied on organization " + orgName)
+	}
+	return nil
 }
 
 // Handler implements both UserService and OrgService handlers.
@@ -90,23 +123,23 @@ func (h *Handler) GetUser(ctx context.Context, in *connect.Request[registrypbv1.
 	user, err := h.userDB.GetByUsername(ctx, in.Msg.Username)
 	if err != nil {
 		h.logger.Warn("user not found", "procedure", "GetUser", "username", in.Msg.Username)
-		return nil, connErr.NotFound("user not found")
+		return nil, connerr.NotFound("user not found")
 	}
 
 	if user.Type == registrypbv1.UserType_USER_TYPE_ORGANIZATION {
-		return nil, connErr.NotFound("user not found")
+		return nil, connerr.NotFound("user not found")
 	}
 
 	moduleCount, err := h.moduleDB.CountByOwner(ctx, user.Id)
 	if err != nil {
 		h.logger.Error("failed to count modules", "error", err, "user_id", user.Id)
-		return nil, connErr.Internal("failed to count modules")
+		return nil, connerr.Internal("failed to count modules")
 	}
 
 	orgs, err := h.orgStorage.GetUserOrgs(ctx, user.Id)
 	if err != nil {
 		h.logger.Error("failed to get user orgs", "error", err, "user_id", user.Id)
-		return nil, connErr.Internal("failed to get user orgs")
+		return nil, connerr.Internal("failed to get user orgs")
 	}
 	if orgs == nil {
 		orgs = []*registrypbv1.User{}
@@ -130,33 +163,37 @@ func (h *Handler) ListUsers(ctx context.Context, in *connect.Request[registrypbv
 	// internal registry where member discovery is expected. Anonymous callers
 	// are rejected to prevent unauthenticated scraping.
 	if _, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User); !ok {
-		return nil, connErr.Unauthenticated("authentication required")
+		return nil, connerr.Unauthenticated("authentication required")
 	}
 
-	users, err := h.userDB.List(ctx, in.Msg.Query)
+	limit, offset := server.Page(in.Msg.PageSize, in.Msg.PageToken)
+	users, err := h.userDB.List(ctx, in.Msg.Query, limit, offset)
 	if err != nil {
 		h.logger.Error("failed to list users", "error", err, "query", in.Msg.Query)
-		return nil, connErr.Internal("failed to list users")
+		return nil, connerr.InternalCause("failed to list users", err)
 	}
 	if users == nil {
 		users = []*registrypbv1.User{}
 	}
 	redactEmails(callerFrom(ctx), users...)
 	return &connect.Response[registrypbv1.ListUsersResponse]{
-		Msg: &registrypbv1.ListUsersResponse{Users: users},
+		Msg: &registrypbv1.ListUsersResponse{
+			Users:         users,
+			NextPageToken: server.NextPageToken(len(users), limit, offset),
+		},
 	}, nil
 }
 
 func (h *Handler) UpdateUser(ctx context.Context, in *connect.Request[registrypbv1.UpdateUserRequest]) (*connect.Response[registrypbv1.UpdateUserResponse], error) {
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
 	if !ok || user == nil {
-		return nil, connErr.Unauthenticated("authentication required")
+		return nil, connerr.Unauthenticated("authentication required")
 	}
 
 	updated, err := h.userDB.Update(ctx, user.Id, in.Msg.Description, in.Msg.Url)
 	if err != nil {
 		h.logger.Error("failed to update user", "error", err, "user_id", user.Id)
-		return nil, connErr.Internal("failed to update user")
+		return nil, connerr.Internal("failed to update user")
 	}
 
 	return &connect.Response[registrypbv1.UpdateUserResponse]{
@@ -168,19 +205,19 @@ func (h *Handler) GetOrg(ctx context.Context, in *connect.Request[registrypbv1.G
 	org, err := h.orgStorage.GetByName(ctx, in.Msg.Name)
 	if err != nil {
 		h.logger.Warn("organization not found", "error", err, "procedure", "GetOrg", "name", in.Msg.Name)
-		return nil, connErr.NotFound("organization not found")
+		return nil, connerr.NotFound("organization not found")
 	}
 
 	moduleCount, err := h.moduleDB.CountByOwner(ctx, org.Id)
 	if err != nil {
 		h.logger.Error("failed to count org modules", "error", err, "org_id", org.Id)
-		return nil, connErr.Internal("failed to count modules")
+		return nil, connerr.Internal("failed to count modules")
 	}
 
 	memberCount, err := h.orgStorage.CountMembers(ctx, org.Id)
 	if err != nil {
 		h.logger.Error("failed to count org members", "error", err, "org_id", org.Id)
-		return nil, connErr.Internal("failed to count members")
+		return nil, connerr.Internal("failed to count members")
 	}
 
 	return &connect.Response[registrypbv1.GetOrgResponse]{
@@ -193,16 +230,25 @@ func (h *Handler) GetOrg(ctx context.Context, in *connect.Request[registrypbv1.G
 }
 
 func (h *Handler) ListOrgMembers(ctx context.Context, in *connect.Request[registrypbv1.ListOrgMembersRequest]) (*connect.Response[registrypbv1.ListOrgMembersResponse], error) {
+	// A credential is required, and the interceptor already enforces it: this
+	// procedure is absent from both noAuthProcedures and optionalAuthProcedures.
+	// The check is repeated here because the consequence of the interceptor
+	// table and this handler drifting apart is anonymous enumeration of every
+	// organisation's roster, and that is worth two lines.
+	if callerFrom(ctx) == nil {
+		return nil, connerr.Unauthenticated("authentication required")
+	}
+
 	org, err := h.orgStorage.GetByName(ctx, in.Msg.OrgName)
 	if err != nil {
 		h.logger.Warn("organization not found", "error", err, "procedure", "ListOrgMembers", "org_name", in.Msg.OrgName)
-		return nil, connErr.NotFound("organization not found")
+		return nil, connerr.NotFound("organization not found")
 	}
 
 	members, err := h.orgStorage.ListMembers(ctx, org.Id)
 	if err != nil {
 		h.logger.Error("failed to list org members", "error", err, "procedure", "ListOrgMembers", "org_id", org.Id)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 
 	caller := callerFrom(ctx)
@@ -221,17 +267,21 @@ func (h *Handler) ListOrgMembers(ctx context.Context, in *connect.Request[regist
 }
 
 func (h *Handler) ListOrganizations(ctx context.Context, in *connect.Request[registrypbv1.ListOrganizationsRequest]) (*connect.Response[registrypbv1.ListOrganizationsResponse], error) {
-	orgs, err := h.orgStorage.List(ctx, in.Msg.Query)
+	limit, offset := server.Page(in.Msg.PageSize, in.Msg.PageToken)
+	orgs, err := h.orgStorage.List(ctx, in.Msg.Query, limit, offset)
 	if err != nil {
 		h.logger.Error("failed to list organizations", "error", err, "query", in.Msg.Query)
-		return nil, connErr.Internal("failed to list organizations")
+		return nil, connerr.Internal("failed to list organizations")
 	}
 	if orgs == nil {
 		orgs = []*registrypbv1.User{}
 	}
 	redactEmails(callerFrom(ctx), orgs...)
 	return &connect.Response[registrypbv1.ListOrganizationsResponse]{
-		Msg: &registrypbv1.ListOrganizationsResponse{Organizations: orgs},
+		Msg: &registrypbv1.ListOrganizationsResponse{
+			Organizations: orgs,
+			NextPageToken: server.NextPageToken(len(orgs), limit, offset),
+		},
 	}, nil
 }
 
@@ -239,13 +289,13 @@ func (h *Handler) GetUserOrgs(ctx context.Context, in *connect.Request[registryp
 	user, err := h.userDB.GetByUsername(ctx, in.Msg.Username)
 	if err != nil {
 		h.logger.Warn("user not found for GetUserOrgs", "error", err, "username", in.Msg.Username)
-		return nil, connErr.NotFound("user not found")
+		return nil, connerr.NotFound("user not found")
 	}
 
 	orgs, err := h.orgStorage.GetUserOrgs(ctx, user.Id)
 	if err != nil {
 		h.logger.Error("failed to get user orgs", "error", err, "user_id", user.Id)
-		return nil, connErr.Internal("failed to get user orgs")
+		return nil, connerr.Internal("failed to get user orgs")
 	}
 	if orgs == nil {
 		orgs = []*registrypbv1.User{}
@@ -259,15 +309,26 @@ func (h *Handler) GetUserOrgs(ctx context.Context, in *connect.Request[registryp
 func (h *Handler) CreateOrg(ctx context.Context, in *connect.Request[registrypbv1.CreateOrgRequest]) (*connect.Response[registrypbv1.CreateOrgResponse], error) {
 	caller, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
 	if !ok || caller == nil {
-		return nil, connErr.Unauthenticated("authentication required")
+		return nil, connerr.Unauthenticated("authentication required")
 	}
 
-	// Organisations share the users table and the same namespace as usernames,
-	// and an org name becomes the first path segment of every module it owns.
-	// Register applies this list; without it here an org could claim "go",
-	// "gen", or "settings" and shadow a real route.
-	if constants.IsReservedName(in.Msg.Name) {
-		return nil, connErr.InvalidArgument("organization name is reserved")
+	// Normalised and validated exactly as a username is.
+	//
+	// Organisations share the users table and one namespace with users, and an
+	// org name becomes the first path segment of every module it owns. Register
+	// lowercases and trims; this did neither, so "Acme" and "acme" were two
+	// rows in a namespace whose own proto documentation calls unique, the
+	// UNIQUE constraint on users.username is case-sensitive on both backends
+	// and did not stop it, and an org's URLs were case-sensitive while a user's
+	// were not.
+	//
+	// CreateOrgRequest.name bounds nothing but min_len 1, so the character set
+	// was unchecked too: see the note in Register for what an unchecked first
+	// path segment costs. ValidateName covers the reserved list, which is what
+	// used to be tested here on its own.
+	in.Msg.Name = strings.ToLower(strings.TrimSpace(in.Msg.Name))
+	if err := constants.ValidateName(in.Msg.Name); err != nil {
+		return nil, connerr.InvalidArgument("organization " + err.Error())
 	}
 
 	// The org row, the creator's admin membership (written by Create) and the
@@ -278,11 +339,11 @@ func (h *Handler) CreateOrg(ctx context.Context, in *connect.Request[registrypbv
 		org, err := h.orgStorage.Create(txCtx, in.Msg.Name, in.Msg.Description, in.Msg.Url, caller.Id)
 		if err != nil {
 			h.logger.Error("failed to create org", "error", err, "name", in.Msg.Name)
-			return nil, connErr.FromDB(err)
+			return nil, connerr.FromDB(err)
 		}
 		if err := h.authz.AddOrgOwner(txCtx, caller.Username, org.Username); err != nil {
 			h.logger.Error("failed to add org owner binding", "error", err, "org", org.Username, "caller", caller.Username)
-			return nil, connErr.Internal("failed to set org owner permissions")
+			return nil, connerr.Internal("failed to set org owner permissions")
 		}
 		return org, nil
 	}, 15*time.Second)
@@ -290,34 +351,35 @@ func (h *Handler) CreateOrg(ctx context.Context, in *connect.Request[registrypbv
 		return nil, err
 	}
 
+	org, ok := result.(*registrypbv1.User)
+	if !ok {
+		h.logger.Error("unexpected result type from the create-org transaction", "procedure", "CreateOrg")
+		return nil, connerr.Internal("failed to create organization")
+	}
 	return &connect.Response[registrypbv1.CreateOrgResponse]{
-		Msg: &registrypbv1.CreateOrgResponse{Org: result.(*registrypbv1.User)},
+		Msg: &registrypbv1.CreateOrgResponse{Org: org},
 	}, nil
 }
 
 func (h *Handler) UpdateOrg(ctx context.Context, in *connect.Request[registrypbv1.UpdateOrgRequest]) (*connect.Response[registrypbv1.UpdateOrgResponse], error) {
-	// Org mutation handlers (UpdateOrg, AddOrgMember, RemoveOrgMember) use a direct
-	// DB role lookup instead of OPA. Org membership is stored in the DB, not in the
-	// OPA policy store, so the DB check is the authoritative source for these operations.
 	caller, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
 	if !ok || caller == nil {
-		return nil, connErr.Unauthenticated("authentication required")
+		return nil, connerr.Unauthenticated("authentication required")
 	}
 
 	org, err := h.orgStorage.GetByName(ctx, in.Msg.OrgName)
 	if err != nil {
-		return nil, connErr.NotFound("organization not found")
+		return nil, connerr.NotFound("organization not found")
 	}
 
-	role, err := h.orgStorage.GetMemberRole(ctx, org.Id, caller.Id)
-	if err != nil || role != "admin" {
-		return nil, connErr.PermissionDenied("only org admins can update the organization")
+	if err := h.requireOrgPermission(ctx, caller, org.Username, constants.ActionUpdate, "UpdateOrg"); err != nil {
+		return nil, err
 	}
 
 	updated, err := h.orgStorage.Update(ctx, org.Id, in.Msg.Description, in.Msg.Url)
 	if err != nil {
 		h.logger.Error("failed to update org", "error", err, "org_id", org.Id)
-		return nil, connErr.Internal("failed to update organization")
+		return nil, connerr.InternalCause("failed to update organization", err)
 	}
 
 	return &connect.Response[registrypbv1.UpdateOrgResponse]{
@@ -328,22 +390,21 @@ func (h *Handler) UpdateOrg(ctx context.Context, in *connect.Request[registrypbv
 func (h *Handler) AddOrgMember(ctx context.Context, in *connect.Request[registrypbv1.AddOrgMemberRequest]) (*connect.Response[registrypbv1.AddOrgMemberResponse], error) {
 	caller, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
 	if !ok || caller == nil {
-		return nil, connErr.Unauthenticated("authentication required")
+		return nil, connerr.Unauthenticated("authentication required")
 	}
 
 	org, err := h.orgStorage.GetByName(ctx, in.Msg.OrgName)
 	if err != nil {
-		return nil, connErr.NotFound("organization not found")
+		return nil, connerr.NotFound("organization not found")
 	}
 
-	role, err := h.orgStorage.GetMemberRole(ctx, org.Id, caller.Id)
-	if err != nil || role != "admin" {
-		return nil, connErr.PermissionDenied("only org admins can add members")
+	if err := h.requireOrgPermission(ctx, caller, org.Username, constants.ActionAdmin, "AddOrgMember"); err != nil {
+		return nil, err
 	}
 
 	target, err := h.userDB.GetByUsername(ctx, in.Msg.Username)
 	if err != nil {
-		return nil, connErr.NotFound("user not found")
+		return nil, connerr.NotFound("user not found")
 	}
 
 	memberRole := in.Msg.Role
@@ -362,11 +423,11 @@ func (h *Handler) AddOrgMember(ctx context.Context, in *connect.Request[registry
 	if _, err := h.uow.Do(ctx, func(txCtx context.Context) (interface{}, error) {
 		if err := h.orgStorage.AddMember(txCtx, org.Id, target.Id, memberRole); err != nil {
 			h.logger.Error("failed to add org member", "error", err, "org_id", org.Id, "member_id", target.Id)
-			return nil, connErr.Internal("failed to add member")
+			return nil, connerr.Internal("failed to add member")
 		}
 		if err := h.authz.AddOrgMemberBinding(txCtx, target.Username, opaRole, org.Username); err != nil {
 			h.logger.Error("failed to add org member binding", "error", err, "org", org.Username, "member", target.Username)
-			return nil, connErr.Internal("failed to set member permissions")
+			return nil, connerr.Internal("failed to set member permissions")
 		}
 		return nil, nil
 	}, 15*time.Second); err != nil {
@@ -381,23 +442,24 @@ func (h *Handler) AddOrgMember(ctx context.Context, in *connect.Request[registry
 func (h *Handler) RemoveOrgMember(ctx context.Context, in *connect.Request[registrypbv1.RemoveOrgMemberRequest]) (*connect.Response[registrypbv1.RemoveOrgMemberResponse], error) {
 	caller, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
 	if !ok || caller == nil {
-		return nil, connErr.Unauthenticated("authentication required")
+		return nil, connerr.Unauthenticated("authentication required")
 	}
 
 	org, err := h.orgStorage.GetByName(ctx, in.Msg.OrgName)
 	if err != nil {
-		return nil, connErr.NotFound("organization not found")
+		return nil, connerr.NotFound("organization not found")
 	}
 
-	callerRole, _ := h.orgStorage.GetMemberRole(ctx, org.Id, caller.Id)
-	isSelf := caller.Username == in.Msg.Username
-	if callerRole != "admin" && !isSelf {
-		return nil, connErr.PermissionDenied("only org admins can remove other members")
+	// Leaving an organisation needs no permission; removing somebody else does.
+	if caller.Username != in.Msg.Username {
+		if err := h.requireOrgPermission(ctx, caller, org.Username, constants.ActionAdmin, "RemoveOrgMember"); err != nil {
+			return nil, err
+		}
 	}
 
 	target, err := h.userDB.GetByUsername(ctx, in.Msg.Username)
 	if err != nil {
-		return nil, connErr.NotFound("user not found")
+		return nil, connerr.NotFound("user not found")
 	}
 
 	// Removing the last admin would leave the org permanently unmanageable:
@@ -405,13 +467,13 @@ func (h *Handler) RemoveOrgMember(ctx context.Context, in *connect.Request[regis
 	// ever appoint a replacement. This also covers an admin removing themselves.
 	targetRole, err := h.orgStorage.GetMemberRole(ctx, org.Id, target.Id)
 	if err != nil {
-		return nil, connErr.NotFound("user is not a member of this organization")
+		return nil, connerr.NotFound("user is not a member of this organization")
 	}
 	if targetRole == "admin" {
 		members, err := h.orgStorage.ListMembers(ctx, org.Id)
 		if err != nil {
 			h.logger.Error("failed to list org members", "error", err, "procedure", "RemoveOrgMember", "org_id", org.Id)
-			return nil, connErr.FromDB(err)
+			return nil, connerr.FromDB(err)
 		}
 		admins := 0
 		for _, m := range members {
@@ -420,7 +482,7 @@ func (h *Handler) RemoveOrgMember(ctx context.Context, in *connect.Request[regis
 			}
 		}
 		if admins <= 1 {
-			return nil, connErr.FailedPrecondition("cannot remove the last admin of an organization")
+			return nil, connerr.FailedPrecondition("cannot remove the last admin of an organization")
 		}
 	}
 
@@ -429,11 +491,11 @@ func (h *Handler) RemoveOrgMember(ctx context.Context, in *connect.Request[regis
 	if _, err := h.uow.Do(ctx, func(txCtx context.Context) (interface{}, error) {
 		if err := h.orgStorage.RemoveMember(txCtx, org.Id, target.Id); err != nil {
 			h.logger.Error("failed to remove org member", "error", err, "org_id", org.Id, "member_id", target.Id)
-			return nil, connErr.Internal("failed to remove member")
+			return nil, connerr.Internal("failed to remove member")
 		}
 		if err := h.authz.DeleteOrgBinding(txCtx, target.Username, org.Username); err != nil {
 			h.logger.Error("failed to delete org member binding", "error", err, "org", org.Username, "member", target.Username)
-			return nil, connErr.Internal("failed to remove member permissions")
+			return nil, connerr.Internal("failed to remove member permissions")
 		}
 		return nil, nil
 	}, 15*time.Second); err != nil {

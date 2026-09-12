@@ -13,6 +13,7 @@ package commit
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"connectrpc.com/connect"
 
@@ -24,7 +25,7 @@ import (
 	commitdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
 	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	gitstorage "github.com/alipourhabibi/Hades/internal/hades/storage/git"
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
@@ -69,10 +70,10 @@ func (h *Handler) resolveRef(ctx context.Context, module *registrypbv1.Module, c
 	}
 	commit, err := h.commitDBStorage.GetByHash(ctx, commitHash)
 	if err != nil {
-		return "", connErr.NotFound("commit not found")
+		return "", connerr.NotFound("commit not found")
 	}
 	if commit.ModuleId != module.Id {
-		return "", connErr.NotFound("commit not found")
+		return "", connerr.NotFound("commit not found")
 	}
 	return commit.CommitHash, nil
 }
@@ -91,7 +92,7 @@ func (h *Handler) ListCommits(ctx context.Context, in *connect.Request[registryp
 	})
 	if err != nil || len(modules) == 0 {
 		h.logger.Warn("module not found", "procedure", "ListCommits", "user_id", userID, "owner", in.Msg.Owner, "module", in.Msg.Module)
-		return nil, connErr.NotFound("module not found")
+		return nil, connerr.NotFound("module not found")
 	}
 
 	if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
@@ -103,7 +104,7 @@ func (h *Handler) ListCommits(ctx context.Context, in *connect.Request[registryp
 	commits, err := h.commitDBStorage.ListByModule(ctx, modules[0].Id, pageSize, offset)
 	if err != nil {
 		h.logger.Error("failed to list commits", "error", err, "procedure", "ListCommits", "user_id", userID, "module_id", modules[0].Id)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 
 	nextPageToken := server.NextPageToken(len(commits), pageSize, offset)
@@ -124,13 +125,13 @@ func (h *Handler) GetCommit(ctx context.Context, in *connect.Request[registrypbv
 	commit, err := h.commitDBStorage.GetByHash(ctx, in.Msg.CommitHash)
 	if err != nil {
 		h.logger.Warn("commit not found", "error", err, "procedure", "GetCommit", "user_id", userID, "commit_hash", in.Msg.CommitHash)
-		return nil, connErr.NotFound("commit not found")
+		return nil, connerr.NotFound("commit not found")
 	}
 
 	modules, err := h.moduleDBStorage.GetModulesByRefs(ctx, &registrypbv1.ModuleRef{Id: commit.ModuleId})
 	if err != nil || len(modules) == 0 {
 		h.logger.Warn("module not found for commit", "procedure", "GetCommit", "user_id", userID, "module_id", commit.ModuleId)
-		return nil, connErr.NotFound("module not found")
+		return nil, connerr.NotFound("module not found")
 	}
 	if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
 		return nil, err
@@ -152,13 +153,13 @@ func (h *Handler) GetCommitDiff(ctx context.Context, in *connect.Request[registr
 	commit, err := h.commitDBStorage.GetByHash(ctx, in.Msg.CommitHash)
 	if err != nil {
 		h.logger.Warn("commit not found", "error", err, "procedure", "GetCommitDiff", "user_id", userID, "commit_hash", in.Msg.CommitHash)
-		return nil, connErr.NotFound("commit not found")
+		return nil, connerr.NotFound("commit not found")
 	}
 
 	modules, err := h.moduleDBStorage.GetModulesByRefs(ctx, &registrypbv1.ModuleRef{Id: commit.ModuleId})
 	if err != nil || len(modules) == 0 {
 		h.logger.Warn("module not found for commit", "procedure", "GetCommitDiff", "user_id", userID, "module_id", commit.ModuleId)
-		return nil, connErr.NotFound("module not found")
+		return nil, connerr.NotFound("module not found")
 	}
 
 	if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
@@ -168,7 +169,7 @@ func (h *Handler) GetCommitDiff(ctx context.Context, in *connect.Request[registr
 	fileDiffs, err := h.gitStorage.GetCommitDiff(ctx, modules[0].Name, in.Msg.CommitHash)
 	if err != nil {
 		h.logger.Error("failed to get commit diff", "error", err, "procedure", "GetCommitDiff", "user_id", userID, "commit_hash", in.Msg.CommitHash)
-		return nil, connErr.Internal("failed to get commit diff")
+		return nil, connerr.Internal("failed to get commit diff")
 	}
 
 	protoDiffs := make([]*registrypbv1.FileDiff, 0, len(fileDiffs))
@@ -207,7 +208,7 @@ func (h *Handler) ListModuleFiles(ctx context.Context, req *connect.Request[regi
 		Module: req.Msg.Module,
 	})
 	if err != nil || len(modules) == 0 {
-		return nil, connErr.NotFound("module not found")
+		return nil, connerr.NotFound("module not found")
 	}
 	if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
 		return nil, err
@@ -223,10 +224,10 @@ func (h *Handler) ListModuleFiles(ctx context.Context, req *connect.Request[regi
 		// A path that is not in the tree is a caller error, not a server fault:
 		// reporting it as Internal made every typo look like an outage.
 		if errors.Is(err, gitstorage.ErrNotFound) {
-			return nil, connErr.NotFound("path not found")
+			return nil, connerr.NotFound("path not found")
 		}
 		h.logger.Error("GetTreeEntries failed", "error", err, "owner", req.Msg.Owner, "module", req.Msg.Module, "path", req.Msg.Path)
-		return nil, connErr.Internal("failed to list files")
+		return nil, connerr.Internal("failed to list files")
 	}
 
 	entries := make([]*registrypbv1.FileEntry, len(gitEntries))
@@ -249,6 +250,10 @@ func (h *Handler) ListModuleFiles(ctx context.Context, req *connect.Request[regi
 	}, nil
 }
 
+// maxFileContentBytes bounds a single GetFileContent response. Proto files are
+// text and small; anything past this is not what the endpoint is for.
+const maxFileContentBytes = 16 << 20 // 16 MiB
+
 func (h *Handler) GetFileContent(ctx context.Context, req *connect.Request[registrypbv1.GetFileContentRequest]) (*connect.Response[registrypbv1.GetFileContentResponse], error) {
 	user, _ := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 
@@ -257,7 +262,7 @@ func (h *Handler) GetFileContent(ctx context.Context, req *connect.Request[regis
 		Module: req.Msg.Module,
 	})
 	if err != nil || len(modules) == 0 {
-		return nil, connErr.NotFound("module not found")
+		return nil, connerr.NotFound("module not found")
 	}
 	if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
 		return nil, err
@@ -270,8 +275,23 @@ func (h *Handler) GetFileContent(ctx context.Context, req *connect.Request[regis
 	}
 	content, size, err := h.gitStorage.GetFile(ctx, repoPath, ref, req.Msg.Path)
 	if err != nil {
+		// A missing path and a git backend that is down are different answers.
+		// Mapping every error to NotFound, which is what this did, reported an
+		// outage as a missing file; ListModuleFiles twenty lines above already
+		// distinguished them.
+		if errors.Is(err, gitstorage.ErrNotFound) {
+			return nil, connerr.NotFound("file not found")
+		}
 		h.logger.Error("GetFileContent failed", "error", err, "owner", req.Msg.Owner, "module", req.Msg.Module, "path", req.Msg.Path)
-		return nil, connErr.NotFound("file not found")
+		return nil, connerr.InternalCause("failed to read the file", err)
+	}
+
+	// The whole file is returned in one message. git.Storage.GetFile returns
+	// []byte rather than a reader, so a streaming path is not expressible here;
+	// the size cap on the response is the bound until that signature changes.
+	if size > maxFileContentBytes {
+		return nil, connerr.ResourceExhausted(fmt.Sprintf(
+			"file is %d bytes, larger than the %d byte limit for this endpoint", size, maxFileContentBytes))
 	}
 
 	return &connect.Response[registrypbv1.GetFileContentResponse]{

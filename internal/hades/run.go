@@ -2,14 +2,13 @@ package hades
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"time"
-
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/alipourhabibi/Hades/internal/sdk/generate"
 	sdkstorage "github.com/alipourhabibi/Hades/internal/sdk/storage"
@@ -20,42 +19,52 @@ import (
 // Run starts background goroutines (pprof, Prometheus, SDK worker) and the
 // HTTP listener. It cancels the context on fatal errors.
 func (s *SchemaRegistryServer) Run(ctx context.Context, cancel context.CancelFunc) {
-	// Diagnostic listeners bind to loopback unless a bind address is configured.
-	// /debug/pprof/heap dumps process memory, which routinely contains session
-	// tokens and secrets, and neither listener has any authentication.
-	if s.config.Telemetry.PprofPort > 0 {
-		go func() {
+	// Diagnostic listeners.
+	//
+	// They start only when telemetry is enabled, not merely when a port is set.
+	// dev.yaml sets enabled: false and both ports, so both used to start
+	// anyway, and /metrics served an empty registry because InitMetrics had
+	// bound to the no-op provider.
+	//
+	// /debug/pprof/heap dumps process memory, which routinely contains live
+	// session tokens and personal access tokens, and neither listener
+	// authenticates. Binding either to a non-loopback address therefore needs
+	// telemetry.allowPublicDiagnostics as well as a bind address.
+	var diagnostics []*http.Server
+	if s.config.Telemetry.Enabled {
+		if s.config.Telemetry.PprofPort > 0 {
 			pprofMux := http.NewServeMux()
 			pprofMux.HandleFunc("/debug/pprof/", pprof.Index)
 			pprofMux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 			pprofMux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 			pprofMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 			pprofMux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-			addr := diagnosticAddr(s.config.Telemetry.BindAddr, s.config.Telemetry.PprofPort)
-			s.logger.Info("pprof server listening", "addr", addr)
-			srv := &http.Server{Addr: addr, Handler: pprofMux, ReadHeaderTimeout: 10 * time.Second}
-			_ = srv.ListenAndServe()
-		}()
-	}
+			addr, err := s.diagnosticAddr(s.config.Telemetry.PprofPort)
+			if err != nil {
+				s.logger.Error("refusing to start the pprof listener", "error", err)
+				cancel()
+				return
+			}
+			diagnostics = append(diagnostics, s.startDiagnostic("pprof", addr, pprofMux))
+		}
 
-	if s.config.Telemetry.PrometheusPort > 0 {
-		go func() {
+		if s.config.Telemetry.PrometheusPort > 0 {
 			promMux := http.NewServeMux()
 			promMux.Handle("/metrics", promhttp.Handler())
-			addr := diagnosticAddr(s.config.Telemetry.BindAddr, s.config.Telemetry.PrometheusPort)
-			s.logger.Info("prometheus metrics server listening", "addr", addr)
-			srv := &http.Server{Addr: addr, Handler: promMux, ReadHeaderTimeout: 10 * time.Second}
-			_ = srv.ListenAndServe()
-		}()
+			addr, err := s.diagnosticAddr(s.config.Telemetry.PrometheusPort)
+			if err != nil {
+				s.logger.Error("refusing to start the metrics listener", "error", err)
+				cancel()
+				return
+			}
+			diagnostics = append(diagnostics, s.startDiagnostic("prometheus metrics", addr, promMux))
+		}
+	} else if s.config.Telemetry.PprofPort > 0 || s.config.Telemetry.PrometheusPort > 0 {
+		s.logger.Info("diagnostic ports are configured but telemetry.enabled is false; not starting them")
 	}
 
 	if s.config.SDK.Enabled {
-		w, err := newSDKWorker(s, s.serverSet.SDKBackend)
-		if err != nil {
-			s.logger.Error("failed to create SDK worker", "error", err)
-		} else {
-			go w.Run(ctx)
-		}
+		go newSDKWorker(s, s.serverSet.SDKBackend).Run(ctx)
 	}
 
 	mux, err := s.newServerMux()
@@ -64,8 +73,6 @@ func (s *SchemaRegistryServer) Run(ctx context.Context, cancel context.CancelFun
 		cancel()
 		return
 	}
-
-	handler := h2c.NewHandler(mux, &http2.Server{})
 
 	// Explicit timeouts. With http.ListenAndServe every timeout is unset, so a
 	// client that opens a connection and sends headers one byte at a time holds
@@ -77,15 +84,39 @@ func (s *SchemaRegistryServer) Run(ctx context.Context, cancel context.CancelFun
 	// slowloris shapes.
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", s.listenPort),
-		Handler:           handler,
+		Handler:           mux,
 		ReadHeaderTimeout: durationOr(s.config.Server.ReadHeaderTimeout, 15*time.Second),
 		ReadTimeout:       durationOr(s.config.Server.ReadTimeout, 5*time.Minute),
 		IdleTimeout:       durationOr(s.config.Server.IdleTimeout, 120*time.Second),
 	}
 
+	// Protocols, not h2c.NewHandler.
+	//
+	// golang.org/x/net/http2/h2c is deprecated in favour of the standard
+	// library's Protocols field, which is also more honest about what it does:
+	// unencrypted HTTP/2 is enabled only on the plaintext listener. The
+	// previous code wrapped the handler unconditionally, so the TLS path also
+	// carried the h2c upgrade machinery it can never use.
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	if s.certFile == "" {
+		protocols.SetUnencryptedHTTP2(true)
+	} else {
+		protocols.SetHTTP2(true)
+	}
+	srv.Protocols = protocols
+
+	if s.certFile != "" {
+		// TLS 1.2 floor. Without a TLSConfig the standard library accepts
+		// whatever the runtime default is, which is not a decision this server
+		// has made.
+		srv.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+
 	// Stop accepting and drain in-flight requests when the context is cancelled,
 	// so shutdown does not sever an upload midway through its transaction.
 	shutdownDone := make(chan struct{})
+	// #nosec G118 -- deliberate: the drain must outlive the cancelled request context, and it is bounded by shutdownTimeout.
 	go func() {
 		defer close(shutdownDone)
 		<-ctx.Done()
@@ -95,6 +126,13 @@ func (s *SchemaRegistryServer) Run(ctx context.Context, cancel context.CancelFun
 		defer cancelShutdown()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			s.logger.Error("graceful shutdown failed", "error", err)
+		}
+		// The diagnostic listeners are drained too. Only the main server was,
+		// so pprof and /metrics stayed up after shutdown had begun.
+		for _, d := range diagnostics {
+			if err := d.Shutdown(shutdownCtx); err != nil {
+				s.logger.Error("diagnostic listener shutdown failed", "addr", d.Addr, "error", err)
+			}
 		}
 	}()
 
@@ -124,18 +162,52 @@ func durationOr(d, fallback time.Duration) time.Duration {
 	return fallback
 }
 
+// startDiagnostic runs one diagnostic listener and returns it so it can be
+// drained on shutdown.
+//
+// The ListenAndServe error is logged. Discarding it, which is what this did,
+// made a port conflict completely silent: the endpoint simply was not there.
+func (s *SchemaRegistryServer) startDiagnostic(name, addr string, handler http.Handler) *http.Server {
+	srv := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	s.logger.Info(name+" server listening", "addr", addr)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			s.logger.Error(name+" server stopped", "addr", addr, "error", err)
+		}
+	}()
+	return srv
+}
+
 // diagnosticAddr builds the listen address for pprof and Prometheus.
-// The default bind address is loopback: both endpoints are unauthenticated and
-// expose process internals, so they must be opted in to a public interface.
-func diagnosticAddr(bindAddr string, port int) string {
+//
+// The default bind is loopback. A non-loopback bind additionally requires
+// telemetry.allowPublicDiagnostics, because a pprof heap dump contains live
+// credentials and neither endpoint authenticates: publishing them has to be a
+// stated decision rather than a side effect of setting an address.
+func (s *SchemaRegistryServer) diagnosticAddr(port int) (string, error) {
+	bindAddr := s.config.Telemetry.BindAddr
 	if bindAddr == "" {
 		bindAddr = "127.0.0.1"
 	}
-	return fmt.Sprintf("%s:%d", bindAddr, port)
+	if !isLoopback(bindAddr) && !s.config.Telemetry.AllowPublicDiagnostics {
+		return "", fmt.Errorf(
+			"telemetry.bindAddr is %q, which is not loopback: set telemetry.allowPublicDiagnostics to publish "+
+				"unauthenticated diagnostics that expose process memory", bindAddr)
+	}
+	return fmt.Sprintf("%s:%d", bindAddr, port), nil
+}
+
+// isLoopback reports whether addr names only the local machine.
+func isLoopback(addr string) bool {
+	if addr == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(addr)
+	return ip != nil && ip.IsLoopback()
 }
 
 // newSDKWorker builds a worker that generates SDK artifacts after each push.
-func newSDKWorker(s *SchemaRegistryServer, backend sdkstorage.Backend) (*worker.Worker, error) {
+func newSDKWorker(s *SchemaRegistryServer, backend sdkstorage.Backend) *worker.Worker {
 	cfg := s.config.SDK
 	generators := make(map[string]*generate.Generator, len(cfg.Generators))
 	for _, g := range cfg.Generators {
@@ -150,5 +222,5 @@ func newSDKWorker(s *SchemaRegistryServer, backend sdkstorage.Backend) (*worker.
 		s.logger,
 		10*time.Second,
 		4,
-	).WithNotifications(s.db.Notification()), nil
+	).WithNotifications(s.db.Notification())
 }

@@ -14,8 +14,8 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/apitoken"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 	utilscrypto "github.com/alipourhabibi/Hades/utils/crypto"
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/google/uuid"
 )
 
@@ -35,15 +35,15 @@ const (
 // would otherwise receive a full-authority credential by accident.
 func validateScopes(scopes []string) error {
 	if len(scopes) == 0 {
-		return connErr.InvalidArgument("at least one scope is required; an empty scope list would grant unrestricted access")
+		return connerr.InvalidArgument("at least one scope is required; an empty scope list would grant unrestricted access")
 	}
 	seen := make(map[string]struct{}, len(scopes))
 	for _, sc := range scopes {
 		if !constants.IsKnownScope(sc) {
-			return connErr.InvalidArgument(fmt.Sprintf("unknown scope %q", sc))
+			return connerr.InvalidArgument(fmt.Sprintf("unknown scope %q", sc))
 		}
 		if _, dup := seen[sc]; dup {
-			return connErr.InvalidArgument(fmt.Sprintf("duplicate scope %q", sc))
+			return connerr.InvalidArgument(fmt.Sprintf("duplicate scope %q", sc))
 		}
 		seen[sc] = struct{}{}
 	}
@@ -54,7 +54,7 @@ func (s *Server) CreateAPIToken(ctx context.Context, in *connect.Request[v1.Crea
 	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "CreateAPIToken")
-		return nil, connErr.Unauthenticated("not authenticated")
+		return nil, connerr.Unauthenticated("not authenticated")
 	}
 
 	if err := validateScopes(in.Msg.Scopes); err != nil {
@@ -65,10 +65,10 @@ func (s *Server) CreateAPIToken(ctx context.Context, in *connect.Request[v1.Crea
 	if in.Msg.ExpiresAt != nil {
 		t := in.Msg.ExpiresAt.AsTime()
 		if !t.After(time.Now()) {
-			return nil, connErr.InvalidArgument("expiry must be in the future")
+			return nil, connerr.InvalidArgument("expiry must be in the future")
 		}
 		if t.After(time.Now().Add(maxAPITokenLifetime)) {
-			return nil, connErr.InvalidArgument("expiry exceeds the maximum token lifetime")
+			return nil, connerr.InvalidArgument("expiry exceeds the maximum token lifetime")
 		}
 		expiresAt = &t
 	}
@@ -77,7 +77,7 @@ func (s *Server) CreateAPIToken(ctx context.Context, in *connect.Request[v1.Crea
 	existing, err := s.apiTokenDB.ListByUserID(ctx, user.Id, maxAPITokensPerUser+1, 0)
 	if err != nil {
 		s.logger.Error("failed to count API tokens", "error", err, "procedure", "CreateAPIToken", "user_id", user.Id)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 	live := 0
 	now := time.Now()
@@ -87,19 +87,19 @@ func (s *Server) CreateAPIToken(ctx context.Context, in *connect.Request[v1.Crea
 		}
 	}
 	if live >= maxAPITokensPerUser {
-		return nil, connErr.ResourceExhausted("maximum number of active API tokens reached; revoke one first")
+		return nil, connerr.ResourceExhausted("maximum number of active API tokens reached; revoke one first")
 	}
 
 	fullToken, prefix, tokenHash, err := utilscrypto.GenerateAPIToken()
 	if err != nil {
 		s.logger.Error("failed to generate token", "error", err, "procedure", "CreateAPIToken", "user_id", user.Id)
-		return nil, connErr.Internal("failed to generate token")
+		return nil, connerr.Internal("failed to generate token")
 	}
 
 	row, err := s.apiTokenDB.Create(ctx, user.Id, in.Msg.Name, prefix, tokenHash, in.Msg.Scopes, expiresAt)
 	if err != nil {
 		s.logger.Error("failed to create API token", "error", err, "procedure", "CreateAPIToken", "user_id", user.Id)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 
 	if s.auditLogDB != nil {
@@ -121,7 +121,7 @@ func (s *Server) ListAPITokens(ctx context.Context, in *connect.Request[v1.ListA
 	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "ListAPITokens")
-		return nil, connErr.Unauthenticated("not authenticated")
+		return nil, connerr.Unauthenticated("not authenticated")
 	}
 
 	pageSize, offset := server.Page(in.Msg.PageSize, in.Msg.PageToken)
@@ -129,7 +129,7 @@ func (s *Server) ListAPITokens(ctx context.Context, in *connect.Request[v1.ListA
 	rows, err := s.apiTokenDB.ListByUserID(ctx, user.Id, pageSize, offset)
 	if err != nil {
 		s.logger.Error("failed to list API tokens", "error", err, "procedure", "ListAPITokens", "user_id", user.Id)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 
 	now := time.Now()
@@ -163,21 +163,21 @@ func (s *Server) RevokeAPIToken(ctx context.Context, in *connect.Request[v1.Revo
 	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "RevokeAPIToken")
-		return nil, connErr.Unauthenticated("not authenticated")
+		return nil, connerr.Unauthenticated("not authenticated")
 	}
 
 	id, err := uuid.Parse(in.Msg.Id)
 	if err != nil {
 		s.logger.Warn("invalid token ID", "procedure", "RevokeAPIToken", "user_id", user.Id, "token_id", in.Msg.Id)
-		return nil, connErr.InvalidArgument("invalid token ID")
+		return nil, connerr.InvalidArgument("invalid token ID")
 	}
 
 	if err := s.apiTokenDB.RevokeByOwner(ctx, id, user.Id); err != nil {
 		if errors.Is(err, apitoken.ErrNotFound) {
-			return nil, connErr.NotFound("token not found")
+			return nil, connerr.NotFound("token not found")
 		}
 		s.logger.Error("failed to revoke API token", "error", err, "procedure", "RevokeAPIToken", "user_id", user.Id, "token_id", in.Msg.Id)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 	if s.auditLogDB != nil {
 		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_API_TOKEN_REVOKED, "", "", map[string]any{"token_id": in.Msg.Id})

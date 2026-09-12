@@ -1,0 +1,15 @@
+-- api_tokens.prefix was VARCHAR(12), and every prefix GenerateAPIToken
+-- produces is 15 characters: APITokenPrefix ("hades1_", 7 characters) plus
+-- four random bytes rendered as 8 hex characters. Every insert failed with
+-- SQLSTATE 22001, so no API token could be created on PostgreSQL at all, and
+-- since `buf push` requires an API token and refuses interactive sessions,
+-- nothing could be published to a PostgreSQL deployment.
+--
+-- SQLite has always declared this column TEXT (migration/sqlite/001_schema),
+-- which is why the defect was invisible on the default development backend:
+-- SQLite does not enforce VARCHAR length.
+--
+-- TEXT rather than a wider VARCHAR: it matches the SQLite side exactly, and
+-- PostgreSQL stores both identically, so a length bound here would buy nothing
+-- except the opportunity to be wrong again when the prefix format changes.
+ALTER TABLE api_tokens ALTER COLUMN prefix TYPE TEXT;

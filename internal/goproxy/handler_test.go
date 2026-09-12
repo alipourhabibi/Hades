@@ -14,6 +14,7 @@ import (
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/config"
+	"github.com/alipourhabibi/Hades/internal/hades/server/authorization"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
@@ -27,11 +28,11 @@ type fakeAuthorizer struct {
 	gotCalled bool
 }
 
-func (f *fakeAuthorizer) UserFromToken(_ context.Context, _ string) (*identityv1.User, []string, error) {
+func (f *fakeAuthorizer) UserFromToken(_ context.Context, _ string) (*identityv1.User, authorization.Scopes, error) {
 	if f.tokenErr != nil {
-		return nil, nil, f.tokenErr
+		return nil, authorization.Scopes{}, f.tokenErr
 	}
-	return f.user, f.scopes, nil
+	return f.user, authorization.ScopesFromValues(f.scopes), nil
 }
 
 func (f *fakeAuthorizer) CheckReadAccess(_ context.Context, user *identityv1.User, _ []*registryv1.Module) error {
@@ -236,4 +237,40 @@ func TestCredentialFromRequest(t *testing.T) {
 			assert.Equal(t, tc.want, credentialFromRequest(request(t, tc.set)))
 		})
 	}
+}
+
+// TestServeHTTP_OutOfNamespaceIs404 pins the status code a GOPROXY chain
+// depends on.
+//
+// The go command walks to the next entry in GOPROXY only on 404 or 410. This
+// used to answer 400, which stopped the walk, and since every generated SDK
+// imports google.golang.org/protobuf, that made every SDK unresolvable for
+// every consumer. A regression here is invisible in any test that only asks
+// whether the request was rejected.
+func TestServeHTTP_OutOfNamespaceIs404(t *testing.T) {
+	h := newTestHandler(t, &fakeAuthorizer{}, nil)
+
+	for _, path := range []string{
+		"/go/google.golang.org/protobuf/@v/v1.36.0.zip",
+		"/go/proxy.golang.org/x/tools/@latest",
+		"/go/example.com/gen/go/alice/@v/list", // inside the prefix, wrong shape
+	} {
+		t.Run(path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+			assert.Equal(t, http.StatusNotFound, w.Code)
+		})
+	}
+}
+
+// TestServeHTTP_UnparseablePathIs400 is the other half: a path this registry
+// does claim, that no proxy could serve, stays a client error.
+func TestServeHTTP_UnparseablePathIs400(t *testing.T) {
+	h := newTestHandler(t, &fakeAuthorizer{}, nil)
+
+	w := httptest.NewRecorder()
+	// An unescaped uppercase letter: the GOPROXY encoding requires "!a", so a
+	// raw "A" means the path was not produced by a conforming client.
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/go/example.com/gen/go/Alice/mymod/@v/list", nil))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

@@ -99,13 +99,26 @@ message GetUserResponse {
 // ListUsersRequest searches for user accounts.
 message ListUsersRequest {
   // Optional substring search on username. Empty matches every account.
-  // At most 50 accounts are returned either way; there is no pagination.
+  //
+  // The search term is matched literally: "%" and "_" are escaped, so a query
+  // of "%" finds accounts whose name contains a percent sign rather than every
+  // account there is.
   string query = 1;
+  // Maximum number of accounts to return. Zero uses the default (50) and the
+  // server clamps to 100.
+  int32 page_size = 2;
+  // Opaque cursor from a previous response's next_page_token.
+  string page_token = 3;
 }
 
 // ListUsersResponse carries matching user records.
 message ListUsersResponse {
   repeated User users = 1;
+  // Cursor for the next page, or empty when this was the last one.
+  //
+  // Follow this rather than stopping when a page is shorter than page_size:
+  // the server may filter rows out of a page after reading them.
+  string next_page_token = 2;
 }
 
 // UpdateUserRequest updates the profile fields for the authenticated user.

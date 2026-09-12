@@ -17,9 +17,6 @@ import (
 type emptyBindingStore struct{}
 
 func (emptyBindingStore) Create(context.Context, string, string, string) error { return nil }
-func (emptyBindingStore) ListAll(context.Context) ([]opabinding.RoleBinding, error) {
-	return nil, nil
-}
 func (emptyBindingStore) ListBySubject(context.Context, string) ([]opabinding.RoleBinding, error) {
 	return nil, nil
 }
@@ -29,9 +26,6 @@ func (emptyBindingStore) DeleteBySubjectDomain(context.Context, string, string) 
 type ownerBindingStore struct{}
 
 func (ownerBindingStore) Create(context.Context, string, string, string) error { return nil }
-func (ownerBindingStore) ListAll(context.Context) ([]opabinding.RoleBinding, error) {
-	return nil, nil
-}
 func (ownerBindingStore) ListBySubject(_ context.Context, subject string) ([]opabinding.RoleBinding, error) {
 	if subject != "alice" {
 		return nil, nil

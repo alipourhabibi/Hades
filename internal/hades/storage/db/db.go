@@ -47,7 +47,5 @@ type Store interface {
 	BackupCode() backupcode.Storage
 	AuditLog() auditlog.Storage
 
-	// GitalyOpLog returns the concrete Gitaly operation log storage.
-	// It is PostgreSQL-only and has no SQLite equivalent or interface.
-	GitalyOpLog() *gitalyoplog.GitalyOpLogStorage
+	GitalyOpLog() gitalyoplog.Storage
 }

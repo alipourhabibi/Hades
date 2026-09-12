@@ -9,6 +9,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// Page size bounds for List. The upper clamp matches every other paginated
+// method in the storage layer; without it a caller could request an arbitrary
+// number of security-event rows in one call.
+const (
+	DefaultPageSize = 50
+	MaxPageSize     = 100
+)
+
 // Storage is the domain interface for audit log persistence.
 type Storage interface {
 	Create(ctx context.Context, userID *string, event authv1.AuditEventType, ipAddress, userAgent string, metadata map[string]any) error

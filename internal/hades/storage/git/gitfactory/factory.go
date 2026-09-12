@@ -22,18 +22,11 @@ func NewFromConfig(c *config.Config) (git.Storage, error) {
 		if err != nil {
 			return nil, fmt.Errorf("git: gitaly: %w", err)
 		}
-		return gitaly.New(
-			svc.RepositoryService,
-			svc.OperattionService,
-			svc.BlobService,
-			svc.CommitService,
-			svc.TreeService,
-			svc.DiffService,
-		), nil
+		return gitaly.New(svc), nil
 	default:
 		root := c.GitStorage.Root
 		if root == "" {
-			root = "./data/repos"
+			root = "./_data/repos"
 		}
 		return gogit.New(root), nil
 	}

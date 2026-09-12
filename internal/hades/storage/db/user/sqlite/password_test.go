@@ -62,7 +62,7 @@ func TestUserReadsNeverCarryPasswordHash(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, byEmail.Password, "GetByEmail must not carry the password hash")
 
-	listed, err := store.List(ctx, "")
+	listed, err := store.List(ctx, "", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, listed, 1)
 	assert.Empty(t, listed[0].Password, "List must not carry the password hash")

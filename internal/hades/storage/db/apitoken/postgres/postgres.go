@@ -31,6 +31,7 @@ func (s *APITokenStorage) q(ctx context.Context) txkeys.PgxQuerier {
 	return s.pool
 }
 
+// #nosec G101 -- a column list, not a credential: "token_hash" is the column that stores one.
 const apiTokenColumns = `id, user_id, name, prefix, token_hash, COALESCE(scopes, '{}'),
 		        expires_at, last_used_at, revoked_at, create_time`
 
@@ -68,7 +69,12 @@ func (s *APITokenStorage) ListByUserID(ctx context.Context, userID string, limit
 		limit = 100
 	}
 	rows, err := s.q(ctx).Query(ctx,
-		`SELECT `+apiTokenColumns+` FROM api_tokens WHERE user_id = $1 AND revoked_at IS NULL ORDER BY create_time DESC LIMIT $2 OFFSET $3`,
+		// Revoked tokens are included. Filtering them out made
+		// APITokenStatus.REVOKED unreachable, so a user could never see that a
+		// token had been revoked: it simply vanished from the list, which reads
+		// the same as "it was never there". A revoked token is inert, so
+		// showing it costs nothing and answers "did that revocation work".
+		`SELECT `+apiTokenColumns+` FROM api_tokens WHERE user_id = $1 ORDER BY create_time DESC LIMIT $2 OFFSET $3`,
 		userID, limit, offset,
 	)
 	if err != nil {

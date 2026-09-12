@@ -7,7 +7,6 @@ import (
 	"github.com/alipourhabibi/Hades/config"
 	pb "gitlab.com/gitlab-org/gitaly/v16/proto/go/gitalypb"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // RepositoryService wraps the Gitaly RepositoryService gRPC client.
@@ -16,15 +15,11 @@ type RepositoryService struct {
 	defaultStorageName string
 }
 
-func newRepositoryService(c config.Gitaly) (*RepositoryService, error) {
-	conn, err := grpc.NewClient(gitalyAddr(c), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, err
-	}
+func newRepositoryService(conn *grpc.ClientConn, c config.Gitaly) *RepositoryService {
 	return &RepositoryService{
 		client:             pb.NewRepositoryServiceClient(conn),
 		defaultStorageName: c.DefaultStorageName,
-	}, nil
+	}
 }
 
 // DeleteRepository removes the Gitaly repository for the given module.

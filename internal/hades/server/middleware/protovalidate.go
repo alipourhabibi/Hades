@@ -7,7 +7,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 )
 
 // NewProtovalidateInterceptor returns a Connect unary interceptor that validates
@@ -22,7 +22,7 @@ func NewProtovalidateInterceptor() (connect.Interceptor, error) {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 			if msg, ok := req.Any().(proto.Message); ok {
 				if vErr := v.Validate(msg); vErr != nil {
-					return nil, connErr.InvalidArgument(vErr.Error())
+					return nil, connerr.InvalidArgument(vErr.Error())
 				}
 			}
 			return next(ctx, req)

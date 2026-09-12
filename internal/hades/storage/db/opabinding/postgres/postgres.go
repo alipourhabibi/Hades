@@ -62,27 +62,6 @@ func (s *OPABindingStorage) CreateBatch(ctx context.Context, bindings []opabindi
 	return nil
 }
 
-// ListAll returns every row in opa_role_bindings.
-func (s *OPABindingStorage) ListAll(ctx context.Context) ([]opabinding.RoleBinding, error) {
-	rows, err := s.q(ctx).Query(ctx,
-		`SELECT id, subject, role, domain, created_at FROM opa_role_bindings ORDER BY created_at`,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("opabinding: list all: %w", err)
-	}
-	defer rows.Close()
-
-	var out []opabinding.RoleBinding
-	for rows.Next() {
-		var b opabinding.RoleBinding
-		if err := rows.Scan(&b.ID, &b.Subject, &b.Role, &b.Domain, &b.CreatedAt); err != nil {
-			return nil, fmt.Errorf("opabinding: list all scan: %w", err)
-		}
-		out = append(out, b)
-	}
-	return out, rows.Err()
-}
-
 // Delete removes a role binding by its UUID primary key.
 func (s *OPABindingStorage) Delete(ctx context.Context, id string) error {
 	_, err := s.q(ctx).Exec(ctx,

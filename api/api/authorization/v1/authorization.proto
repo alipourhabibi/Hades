@@ -9,7 +9,6 @@ syntax = "proto3";
 package hades.api.authorization.v1;
 
 import "api/identity/v1/user.proto";
-import "buf/validate/validate.proto";
 
 option go_package = "gen/api/authorization/v1";
 

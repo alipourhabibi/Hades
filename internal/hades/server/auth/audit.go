@@ -11,14 +11,14 @@ import (
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 )
 
 func (s *Server) ListAuditLog(ctx context.Context, in *connect.Request[v1.ListAuditLogRequest]) (*connect.Response[v1.ListAuditLogResponse], error) {
 	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "ListAuditLog")
-		return nil, connErr.Unauthenticated("not authenticated")
+		return nil, connerr.Unauthenticated("not authenticated")
 	}
 
 	pageSize, offset := server.Page(in.Msg.PageSize, in.Msg.PageToken)
@@ -26,7 +26,7 @@ func (s *Server) ListAuditLog(ctx context.Context, in *connect.Request[v1.ListAu
 	rows, err := s.auditLogDB.List(ctx, user.Id, pageSize, offset)
 	if err != nil {
 		s.logger.Error("failed to list audit log", "error", err, "procedure", "ListAuditLog", "user_id", user.Id)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 
 	events := make([]*v1.AuditEvent, 0, len(rows))

@@ -7,6 +7,7 @@ import (
 
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/org"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -67,14 +68,16 @@ WHERE username = $1 AND type = 1`
 	return scanUser(row)
 }
 
-func (s *OrgStorage) List(ctx context.Context, query string) ([]*identityv1.User, error) {
+// List returns organisations whose username contains query. See the user
+// implementation for why the term is escaped and the page is bounded.
+func (s *OrgStorage) List(ctx context.Context, query string, limit, offset int) ([]*identityv1.User, error) {
 	rows, err := s.q(ctx).Query(ctx, `
 SELECT`+userSelectColumns+`
 FROM users
 WHERE type = 1
-  AND ($1 = '' OR username ILIKE '%' || $1 || '%')
+  AND ($1 = '' OR username ILIKE '%' || $2 || '%' ESCAPE '\')
 ORDER BY username
-LIMIT 50`, query)
+LIMIT $3 OFFSET $4`, query, sqlutil.LikePrefix(query), limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +158,8 @@ SELECT`+userSelectColumnsQualified+`
 FROM users u
 JOIN org_memberships om ON u.id = om.org_id
 WHERE om.member_id = $1
-ORDER BY u.username`, memberID)
+ORDER BY u.username
+LIMIT 1000`, memberID)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +211,8 @@ SELECT` + userSelectColumnsQualified + `, om.role
 FROM users u
 JOIN org_memberships om ON u.id = om.member_id
 WHERE om.org_id = $1
-ORDER BY u.username`
+ORDER BY u.username
+LIMIT 1000`
 
 	rows, err := s.q(ctx).Query(ctx, query, orgID)
 	if err != nil {

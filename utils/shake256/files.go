@@ -36,7 +36,12 @@ func DigestFiles(datas []*registryv1.File) (*digest, error) {
 
 	digestOfDigests, err := NewDigestForContent(strings.NewReader(digests))
 	if err != nil {
-		panic(err)
+		// Returned, not panicked. This is the only panic on a request path in
+		// the server: DigestFiles is called by the upload handler, so a failure
+		// here took down the connection serving the push instead of answering
+		// it, and the three other NewDigestForContent calls in this same
+		// function already return their error.
+		return nil, fmt.Errorf("shake256: digest of digests: %w", err)
 	}
 
 	digestsForAllFiles, err := newDigest(digestOfDigests.Value())

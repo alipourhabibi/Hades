@@ -12,6 +12,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	sessiondb "github.com/alipourhabibi/Hades/internal/hades/storage/db/session"
 	utilscrypto "github.com/alipourhabibi/Hades/utils/crypto"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -19,6 +20,10 @@ import (
 // for the same session. Without it every authenticated request would issue a
 // write; with it an idle-timeout window is still refreshed accurately enough.
 const sessionTouchInterval = 5 * time.Minute
+
+// backgroundWriteTimeout bounds the bookkeeping writes the interceptor makes
+// (session touch, token last-used). They are not worth delaying a request for.
+const backgroundWriteTimeout = 2 * time.Second
 
 // noAuthProcedures lists Connect-RPC procedures that are always reachable
 // without a valid bearer token, and where no user context is ever set.
@@ -35,9 +40,6 @@ var noAuthProcedures = map[string]bool{
 	"/hades.api.auth.v1.DeviceService/PollDeviceToken":   true,
 	"/hades.api.auth.v1.OAuthService/GetOAuthURL":        true,
 	"/hades.api.auth.v1.OAuthService/OAuthCallback":      true,
-	// Org data is always public - no user context needed
-	"/hades.api.identity.v1.OrgService/GetOrg":         true,
-	"/hades.api.identity.v1.OrgService/ListOrgMembers": true,
 }
 
 // optionalAuthProcedures lists read-only procedures that serve both public
@@ -57,19 +59,38 @@ var optionalAuthProcedures = map[string]bool{
 	"/hades.api.registry.v1.CIService/GetCIRun":            true,
 	"/hades.api.registry.v1.SDKService/ListSDKs":           true,
 	"/hades.api.identity.v1.UserService/GetUser":           true,
-	"/hades.api.identity.v1.UserService/ListUsers":         true,
 	"/hades.api.identity.v1.OrgService/ListOrganizations":  true,
 	"/hades.api.identity.v1.OrgService/GetUserOrgs":        true,
+	// An organisation record is readable without a credential: the name, the
+	// description and the module count are what a public module page already
+	// discloses through its owner field.
+	//
+	// It is optional-auth rather than no-auth. noAuthProcedures short-circuits
+	// before any header is parsed, so the handler never saw a user even when a
+	// valid token was presented, and redactEmails then blanked the caller's own
+	// address out of their own organisation's record.
+	//
+	// ListOrgMembers is deliberately NOT here. The roster is a map of who works
+	// where: combined with ListOrganizations it gave an unauthenticated visitor
+	// the org chart and a target list for credential attacks, and every module
+	// page exposes an owner name, so no guessing was needed. Requiring a
+	// credential does not make it secret, it makes it attributable.
+	//
+	// If public rosters are wanted, that should be an explicit per-organisation
+	// visibility field defaulting to private, not the absence of a check.
+	"/hades.api.identity.v1.OrgService/GetOrg": true,
 	// buf.build registry protocol reads (buf CLI: dep update, build, export).
 	// Each handler resolves the caller as a possibly-nil user and runs
 	// CheckReadAccess per module, so anonymous callers see public modules and
 	// private ones come back as NotFound.
-	"/buf.registry.module.v1.ModuleService/GetModules":  true,
-	"/buf.registry.module.v1.ModuleService/ListModules": true,
-	"/buf.registry.module.v1.CommitService/GetCommits":  true,
-	"/buf.registry.module.v1.CommitService/ListCommits": true,
-	"/buf.registry.module.v1.GraphService/GetGraph":     true,
-	"/buf.registry.module.v1.DownloadService/Download":  true,
+	//
+	// ListModules and ListCommits are deliberately absent: neither buf adapter
+	// implements them, so an entry here would describe a method that does not
+	// exist.
+	"/buf.registry.module.v1.ModuleService/GetModules": true,
+	"/buf.registry.module.v1.CommitService/GetCommits": true,
+	"/buf.registry.module.v1.GraphService/GetGraph":    true,
+	"/buf.registry.module.v1.DownloadService/Download": true,
 }
 
 // totpPendingAllowed may be called when totp_verified = false.
@@ -136,8 +157,48 @@ func isNotFound(err error) bool {
 	return errors.Is(err, pgx.ErrNoRows) || errors.Is(err, sql.ErrNoRows)
 }
 
-func (s *Server) NewAuthorizationInterceptor() connect.UnaryInterceptorFunc {
-	interceptor := func(next connect.UnaryFunc) connect.UnaryFunc {
+// authInterceptor implements connect.Interceptor.
+//
+// It is not built with connect.UnaryInterceptorFunc, whose WrapStreamingHandler
+// is a documented no-op. Every interceptor in this server used that helper,
+// which meant the first streaming RPC added to any registered service would
+// have been unauthenticated by default, with nothing to signal it. Here the
+// streaming handler is implemented and refuses.
+type authInterceptor struct {
+	s *Server
+}
+
+func (i authInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return i.s.wrapUnary(next)
+}
+
+// WrapStreamingHandler refuses streaming calls outright.
+//
+// Authenticating a stream is a different problem from authenticating a unary
+// call and this server has not solved it. Refusing is the honest answer;
+// silently serving the stream with no credential check is what the no-op
+// default would have done. Remove this once streaming auth exists.
+func (i authInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		i.s.logger.Error("auth interceptor: refused a streaming call; streaming authentication is not implemented",
+			"procedure", conn.Spec().Procedure)
+		return connect.NewError(connect.CodeUnimplemented,
+			errors.New("streaming procedures are not supported by this server"))
+	}
+}
+
+func (i authInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+// NewAuthorizationInterceptor returns the authentication and authorization
+// interceptor for every registered handler.
+func (s *Server) NewAuthorizationInterceptor() connect.Interceptor {
+	return authInterceptor{s: s}
+}
+
+func (s *Server) wrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	{
 		return connect.UnaryFunc(func(
 			ctx context.Context,
 			req connect.AnyRequest,
@@ -170,6 +231,10 @@ func (s *Server) NewAuthorizationInterceptor() connect.UnaryInterceptorFunc {
 			}
 			rawToken := strings.TrimSpace(parts[1])
 
+			if err := s.limitBearerAttempts(ctx, req.Peer().Addr, procedure); err != nil {
+				return nil, err
+			}
+
 			switch {
 			case strings.HasPrefix(rawToken, utilscrypto.SessionTokenPrefix):
 				if patOnlyProcedures[procedure] {
@@ -191,7 +256,41 @@ func (s *Server) NewAuthorizationInterceptor() connect.UnaryInterceptorFunc {
 			}
 		})
 	}
-	return connect.UnaryInterceptorFunc(interceptor)
+}
+
+// bearerAttemptLimit and bearerAttemptWindow bound how many bearer credentials
+// one peer may present. Each presentation costs a token-hash lookup, and on
+// SQLite that lookup had no index until the catch-up migration, so an
+// unbounded replay was a cheap way to make the database do work.
+const (
+	bearerAttemptLimit  = 300
+	bearerAttemptWindow = time.Minute
+)
+
+// limitBearerAttempts bounds credential presentation per peer.
+//
+// Unlike the login and TOTP limiters in the auth handlers, this one fails
+// OPEN: it sits in front of every authenticated request in the server, so
+// refusing on a cache outage would take the whole API down rather than
+// degrading one endpoint. The tradeoff is defensible here and not there
+// because the secret it guards is a 256-bit token rather than a password or a
+// six-digit code: this limit exists to bound work, not to bound guessing.
+// See internal/hades/server/auth/ratelimit.go and docs2/adr/010.
+func (s *Server) limitBearerAttempts(ctx context.Context, peer, procedure string) error {
+	if s.cache == nil {
+		return nil
+	}
+	allowed, err := s.cache.Allow(ctx, "bearer:peer:"+peer, bearerAttemptLimit, bearerAttemptWindow)
+	if err != nil {
+		s.logger.Error("auth interceptor: bearer limiter unavailable, allowing request",
+			"error", err, "procedure", procedure)
+		return nil
+	}
+	if !allowed {
+		s.logger.Warn("auth interceptor: bearer attempt limit exceeded", "procedure", procedure, "peer", peer)
+		return connect.NewError(connect.CodeResourceExhausted, errors.New("too many requests"))
+	}
+	return nil
 }
 
 func (s *Server) authenticateSession(ctx context.Context, req connect.AnyRequest, next connect.UnaryFunc, rawToken, procedure string) (connect.AnyResponse, error) {
@@ -201,6 +300,11 @@ func (s *Server) authenticateSession(ctx context.Context, req connect.AnyRequest
 	}
 	ctx = context.WithValue(ctx, constants.ContextKeyUser, fullUser)
 	ctx = context.WithValue(ctx, constants.ContextKeyAuthorization, rawToken)
+	// An interactive session carries no scope restriction. Stating it here is
+	// the point: the previous code left the value unset, and the scope check
+	// read "absent" as "unrestricted", so any future path that lost the value
+	// would have been granted full authority by the same rule.
+	ctx = context.WithValue(ctx, constants.ContextKeyTokenScopes, UnrestrictedScopes())
 	return next(ctx, req)
 }
 
@@ -225,9 +329,20 @@ func (s *Server) resolveSession(ctx context.Context, rawToken, procedure string)
 	}
 	fullUser, err := s.userStorage.GetByID(ctx, sess.UserID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("user not found"))
+		// A database failure is not "the user does not exist". Reporting one as
+		// the other told every caller their credential was bad during an
+		// outage, and did so with a different code than the same failure
+		// produces elsewhere in this file.
+		if !isNotFound(err) {
+			s.logger.Error("auth interceptor: user store error", "error", err, "procedure", procedure)
+			return nil, connect.NewError(connect.CodeUnavailable, errors.New("authentication service unavailable"))
+		}
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token"))
 	}
-	s.touchSession(sess)
+	if err := s.checkUserState(fullUser, procedure); err != nil {
+		return nil, err
+	}
+	s.touchSession(ctx, sess)
 	return fullUser, nil
 }
 
@@ -237,7 +352,7 @@ func (s *Server) resolveSession(ctx context.Context, rawToken, procedure string)
 // configured when the session was created. The new idle expiry never extends
 // past the absolute expiry. Runs in the background: a failed write only costs
 // accuracy of the idle timeout, never the request.
-func (s *Server) touchSession(sess *sessiondb.SessionRow) {
+func (s *Server) touchSession(ctx context.Context, sess *sessiondb.SessionRow) {
 	now := time.Now()
 	if now.Sub(sess.LastActivityAt) < sessionTouchInterval {
 		return
@@ -250,12 +365,15 @@ func (s *Server) touchSession(sess *sessiondb.SessionRow) {
 	if idleExpires.After(sess.AbsoluteExpiresAt) {
 		idleExpires = sess.AbsoluteExpiresAt
 	}
-	id := sess.ID
-	go func() {
-		if err := s.sessionStorage.Touch(context.Background(), id, idleExpires); err != nil {
-			s.logger.Error("auth interceptor: failed to touch session", "error", err, "session_id", id)
-		}
-	}()
+	// Inline with a short timeout rather than a bare goroutine. See
+	// recordTokenUse: the goroutine form was unbounded and outlived shutdown,
+	// and this write happens at most once per sessionTouchInterval per session
+	// so it is not on the hot path in practice.
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), backgroundWriteTimeout)
+	defer cancel()
+	if err := s.sessionStorage.Touch(writeCtx, sess.ID, idleExpires); err != nil {
+		s.logger.Warn("auth interceptor: failed to touch session", "error", err, "session_id", sess.ID)
+	}
 }
 
 func (s *Server) authenticateAPIToken(ctx context.Context, req connect.AnyRequest, next connect.UnaryFunc, rawToken, procedure string) (connect.AnyResponse, error) {
@@ -265,39 +383,92 @@ func (s *Server) authenticateAPIToken(ctx context.Context, req connect.AnyReques
 	}
 	ctx = context.WithValue(ctx, constants.ContextKeyUser, fullUser)
 	ctx = context.WithValue(ctx, constants.ContextKeyAuthorization, rawToken)
-	if len(scopes) > 0 {
-		ctx = context.WithValue(ctx, constants.ContextKeyTokenScopes, scopes)
-	}
+	ctx = context.WithValue(ctx, constants.ContextKeyTokenScopes, scopes)
 	return next(ctx, req)
 }
 
+// scopesFromContext returns the scopes attached by the interceptor.
+//
+// A context with no scopes at all is an unauthenticated or optional-auth
+// request, which the handlers gate on the user being nil; there is no
+// credential to restrict, so it is unrestricted here. A context carrying a
+// Scopes value always states its own intent.
+func scopesFromContext(ctx context.Context) Scopes {
+	if sc, ok := ctx.Value(constants.ContextKeyTokenScopes).(Scopes); ok {
+		return sc
+	}
+	return UnrestrictedScopes()
+}
+
 // resolveAPIToken validates a PAT and returns its user and declared scopes.
-// An empty scope slice means unrestricted.
-func (s *Server) resolveAPIToken(ctx context.Context, rawToken, procedure string) (*identityv1.User, []string, error) {
+func (s *Server) resolveAPIToken(ctx context.Context, rawToken, procedure string) (*identityv1.User, Scopes, error) {
 	if s.apiTokenStorage == nil {
-		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errors.New("API token store not configured"))
+		return nil, Scopes{}, connect.NewError(connect.CodeUnauthenticated, errors.New("API token store not configured"))
 	}
 	tokenHash := utilscrypto.HashToken(rawToken)
 	apiTok, err := s.apiTokenStorage.GetByTokenHash(ctx, tokenHash)
 	if err != nil {
 		if !isNotFound(err) {
 			s.logger.Error("auth interceptor: API token store error", "error", err, "procedure", procedure)
-			return nil, nil, connect.NewError(connect.CodeUnavailable, errors.New("authentication service unavailable"))
+			return nil, Scopes{}, connect.NewError(connect.CodeUnavailable, errors.New("authentication service unavailable"))
 		}
-		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token"))
+		return nil, Scopes{}, connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token"))
 	}
 	if apiTok.RevokedAt != nil {
-		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errors.New("API token revoked"))
+		return nil, Scopes{}, connect.NewError(connect.CodeUnauthenticated, errors.New("API token revoked"))
 	}
 	if apiTok.ExpiresAt != nil && time.Now().After(*apiTok.ExpiresAt) {
-		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errors.New("API token expired"))
+		return nil, Scopes{}, connect.NewError(connect.CodeUnauthenticated, errors.New("API token expired"))
 	}
-	go func() { _ = s.apiTokenStorage.UpdateLastUsed(context.Background(), apiTok.ID) }()
 	fullUser, err := s.userStorage.GetByID(ctx, apiTok.UserID)
 	if err != nil {
-		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errors.New("user not found"))
+		if !isNotFound(err) {
+			s.logger.Error("auth interceptor: user store error", "error", err, "procedure", procedure)
+			return nil, Scopes{}, connect.NewError(connect.CodeUnavailable, errors.New("authentication service unavailable"))
+		}
+		return nil, Scopes{}, connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token"))
 	}
-	return fullUser, apiTok.Scopes, nil
+	if err := s.checkUserState(fullUser, procedure); err != nil {
+		return nil, Scopes{}, err
+	}
+	s.recordTokenUse(ctx, apiTok.ID)
+	return fullUser, ScopesFromValues(apiTok.Scopes), nil
+}
+
+// recordTokenUse updates last_used_at for a personal access token.
+//
+// It runs inline with a short timeout rather than in a bare goroutine on
+// context.Background(). The goroutine version was unbounded (one per
+// authenticated request), uncoordinated with shutdown, and outlived
+// srv.Shutdown; a write that only records telemetry is not worth that.
+// WithoutCancel keeps the write from being cancelled by a client that
+// disconnects mid-request, while the timeout keeps it from delaying one.
+func (s *Server) recordTokenUse(ctx context.Context, id uuid.UUID) {
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), backgroundWriteTimeout)
+	defer cancel()
+	if err := s.apiTokenStorage.UpdateLastUsed(writeCtx, id); err != nil {
+		s.logger.Warn("auth interceptor: failed to record API token use", "error", err, "token_id", id)
+	}
+}
+
+// checkUserState rejects credentials belonging to an account that is not
+// active. Without it, deactivating or suspending a user had no effect on their
+// existing sessions or personal access tokens: they kept authenticating until
+// the credential expired on its own.
+func (s *Server) checkUserState(u *identityv1.User, procedure string) error {
+	switch u.State {
+	case identityv1.UserState_USER_STATE_ACTIVE:
+		return nil
+	case identityv1.UserState_USER_STATE_UNSPECIFIED:
+		// Rows written before the column was populated. Treated as active so an
+		// upgrade does not lock every existing account out; the migration that
+		// backfills it is what removes this case.
+		return nil
+	default:
+		s.logger.Warn("auth interceptor: rejected credential for inactive account",
+			"procedure", procedure, "user_id", u.Id, "state", u.State.String())
+		return connect.NewError(connect.CodePermissionDenied, errors.New("account is not active"))
+	}
 }
 
 // externalProcedure is the procedure label used by callers outside the
@@ -312,23 +483,21 @@ const externalProcedure = "(external)"
 //
 // It exists for routes that cannot go through the Connect interceptor, such as
 // the Go module proxy, so they do not grow a second, divergent auth path.
-func (s *Server) UserFromToken(ctx context.Context, rawToken string) (*identityv1.User, []string, error) {
+func (s *Server) UserFromToken(ctx context.Context, rawToken string) (*identityv1.User, Scopes, error) {
 	switch {
 	case strings.HasPrefix(rawToken, utilscrypto.SessionTokenPrefix):
 		user, err := s.resolveSession(ctx, rawToken, externalProcedure)
-		return user, nil, err
+		if err != nil {
+			return nil, Scopes{}, err
+		}
+		// An interactive session carries no scope restriction, stated rather
+		// than implied by a nil slice.
+		return user, UnrestrictedScopes(), nil
 	case strings.HasPrefix(rawToken, utilscrypto.APITokenPrefix):
 		return s.resolveAPIToken(ctx, rawToken, externalProcedure)
 	default:
-		return nil, nil, connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token format"))
+		return nil, Scopes{}, connect.NewError(connect.CodeUnauthenticated, errors.New("invalid token format"))
 	}
-}
-
-// ScopesAllow reports whether scopes permit resource_type:action on domain.
-// An empty slice means unrestricted. Pass the module full name as domain; see
-// scopeCovers for the grammar.
-func ScopesAllow(scopes []string, resourceType, action, domain string) bool {
-	return scopeCovers(scopes, resourceType, action, domain)
 }
 
 // validateSessionChecks runs all security checks for a session token. Fails
@@ -352,7 +521,17 @@ func (s *Server) validateSessionChecks(ctx context.Context, sess *sessiondb.Sess
 	if af.EmailVerifiedAt == nil && !emailUnverifiedAllowed[procedure] {
 		return connect.NewError(connect.CodeUnauthenticated, errors.New("email not verified"))
 	}
-	if !sess.TOTPVerified && !totpPendingAllowed[procedure] && s.totpSecretDB != nil {
+	if !sess.TOTPVerified && !totpPendingAllowed[procedure] {
+		// Second-factor enforcement must not depend on whether an optional
+		// builder call was made at wire-up time. A nil store used to skip the
+		// whole branch, so removing or reordering that call silently disabled
+		// 2FA for every session with no startup error and no log line.
+		// Server.Validate refuses to start in that state; this is the
+		// belt-and-braces half.
+		if s.totpSecretDB == nil {
+			s.logger.Error("auth interceptor: TOTP store not configured; refusing session", "procedure", procedure)
+			return connect.NewError(connect.CodeUnavailable, errors.New("authentication service unavailable"))
+		}
 		tsRow, tsErr := s.totpSecretDB.GetByUserID(ctx, sess.UserID)
 		if tsErr != nil {
 			if !isNotFound(tsErr) {

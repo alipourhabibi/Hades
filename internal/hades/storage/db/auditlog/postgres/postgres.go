@@ -49,7 +49,12 @@ func (s *AuditLogStorage) Create(ctx context.Context, userID *string, event auth
 
 func (s *AuditLogStorage) List(ctx context.Context, userID string, pageSize, offset int) ([]*auditlog.Row, error) {
 	if pageSize <= 0 {
-		pageSize = 50
+		pageSize = auditlog.DefaultPageSize
+	}
+	if pageSize > auditlog.MaxPageSize {
+		// Every other paginated method clamps at 100; this one did not, so a
+		// caller could ask for an arbitrary page size of security-event rows.
+		pageSize = auditlog.MaxPageSize
 	}
 	rows, err := s.q(ctx).Query(ctx,
 		`SELECT id, user_id, event, COALESCE(ip_address,''), COALESCE(user_agent,''), metadata, create_time

@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/alipourhabibi/Hades/config"
 	"github.com/alipourhabibi/Hades/internal/sdk/storage"
@@ -18,13 +19,26 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
+// bucketCheckTimeout bounds the one-off bucket check in New. It is short
+// because it runs during startup, where a hung call would look like the server
+// failing to boot for no stated reason.
+const bucketCheckTimeout = 15 * time.Second
+
 // Backend stores generated SDK files in S3-compatible object storage.
 type Backend struct {
 	client *minio.Client
 	bucket string
 }
 
-// New creates a new S3 Backend from the given config.
+// New creates a new S3 Backend from the given config and makes sure the bucket
+// exists.
+//
+// The bucket check is here rather than in Upload deliberately. Without it, a
+// deployment pointed at a fresh MinIO or an uncreated bucket fails at the end
+// of every SDK job with NoSuchKey, after the generation work has already been
+// done, and the compose file in this repository does not create the bucket
+// either. Checking at construction turns a recurring runtime failure into one
+// boot-time error that names the bucket.
 func New(cfg config.S3Config) (*Backend, error) {
 	client, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
@@ -34,6 +48,24 @@ func New(cfg config.S3Config) (*Backend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("s3 backend: %w", err)
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), bucketCheckTimeout)
+	defer cancel()
+	exists, err := client.BucketExists(ctx, cfg.Bucket)
+	if err != nil {
+		return nil, fmt.Errorf("s3 backend: checking bucket %q at %s: %w", cfg.Bucket, cfg.Endpoint, err)
+	}
+	if !exists {
+		// BucketAlreadyOwnedByYou is success: another instance starting at the
+		// same time is the expected way this races, and both want the same
+		// outcome.
+		if err := client.MakeBucket(ctx, cfg.Bucket, minio.MakeBucketOptions{Region: cfg.Region}); err != nil {
+			if minio.ToErrorResponse(err).Code != "BucketAlreadyOwnedByYou" {
+				return nil, fmt.Errorf("s3 backend: creating bucket %q at %s: %w", cfg.Bucket, cfg.Endpoint, err)
+			}
+		}
+	}
+
 	return &Backend{client: client, bucket: cfg.Bucket}, nil
 }
 
@@ -68,6 +100,7 @@ func (b *Backend) Upload(ctx context.Context, keyPrefix string, localDir string)
 		if err != nil {
 			return fmt.Errorf("stat %s: %w", path, err)
 		}
+		// #nosec G304,G122 -- the path comes from WalkDir over the temporary directory the generator just wrote, which this process owns for the life of the call.
 		f, err := os.Open(path)
 		if err != nil {
 			return fmt.Errorf("open %s: %w", path, err)
@@ -98,7 +131,12 @@ func (b *Backend) GetFile(ctx context.Context, key string) (io.ReadCloser, int64
 		_ = obj.Close()
 		minioErr := minio.ToErrorResponse(err)
 		if minioErr.StatusCode == 404 || minioErr.Code == "NoSuchKey" {
-			return nil, 0, fmt.Errorf("s3 get %s: %w", key, io.ErrUnexpectedEOF)
+			// The interface sentinel, not io.ErrUnexpectedEOF. "The stream
+			// ended early" is a different and more alarming condition than
+			// "there is no such object", and a caller that retried on it would
+			// retry forever. The Go module proxy classifies on this to decide
+			// between synthesising a go.mod and returning 502.
+			return nil, 0, fmt.Errorf("s3 get %s: %w", key, storage.ErrNotFound)
 		}
 		return nil, 0, fmt.Errorf("s3 stat %s: %w", key, err)
 	}

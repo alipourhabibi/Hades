@@ -6,9 +6,9 @@ import (
 
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/backupcode"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/google/uuid"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 )
 
 // SQLiteBackupCodeStorage implements backupcode.Storage using database/sql with SQLite.
@@ -28,6 +28,8 @@ func (s *SQLiteBackupCodeStorage) q(ctx context.Context) txkeys.SQLQuerier {
 }
 
 func (s *SQLiteBackupCodeStorage) CreateBatch(ctx context.Context, userID string, codeHashes []string) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	for _, h := range codeHashes {
 		_, err := s.q(ctx).ExecContext(ctx,
 			`INSERT INTO totp_backup_codes (user_id, code_hash) VALUES (?, ?)`, userID, h)
@@ -39,6 +41,8 @@ func (s *SQLiteBackupCodeStorage) CreateBatch(ctx context.Context, userID string
 }
 
 func (s *SQLiteBackupCodeStorage) GetUnused(ctx context.Context, userID, codeHash string) (*backupcode.Row, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	row := &backupcode.Row{}
 	var usedAt sqltypes.NullTime
 	var createdAt sqltypes.Time
@@ -50,12 +54,15 @@ func (s *SQLiteBackupCodeStorage) GetUnused(ctx context.Context, userID, codeHas
 	if err != nil {
 		return nil, err
 	}
+	row.UserID = sqlutil.Canonical(row.UserID)
 	row.UsedAt = usedAt.Ptr()
 	row.CreatedAt = createdAt.V
 	return row, nil
 }
 
 func (s *SQLiteBackupCodeStorage) ListByUserID(ctx context.Context, userID string) ([]*backupcode.Row, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	rows, err := s.q(ctx).QueryContext(ctx,
 		`SELECT id, user_id, code_hash, used_at, create_time FROM totp_backup_codes WHERE user_id = ? ORDER BY create_time`, userID)
 	if err != nil {
@@ -70,6 +77,7 @@ func (s *SQLiteBackupCodeStorage) ListByUserID(ctx context.Context, userID strin
 		if err := rows.Scan(&row.ID, &row.UserID, &row.CodeHash, &usedAt, &createdAt); err != nil {
 			return nil, err
 		}
+		row.UserID = sqlutil.Canonical(row.UserID)
 		row.UsedAt = usedAt.Ptr()
 		row.CreatedAt = createdAt.V
 		result = append(result, row)
@@ -84,6 +92,8 @@ func (s *SQLiteBackupCodeStorage) MarkUsed(ctx context.Context, id uuid.UUID) er
 }
 
 func (s *SQLiteBackupCodeStorage) DeleteAllForUser(ctx context.Context, userID string) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	_, err := s.q(ctx).ExecContext(ctx, `DELETE FROM totp_backup_codes WHERE user_id = ?`, userID)
 	return err
 }

@@ -28,21 +28,24 @@ logger:
   addSource: true
   output: stdout # stdout, stderr, file path
 
-  # Encoder settings
+  # Encoder settings. Both engines honour these except where noted: the slog
+  # engine used to ignore this whole section, so the same file produced two
+  # different log schemas depending on the engine above.
   timeFormat: ISO8601 # ISO8601, RFC3339, RFC3339Nano, epoch, epoch_millis, epoch_nanos
-  levelFormat: lowercase # lowercase, capital, capitalColor, color
-  durationFormat: string # string, nanos, ms
+  levelFormat: lowercase # lowercase, capital, capitalColor, color. The two colour spellings are plain capitals under slog, which has no colour support.
+  durationFormat: string # string, nanos, ms. ZAP ONLY: slog renders a duration by its String method.
   callerFormat: full # full, short
 
-  # Custom key names
+  # Custom key names.
   timeKey: time
   levelKey: level
-  nameKey: name
+  nameKey: name # ZAP ONLY: slog has no logger name.
   callerKey: caller
   messageKey: message
-  stacktraceKey: stacktrace
+  stacktraceKey: stacktrace # ZAP ONLY: slog captures no stack traces.
 
-  # Sampling configuration
+  # Sampling configuration. ZAP ONLY: slog has no sampler, so under
+  # engine: slog every entry is emitted whatever is set here.
   sampling:
     initial: 100 # Sample the first N entries
     thereafter: 10 # Sample every Nth entry after Initial
@@ -57,7 +60,7 @@ sqlite:
   path: ./hades.db
 
 gitStorage:
-  root: ./data/repos
+  root: ./_data/repos
 
 diskStorage:
   path: ./_data/artifacts
@@ -65,6 +68,10 @@ diskStorage:
 gitaly:
   port: 9999
   defaultStorageName: default
+  # Transport security on the Gitaly connection.
+  tls: false
+  caCertFile: ""
+  serverNameOverride: ""
 
 db:
   connectionString: "postgres://hades:hades@0.0.0.0:5432/hades?sslmode=disable"
@@ -79,7 +86,15 @@ telemetry:
   # Both are unauthenticated and pprof dumps process memory, so exposing
   # them on a public interface has to be deliberate.
   bindAddr: "127.0.0.1"
-  samplingRatio: 1.0
+  # Required before either listener will bind to a non-loopback address. A
+  # pprof heap dump contains live session tokens and neither endpoint
+  # authenticates, so publishing them is a separate, named decision.
+  allowPublicDiagnostics: false
+  # Fraction of traces sampled. 1.0 samples every request, which costs both the
+  # server and whatever collects the spans: during the E2E run it took the
+  # Jaeger all-in-one container to 11.4 GB. Raise it temporarily when chasing a
+  # specific request, and put it back.
+  samplingRatio: 0.05
 
 auth:
   password:
@@ -93,6 +108,11 @@ auth:
     cooldownMinutes: 30
   emailVerification:
     tokenExpiryHours: 24
+    # Development only, and off here on purpose. It marks a new address as
+    # verified without the user proving they control it, which is what
+    # verification exists to prevent. It is useful when email.stub is on,
+    # because then nothing is delivered and Login refuses an unverified account.
+    autoVerify: false
   passwordReset:
     tokenExpiryHours: 1
 
@@ -101,6 +121,10 @@ email:
   from: "noreply@example.com"
 
 oauth:
+  # Off by default. With it on, a first-time OAuth login takes over any local
+  # account whose email the provider reports as verified, with no confirmation
+  # step: a compromised provider account is then a full takeover of this one.
+  allowAccountLinkingByEmail: false
   github:
     clientId: ""
     clientSecret: ""
@@ -128,9 +152,13 @@ totp:
 # bindingCacheTTL: how long per-subject role-binding results are cached.
 #   0s (default): memory backend → 10s, redis backend → 60s.
 #   Set explicitly (e.g. "30s") to override for both backends.
-# WARNING: the memory cache is per process. See DEPLOYMENT.md for multi-pod notes.
+# WARNING: memory cache is per-process; see DEPLOYMENT.md for multi-pod notes.
 opa:
   bindingCacheTTL: 0s # 0s = backend-specific default (memory=10s, redis=60s)
+  # Subjects that bypass every policy check. Empty is the recommendation: the
+  # bypass has no scoping and no distinct audit signal. It is read by the Rego
+  # policy as data.superadmins.
+  superAdmins: []
 
 sdk:
   enabled: true

@@ -30,6 +30,7 @@ const (
 	// APITokenPrefix marks a personal access token.
 	APITokenPrefix = "hades1_"
 	// SessionTokenPrefix marks an interactive session token.
+	// #nosec G101 -- a token PREFIX used to route credentials by type, not a secret.
 	SessionTokenPrefix = "hds_sess_"
 )
 

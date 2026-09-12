@@ -40,7 +40,7 @@ func (s *BackupCodeStorage) CreateBatch(ctx context.Context, userID string, code
 		)
 	}
 	results := s.q(ctx).SendBatch(ctx, batch)
-	defer results.Close()
+	defer func() { _ = results.Close() }()
 	for range codeHashes {
 		if _, err := results.Exec(); err != nil {
 			return err

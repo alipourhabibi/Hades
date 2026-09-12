@@ -68,10 +68,32 @@ func (s *DeviceGrantStorage) GetByUserCode(ctx context.Context, userCode string)
 	return row, nil
 }
 
-func (s *DeviceGrantStorage) Approve(ctx context.Context, id uuid.UUID, userID string, apiTokenID *uuid.UUID) error {
-	_, err := s.q(ctx).Exec(ctx,
-		`UPDATE device_grants SET user_id = $1, api_token_id = $2, approved_at = NOW() WHERE id = $3`,
-		userID, apiTokenID, id,
+func (s *DeviceGrantStorage) Approve(ctx context.Context, id uuid.UUID, userID string) error {
+	tag, err := s.q(ctx).Exec(ctx,
+		`UPDATE device_grants SET user_id = $1, approved_at = NOW()
+		 WHERE id = $2 AND approved_at IS NULL`,
+		userID, id,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return devicegrant.ErrAlreadyApproved
+	}
+	return nil
+}
+
+func (s *DeviceGrantStorage) AttachToken(ctx context.Context, id uuid.UUID, apiTokenID uuid.UUID) error {
+	tag, err := s.q(ctx).Exec(ctx,
+		`UPDATE device_grants SET api_token_id = $1
+		 WHERE id = $2 AND api_token_id IS NULL`,
+		apiTokenID, id,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return devicegrant.ErrTokenAlreadyIssued
+	}
+	return nil
 }

@@ -5,8 +5,20 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"io"
 )
+
+// ErrNotFound is what every Backend returns when a key does not exist.
+//
+// It is here, on the interface, rather than per backend, because the caller
+// that matters is the Go module proxy: it distinguishes "the generator did not
+// emit this file", which is a fallback, from "the store is unreachable", which
+// is a 502. With no shared sentinel that classification was a substring match
+// on the error message, and the S3 backend, which reported a missing object as
+// io.ErrUnexpectedEOF, failed it silently: every .mod request returned 502 and
+// no generated SDK could be resolved by go get on an S3 deployment.
+var ErrNotFound = errors.New("sdk storage: artifact not found")
 
 // File represents a generated SDK file (used for downloads).
 type File struct {

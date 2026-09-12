@@ -17,7 +17,10 @@ type Storage interface {
 	GetAuthFieldsByUsername(ctx context.Context, username string) (*AuthFields, error)
 	GetAuthFieldsByID(ctx context.Context, id string) (*AuthFields, error)
 	Create(ctx context.Context, username, email, password string, t identityv1.UserType, status identityv1.UserState, description, url string) error
-	List(ctx context.Context, query string) ([]*identityv1.User, error)
+	// List returns users whose username contains query, at most limit of them
+	// starting at offset. The query term is matched literally; see
+	// sqlutil.LikePrefix for why an unescaped term is a full-table wildcard.
+	List(ctx context.Context, query string, limit, offset int) ([]*identityv1.User, error)
 	Update(ctx context.Context, userID, description, url string) (*identityv1.User, error)
 	IncrementFailedLogins(ctx context.Context, userID string) error
 	ResetFailedLogins(ctx context.Context, userID string) error

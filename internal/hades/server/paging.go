@@ -38,8 +38,15 @@ func Page(pageSize int32, pageToken string) (limit, offset int) {
 // NextPageToken returns the cursor for the page after the one just returned,
 // or "" when the returned page was the last one.
 //
-// returned is the number of rows the query produced, before any post-filtering:
-// a short page means the underlying table is exhausted.
+// `returned` must be the number of rows the QUERY produced, not the number the
+// handler is about to send. The two differ whenever a handler filters after
+// reading, and the query count is the one that answers "are there more rows":
+// a page that filters down to nothing can still be followed by a full one.
+//
+// The consequence, which every list response documents, is that a client must
+// follow the token rather than stopping when a page is shorter than it asked
+// for. Where the filter can be expressed in SQL it belongs in the query, which
+// removes the discrepancy entirely; ListModules does that for visibility.
 func NextPageToken(returned, limit, offset int) string {
 	if returned < limit {
 		return ""

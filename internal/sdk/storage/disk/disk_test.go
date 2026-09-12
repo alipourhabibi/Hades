@@ -2,6 +2,7 @@ package disk_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -87,7 +88,7 @@ func TestDiskStorage_GetFile_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	rc, _, err := s.GetFile(ctx, "nonexistent/path/file.go")
-	if err != disk.ErrNotFound {
+	if !errors.Is(err, disk.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v (rc=%v)", err, rc)
 	}
 }

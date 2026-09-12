@@ -139,15 +139,22 @@ func TestGetGraph_IDRefLabelType(t *testing.T) {
 	assert.Equal(t, connect.CodeUnimplemented, ce.Code())
 }
 
+// TestGetGraph_IDRefResolverError pins that a resolver failure is translated at
+// this boundary rather than returned raw.
+//
+// The adapter used to return the resolver's error unchanged, and the error
+// interceptor then flattened anything that was not already a connect error to
+// Internal: an unregistered id came back as a 500, and a driver error came back
+// as whatever text the driver produced.
 func TestGetGraph_IDRefResolverError(t *testing.T) {
-	resolverErr := errors.New("resource not found")
 	s := newServerWithResolver(
 		&fakeGraphProvider{},
-		&fakeResourceResolver{err: resolverErr},
+		&fakeResourceResolver{err: resource.ErrNotFound},
 	)
 	req := connect.NewRequest(&modulev1.GetGraphRequest{
 		ResourceRefs: []*modulev1.ResourceRef{idRef("unknown-uuid")},
 	})
 	_, err := s.GetGraph(context.Background(), req)
-	assert.ErrorIs(t, err, resolverErr)
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 }

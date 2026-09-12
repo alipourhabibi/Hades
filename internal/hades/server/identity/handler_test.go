@@ -185,6 +185,33 @@ func TestCreateOrg_ReservedNameIsRefused(t *testing.T) {
 	}
 }
 
+func TestCreateOrg_NameIsLowercasedLikeAUsername(t *testing.T) {
+	// Users and organisations share one namespace and Register lowercases, so
+	// an org that kept its capitals would be a second identity distinguishable
+	// from a user's only by case.
+	f := newFixture(t)
+
+	resp, err := f.h.CreateOrg(ctxFor(f.alice), connect.NewRequest(&identityv1.CreateOrgRequest{Name: "  ACME  "}))
+	require.NoError(t, err)
+	assert.Equal(t, "acme", resp.Msg.Org.Username)
+
+	// And it is the same org when looked up by the normalised name.
+	got, err := f.h.GetOrg(ctxFor(f.alice), connect.NewRequest(&identityv1.GetOrgRequest{Name: "acme"}))
+	require.NoError(t, err)
+	assert.Equal(t, resp.Msg.Org.Id, got.Msg.Org.Id)
+}
+
+func TestCreateOrg_NameThatIsNotASafePathSegmentIsRefused(t *testing.T) {
+	// An org name is the first path segment of every module it owns, on disk
+	// and in every URL. See constants.ValidateName.
+	f := newFixture(t)
+
+	for _, name := range []string{"a/b", "..", ".git", "has space", "-leading", "trailing."} {
+		_, err := f.h.CreateOrg(ctxFor(f.alice), connect.NewRequest(&identityv1.CreateOrgRequest{Name: name}))
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), "name %q", name)
+	}
+}
+
 func TestCreateOrg_NameTakenByAUserIsRefused(t *testing.T) {
 	// Users and organisations share one namespace.
 	f := newFixture(t)
@@ -332,7 +359,7 @@ func TestRemoveOrgMember_NonMemberIsNotFound(t *testing.T) {
 	assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 }
 
-func TestGetOrgAndListMembers_AreReadableAnonymously(t *testing.T) {
+func TestGetOrg_IsReadableAnonymously(t *testing.T) {
 	f := newFixture(t)
 	f.mustCreateOrg(t, "acme")
 	require.NoError(t, f.addMember(t, "bob", ""))
@@ -342,12 +369,39 @@ func TestGetOrgAndListMembers_AreReadableAnonymously(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), org.Msg.MemberCount)
 	assert.Equal(t, int32(0), org.Msg.ModuleCount, "the module is owned by alice, not by the org")
+}
 
-	members, err := f.h.ListOrgMembers(ctxFor(nil), connect.NewRequest(&identityv1.ListOrgMembersRequest{OrgName: "acme"}))
+// TestListOrgMembers_RefusesAnonymousCallers pins the credential requirement.
+//
+// The roster used to be readable with no credential at all, which handed an
+// unauthenticated visitor the org chart and a target list for credential
+// attacks: organisation names are on every public module page, so nothing had
+// to be guessed. This is not secrecy, it is attribution.
+func TestListOrgMembers_RefusesAnonymousCallers(t *testing.T) {
+	f := newFixture(t)
+	f.mustCreateOrg(t, "acme")
+	require.NoError(t, f.addMember(t, "bob", ""))
+
+	_, err := f.h.ListOrgMembers(ctxFor(nil), connect.NewRequest(&identityv1.ListOrgMembersRequest{OrgName: "acme"}))
+
+	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+}
+
+func TestListOrgMembers_RedactsOtherMembersAddresses(t *testing.T) {
+	f := newFixture(t)
+	f.mustCreateOrg(t, "acme")
+	require.NoError(t, f.addMember(t, "bob", ""))
+
+	members, err := f.h.ListOrgMembers(ctxFor(f.bob), connect.NewRequest(&identityv1.ListOrgMembersRequest{OrgName: "acme"}))
+
 	require.NoError(t, err)
 	require.Len(t, members.Msg.Members, 2)
 	for _, m := range members.Msg.Members {
-		assert.Empty(t, m.User.Email, "an anonymous caller reads no addresses")
+		if m.User.Username == f.bob.Username {
+			assert.NotEmpty(t, m.User.Email, "the caller reads their own address")
+			continue
+		}
+		assert.Empty(t, m.User.Email, "another member's address stays redacted")
 	}
 }
 

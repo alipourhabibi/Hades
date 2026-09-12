@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	registrypbv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
+	registrypbv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/utils/log"
 	"github.com/stretchr/testify/assert"

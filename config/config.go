@@ -19,8 +19,19 @@ type OPAConfig struct {
 	// BindingCacheTTL is how long per-subject role-binding results are cached.
 	// Zero uses a backend-specific default: 10s for in-memory, 60s for Redis.
 	// Longer TTL reduces DB load but increases the time window for stale
-	// bindings after a revocation.
+	// bindings after a revocation. Redis users should set this high enough to
+	// amortise DB reads across pods while still revoking within SLA.
 	BindingCacheTTL time.Duration `json:"bindingCacheTTL" yaml:"bindingCacheTTL"`
+
+	// SuperAdmins lists subjects that bypass every policy check. The Rego
+	// policy reads this as data.superadmins; before it was wired the clause
+	// existed and could never fire, so granting the role looked like granting
+	// access and granted none.
+	//
+	// Entries are subject identifiers as the policy sees them (user IDs).
+	// Leave empty to have no superadmin, which is the default and the
+	// recommendation: the escape hatch has no scoping and no audit distinction.
+	SuperAdmins []string `json:"superAdmins" yaml:"superAdmins"`
 }
 
 // Config is the top-level configuration, aggregating all subsystem configs.
@@ -47,6 +58,7 @@ type Config struct {
 
 // LoadFile reads and parses a YAML config file from the given path.
 func LoadFile(filename string) (*Config, error) {
+	// #nosec G304 -- the path is the --config flag; reading the file the operator named is the whole job.
 	content, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -66,13 +78,23 @@ var envPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\
 // written to disk in plaintext in every deployment. An unset variable with no
 // default expands to the empty string, which Validate then rejects for the
 // fields that require a value.
+// The ":-" form follows shell semantics: the default applies when the variable
+// is unset OR set to the empty string. It used to apply only when the variable
+// was unset, which is what "${VAR-default}" means, not what is written here. An
+// operator with an empty HADES_REGISTRY_HOST= line in a compose env file got
+// the empty value and a startup failure, past a default that looked like it
+// should have covered them.
 func expandEnv(content []byte) []byte {
 	return envPattern.ReplaceAllFunc(content, func(match []byte) []byte {
 		groups := envPattern.FindSubmatch(match)
-		if val, ok := os.LookupEnv(string(groups[1])); ok {
+		val, ok := os.LookupEnv(string(groups[1]))
+		if ok && val != "" {
 			return []byte(val)
 		}
-		return groups[2] // the default, or empty when none was given
+		// groups[2] is nil when no default was written, and non-nil but empty
+		// for an explicit "${VAR:-}". Both expand to nothing, which Validate
+		// then rejects for the fields that require a value.
+		return groups[2]
 	})
 }
 

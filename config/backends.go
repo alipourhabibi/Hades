@@ -107,7 +107,7 @@ type SQLiteConfig struct {
 // GitStorageConfig holds configuration for the local go-git storage backend.
 type GitStorageConfig struct {
 	// Root is the directory under which bare git repositories are stored.
-	// Defaults to "./data/repos" when empty.
+	// Defaults to "./_data/repos" when empty.
 	Root string `json:"root" yaml:"root"`
 }
 

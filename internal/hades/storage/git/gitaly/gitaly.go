@@ -4,7 +4,6 @@ package gitaly
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
@@ -22,25 +21,26 @@ type GitalyStorage struct {
 	commitSvc *CommitService
 	treeSvc   *TreeService
 	diffSvc   *DiffService
+	svc       *StorageService
 }
 
 // New creates a GitalyStorage from the sub-service clients in StorageService.
-func New(
-	repo *RepositoryService,
-	op *OperationService,
-	blobSvc *BlobService,
-	commitSvc *CommitService,
-	treeSvc *TreeService,
-	diffSvc *DiffService,
-) *GitalyStorage {
+// The StorageService owns the shared connection, which Close releases.
+func New(svc *StorageService) *GitalyStorage {
 	return &GitalyStorage{
-		repo:      repo,
-		op:        op,
-		blob:      blobSvc,
-		commitSvc: commitSvc,
-		treeSvc:   treeSvc,
-		diffSvc:   diffSvc,
+		repo:      svc.RepositoryService,
+		op:        svc.OperattionService,
+		blob:      svc.BlobService,
+		commitSvc: svc.CommitService,
+		treeSvc:   svc.TreeService,
+		diffSvc:   svc.DiffService,
+		svc:       svc,
 	}
+}
+
+// Close releases the shared Gitaly connection.
+func (g *GitalyStorage) Close() error {
+	return g.svc.Close()
 }
 
 func splitPath(repoPath string) (owner, module string) {
@@ -52,32 +52,39 @@ func splitPath(repoPath string) (owner, module string) {
 }
 
 func (g *GitalyStorage) CreateRepository(ctx context.Context, repoPath, defaultBranch string) error {
-	return g.repo.CreateRepository(ctx, &registryv1.Module{
+	// The same guard gogit applies. repoPath becomes Gitaly's RelativePath, so
+	// an unvalidated module name escapes the storage layout here too.
+	if err := git.ValidateRepoPath(repoPath); err != nil {
+		return err
+	}
+	err := g.repo.CreateRepository(ctx, &registryv1.Module{
 		Name:          repoPath,
 		DefaultBranch: defaultBranch,
 	})
+	// git.Storage documents CreateRepository as idempotent, and gogit already
+	// is. Gitaly reports AlreadyExists, which is the same outcome the caller
+	// asked for, so it is success here rather than an error to be handled at
+	// every call site.
+	if grpcCode(err) == codes.AlreadyExists {
+		return nil
+	}
+	return err
 }
 
 func (g *GitalyStorage) DeleteRepository(ctx context.Context, repoPath string) error {
+	if err := git.ValidateRepoPath(repoPath); err != nil {
+		return err
+	}
 	return g.repo.DeleteRepository(ctx, &registryv1.Module{Name: repoPath})
 }
 
-func (g *GitalyStorage) PutFiles(ctx context.Context, repoPath, branch string, files []*git.File, authorName, authorEmail, commitMsg string, existingPaths []string) (string, error) {
+func (g *GitalyStorage) PutFiles(ctx context.Context, req git.PutFilesRequest) (string, error) {
 	user := &identityv1.User{
-		Id:       authorEmail,
-		Username: authorName,
-		Email:    authorEmail,
+		Id:       req.AuthorEmail,
+		Username: req.AuthorName,
+		Email:    req.AuthorEmail,
 	}
-	module := &registryv1.Module{Name: repoPath, DefaultBranch: branch}
-	pbFiles := make([]*registryv1.File, len(files))
-	for i, f := range files {
-		pbFiles[i] = &registryv1.File{Path: f.Path, Content: f.Content}
-	}
-	digest := ""
-	if idx := strings.LastIndex(commitMsg, "digest_value:"); idx >= 0 {
-		digest = strings.TrimSpace(commitMsg[idx+len("digest_value:"):])
-	}
-	return g.op.UserCommitFiles(ctx, module, pbFiles, user, existingPaths, digest)
+	return g.op.UserCommitFiles(ctx, user, req)
 }
 
 func (g *GitalyStorage) RollbackCommit(ctx context.Context, repoPath, branch, currentHead, previousHead string) error {
@@ -102,14 +109,34 @@ func isNotFound(err error) bool {
 	if errors.Is(err, ErrTreeNotFound) {
 		return true
 	}
-	return status.Code(err) == codes.NotFound
+	return grpcCode(err) == codes.NotFound
 }
 
+// grpcCode returns the gRPC status code carried by err, unwrapping first.
+//
+// status.Code does a bare type assertion, so it reports Unknown for any error
+// that has been wrapped, and the sub-services here wrap everything with
+// fmt.Errorf("%w"). That is why a missing file came back as Internal on the
+// Gitaly backend and NotFound on gogit: the status was there, the check could
+// not see it, and a client's error code depended on a server-side
+// configuration choice it cannot see.
+func grpcCode(err error) codes.Code {
+	if err == nil {
+		return codes.OK
+	}
+	var se interface{ GRPCStatus() *status.Status }
+	if errors.As(err, &se) {
+		return se.GRPCStatus().Code()
+	}
+	return codes.Unknown
+}
+
+// ListFiles lists the paths at ref.
+//
+// ref is honoured. It used to be accepted and ignored, so a caller asking for a
+// specific commit was silently answered from the default branch.
 func (g *GitalyStorage) ListFiles(ctx context.Context, repoPath, ref string) ([]string, error) {
-	owner, module := splitPath(repoPath)
-	return g.commitSvc.ListFiles(ctx, &registryv1.UploadRequestContent{
-		ModuleRef: &registryv1.ModuleRef{Owner: owner, Module: module},
-	})
+	return g.commitSvc.ListFilesAtRef(ctx, repoPath, ref)
 }
 
 func (g *GitalyStorage) ListBlobs(ctx context.Context, repoPath, commitHash string) ([]*git.File, error) {
@@ -164,8 +191,23 @@ func (g *GitalyStorage) GetTreeEntries(ctx context.Context, repoPath, ref, dir s
 	return entries, nil
 }
 
-func (g *GitalyStorage) ListCommits(ctx context.Context, repoPath, ref string) ([]*git.CommitInfo, error) {
-	return nil, fmt.Errorf("gitaly: ListCommits not yet implemented")
+// ListCommits returns commits reachable from ref, newest first.
+//
+// It previously returned "not yet implemented" while satisfying the interface
+// at compile time, so the Gitaly backend answered a supported API call with an
+// error at runtime and nothing said so at wiring time.
+func (g *GitalyStorage) ListCommits(ctx context.Context, repoPath, ref string, limit int) ([]*git.CommitInfo, error) {
+	if limit <= 0 {
+		limit = git.DefaultCommitLimit
+	}
+	commits, err := g.commitSvc.ListCommits(ctx, repoPath, ref, limit)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, git.ErrNotFound
+		}
+		return nil, err
+	}
+	return commits, nil
 }
 
 func (g *GitalyStorage) GetCommitDiff(ctx context.Context, repoPath, commitHash string) ([]*git.FileDiff, error) {
@@ -186,6 +228,7 @@ func (g *GitalyStorage) GetCommitDiff(ctx context.Context, repoPath, commitHash 
 			Deletions:     d.Deletions,
 			Patch:         d.Patch,
 			Binary:        d.Binary,
+			TooLarge:      d.TooLarge,
 		}
 	}
 	return diffs, nil

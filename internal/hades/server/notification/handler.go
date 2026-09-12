@@ -3,6 +3,7 @@ package notification
 
 import (
 	"context"
+	"errors"
 
 	"connectrpc.com/connect"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/notification"
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
@@ -34,17 +35,21 @@ func (h *Handler) ListNotifications(ctx context.Context, in *connect.Request[reg
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "ListNotifications")
-		return nil, connErr.Unauthenticated("not authenticated")
+		return nil, connerr.Unauthenticated("not authenticated")
 	}
 
-	notifications, err := h.notificationStorage.ListForUser(ctx, user.Id)
+	limit, offset := server.Page(in.Msg.PageSize, in.Msg.PageToken)
+	notifications, err := h.notificationStorage.ListForUser(ctx, user.Id, limit, offset)
 	if err != nil {
 		h.logger.Error("failed to list notifications", "error", err, "procedure", "ListNotifications", "user_id", user.Id)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 
 	return &connect.Response[registrypbv1.ListNotificationsResponse]{
-		Msg: &registrypbv1.ListNotificationsResponse{Notifications: notifications},
+		Msg: &registrypbv1.ListNotificationsResponse{
+			Notifications: notifications,
+			NextPageToken: server.NextPageToken(len(notifications), limit, offset),
+		},
 	}, nil
 }
 
@@ -52,12 +57,24 @@ func (h *Handler) MarkNotificationRead(ctx context.Context, in *connect.Request[
 	user, ok := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
 	if !ok {
 		h.logger.Error("missing user in context", "procedure", "MarkNotificationRead")
-		return nil, connErr.Unauthenticated("not authenticated")
+		return nil, connerr.Unauthenticated("not authenticated")
 	}
 
 	if err := h.notificationStorage.MarkRead(ctx, in.Msg.Id, user.Id); err != nil {
+		// A notification that does not exist, or belongs to someone else, or
+		// was already read, is reported as success on purpose: returning
+		// NotFound here would confirm which notification ids exist. The
+		// storage layer distinguishes the cases so a caller that needs to can;
+		// this handler deliberately does not.
+		if errors.Is(err, notification.ErrNotFound) {
+			h.logger.Debug("mark-read matched no notification", "procedure", "MarkNotificationRead",
+				"user_id", user.Id, "notification_id", in.Msg.Id)
+			return &connect.Response[registrypbv1.MarkNotificationReadResponse]{
+				Msg: &registrypbv1.MarkNotificationReadResponse{},
+			}, nil
+		}
 		h.logger.Error("failed to mark notification read", "error", err, "procedure", "MarkNotificationRead", "user_id", user.Id, "notification_id", in.Msg.Id)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 
 	return &connect.Response[registrypbv1.MarkNotificationReadResponse]{

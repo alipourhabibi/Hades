@@ -141,10 +141,18 @@ func (x *Notification) GetCreateTime() *timestamppb.Timestamp {
 }
 
 // ListNotificationsRequest is the input for NotificationService.ListNotifications.
-// No parameters are needed; the service always returns notifications for the
-// authenticated caller.
+// The service always returns notifications for the authenticated caller.
 type ListNotificationsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Maximum number of notifications to return. Zero uses the default (50) and
+	// the server clamps to 100.
+	//
+	// A notification is created on every push to every module the caller can see,
+	// so this set grows without bound over the life of an account: it is the one
+	// per-user list that genuinely needs a cursor.
+	PageSize int32 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Opaque cursor from a previous response's next_page_token.
+	PageToken     string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -179,11 +187,27 @@ func (*ListNotificationsRequest) Descriptor() ([]byte, []int) {
 	return file_api_identity_v1_notification_proto_rawDescGZIP(), []int{1}
 }
 
+func (x *ListNotificationsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListNotificationsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 // ListNotificationsResponse is the output for NotificationService.ListNotifications.
 type ListNotificationsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// All notifications for the caller, ordered newest first.
+	// Notifications for the caller, ordered newest first.
 	Notifications []*Notification `protobuf:"bytes,1,rep,name=notifications,proto3" json:"notifications,omitempty"`
+	// Cursor for the next page, or empty when this was the last one.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -223,6 +247,13 @@ func (x *ListNotificationsResponse) GetNotifications() []*Notification {
 		return x.Notifications
 	}
 	return nil
+}
+
+func (x *ListNotificationsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 // MarkNotificationReadRequest marks a single notification as acknowledged.
@@ -322,10 +353,14 @@ const file_api_identity_v1_notification_proto_rawDesc = "" +
 	"resourceId\x12\x12\n" +
 	"\x04read\x18\x06 \x01(\bR\x04read\x12;\n" +
 	"\vcreate_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"createTime\"\x1a\n" +
-	"\x18ListNotificationsRequest\"f\n" +
+	"createTime\"V\n" +
+	"\x18ListNotificationsRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"\x8e\x01\n" +
 	"\x19ListNotificationsResponse\x12I\n" +
-	"\rnotifications\x18\x01 \x03(\v2#.hades.api.identity.v1.NotificationR\rnotifications\"7\n" +
+	"\rnotifications\x18\x01 \x03(\v2#.hades.api.identity.v1.NotificationR\rnotifications\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"7\n" +
 	"\x1bMarkNotificationReadRequest\x12\x18\n" +
 	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\"\x1e\n" +
 	"\x1cMarkNotificationReadResponse2\x8e\x02\n" +

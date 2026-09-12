@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/cirun"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,6 +25,7 @@ func newCIRunDB(t *testing.T) *sql.DB {
 			commit_hash     TEXT NOT NULL,
 			lint_passed     INTEGER NOT NULL DEFAULT 0,
 			breaking_passed INTEGER NOT NULL DEFAULT 0,
+			breaking_ran    INTEGER NOT NULL DEFAULT 0,
 			lint_errors     TEXT NOT NULL DEFAULT '[]',
 			breaking_errors TEXT NOT NULL DEFAULT '[]',
 			created_at      DATETIME NOT NULL DEFAULT (datetime('now')),
@@ -39,7 +41,7 @@ func TestCreateThenGet(t *testing.T) {
 	store := NewCIRun(db)
 	ctx := context.Background()
 
-	created, err := store.Create(ctx, "m-1", "abcdef123456", true, true, nil, nil)
+	created, err := store.Create(ctx, cirun.CreateParams{ModuleID: "m-1", CommitHash: "abcdef123456", LintPassed: true, BreakingPassed: true, BreakingRan: true, LintErrors: nil, BreakingErrors: nil})
 	require.NoError(t, err)
 	assert.True(t, created.LintPassed)
 	assert.True(t, created.BreakingPassed)
@@ -59,10 +61,10 @@ func TestCreateIsIdempotentPerCommit(t *testing.T) {
 	store := NewCIRun(db)
 	ctx := context.Background()
 
-	_, err := store.Create(ctx, "m-1", "abcdef123456", false, false, []string{"old lint error"}, nil)
+	_, err := store.Create(ctx, cirun.CreateParams{ModuleID: "m-1", CommitHash: "abcdef123456", LintPassed: false, BreakingPassed: false, BreakingRan: false, LintErrors: []string{"old lint error"}, BreakingErrors: nil})
 	require.NoError(t, err)
 
-	updated, err := store.Create(ctx, "m-1", "abcdef123456", true, true, nil, nil)
+	updated, err := store.Create(ctx, cirun.CreateParams{ModuleID: "m-1", CommitHash: "abcdef123456", LintPassed: true, BreakingPassed: true, BreakingRan: true, LintErrors: nil, BreakingErrors: nil})
 	require.NoError(t, err)
 	assert.True(t, updated.LintPassed)
 	assert.Empty(t, updated.LintErrors, "the second write replaces the first result rather than merging")
@@ -80,7 +82,7 @@ func TestGetIsScopedToTheModule(t *testing.T) {
 	store := NewCIRun(db)
 	ctx := context.Background()
 
-	_, err := store.Create(ctx, "m-1", "abcdef123456", true, true, nil, nil)
+	_, err := store.Create(ctx, cirun.CreateParams{ModuleID: "m-1", CommitHash: "abcdef123456", LintPassed: true, BreakingPassed: true, BreakingRan: true, LintErrors: nil, BreakingErrors: nil})
 	require.NoError(t, err)
 
 	_, err = store.GetByModuleAndCommit(ctx, "m-2", "abcdef123456")

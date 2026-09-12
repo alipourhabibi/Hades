@@ -706,8 +706,15 @@ func (*RemoveOrgMemberResponse) Descriptor() ([]byte, []int) {
 type ListOrganizationsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Optional substring search on org username. Empty matches every
-	// organization. At most 50 are returned either way; there is no pagination.
-	Query         string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	// organization.
+	//
+	// The search term is matched literally: "%" and "_" are escaped.
+	Query string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	// Maximum number of organizations to return. Zero uses the default (50) and
+	// the server clamps to 100.
+	PageSize int32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Opaque cursor from a previous response's next_page_token.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -749,10 +756,26 @@ func (x *ListOrganizationsRequest) GetQuery() string {
 	return ""
 }
 
+func (x *ListOrganizationsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListOrganizationsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 // ListOrganizationsResponse carries matching organization records.
 type ListOrganizationsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Organizations []*User                `protobuf:"bytes,1,rep,name=organizations,proto3" json:"organizations,omitempty"`
+	// Cursor for the next page, or empty when this was the last one.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -792,6 +815,13 @@ func (x *ListOrganizationsResponse) GetOrganizations() []*User {
 		return x.Organizations
 	}
 	return nil
+}
+
+func (x *ListOrganizationsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 // GetUserOrgsRequest lists the organizations a user belongs to.
@@ -923,11 +953,15 @@ const file_api_identity_v1_org_proto_rawDesc = "" +
 	"\x16RemoveOrgMemberRequest\x12\"\n" +
 	"\borg_name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aorgName\x12#\n" +
 	"\busername\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\busername\"\x19\n" +
-	"\x17RemoveOrgMemberResponse\"0\n" +
+	"\x17RemoveOrgMemberResponse\"l\n" +
 	"\x18ListOrganizationsRequest\x12\x14\n" +
-	"\x05query\x18\x01 \x01(\tR\x05query\"^\n" +
+	"\x05query\x18\x01 \x01(\tR\x05query\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x86\x01\n" +
 	"\x19ListOrganizationsResponse\x12A\n" +
-	"\rorganizations\x18\x01 \x03(\v2\x1b.hades.api.identity.v1.UserR\rorganizations\"9\n" +
+	"\rorganizations\x18\x01 \x03(\v2\x1b.hades.api.identity.v1.UserR\rorganizations\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"9\n" +
 	"\x12GetUserOrgsRequest\x12#\n" +
 	"\busername\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\busername\"X\n" +
 	"\x13GetUserOrgsResponse\x12A\n" +

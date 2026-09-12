@@ -8,11 +8,31 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 )
 
-func TestScopeCovers_EmptyMeansUnrestricted(t *testing.T) {
+func TestScopes_EmptyValueListMeansUnrestricted(t *testing.T) {
 	// Tokens issued before scopes were enforced carry no scope list. They keep
-	// full authority rather than losing all access on upgrade.
-	assert.True(t, scopeCovers(nil, "module", "read", "alice/mymod"))
-	assert.True(t, scopeCovers([]string{}, "module", "push", "alice/mymod"))
+	// full authority rather than losing all access on upgrade, but that is a
+	// decision made once in ScopesFromValues rather than a property of the
+	// matcher.
+	unrestricted := ScopesFromValues(nil)
+	assert.True(t, unrestricted.Unrestricted)
+	assert.True(t, unrestricted.Allow("module", "read", "alice/mymod"))
+	assert.True(t, ScopesFromValues([]string{}).Allow("module", "push", "alice/mymod"))
+}
+
+// TestScopes_ZeroValueDeniesEverything is the property the Scopes type exists
+// for: a value that lost its contents must not be readable as full authority.
+func TestScopes_ZeroValueDeniesEverything(t *testing.T) {
+	var zero Scopes
+	assert.False(t, zero.Allow("module", "read", "alice/mymod"))
+	assert.False(t, zero.Allow("module", "push", ""))
+	assert.True(t, zero.Restricted())
+}
+
+// TestScopeCovers_EmptyListCoversNothing pins the matcher itself: it has no
+// special case for an empty list any more.
+func TestScopeCovers_EmptyListCoversNothing(t *testing.T) {
+	assert.False(t, scopeCovers(nil, "module", "read", "alice/mymod"))
+	assert.False(t, scopeCovers([]string{}, "module", "push", "alice/mymod"))
 }
 
 func TestScopeCovers_NamespaceWideScope(t *testing.T) {

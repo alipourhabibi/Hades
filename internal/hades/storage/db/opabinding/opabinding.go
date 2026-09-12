@@ -19,7 +19,6 @@ type RoleBinding struct {
 type Storage interface {
 	Create(ctx context.Context, subject, role, domain string) error
 	CreateBatch(ctx context.Context, bindings []RoleBinding) error
-	ListAll(ctx context.Context) ([]RoleBinding, error)
 	ListBySubject(ctx context.Context, subject string) ([]RoleBinding, error)
 	Delete(ctx context.Context, id string) error
 	DeleteBySubjectDomain(ctx context.Context, subject, domain string) error

@@ -4,12 +4,11 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"time"
 
-	"connectrpc.com/connect"
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -40,11 +39,14 @@ func scanSQLiteUser(row *sql.Row) (*identityv1.User, error) {
 		&u.Type, &u.State, &u.Description, &u.Url,
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, connect.NewError(connect.CodeNotFound, errors.New("not found"))
-		}
+		// sql.ErrNoRows is returned unchanged. The PostgreSQL implementation
+		// returns the raw driver error here, and translating on one backend
+		// but not the other meant the same lookup produced a different status
+		// depending on which was configured. Translation happens once, at the
+		// handler boundary, through connerr.FromDB.
 		return nil, err
 	}
+	u.Id = sqlutil.Canonical(u.Id)
 	u.CreateTime = timestamppb.New(createTime.V)
 	u.UpdateTime = timestamppb.New(updateTime.V)
 	return u, nil
@@ -62,6 +64,8 @@ func (s *SQLiteUserStorage) GetByUsername(ctx context.Context, username string) 
 }
 
 func (s *SQLiteUserStorage) GetByID(ctx context.Context, id string) (*identityv1.User, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	id = sqlutil.ID(id)
 	return scanSQLiteUser(s.q(ctx).QueryRowContext(ctx,
 		`SELECT `+sqliteUserColumns+` FROM users WHERE id = ?`, id))
 }
@@ -92,12 +96,15 @@ func (s *SQLiteUserStorage) GetAuthFieldsByUsername(ctx context.Context, usernam
 	if err != nil {
 		return nil, err
 	}
+	af.ID = sqlutil.Canonical(af.ID)
 	af.EmailVerifiedAt = emailVerifiedAt.Ptr()
 	af.LockedUntil = lockedUntil.Ptr()
 	return af, nil
 }
 
 func (s *SQLiteUserStorage) GetAuthFieldsByID(ctx context.Context, id string) (*user.AuthFields, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	id = sqlutil.ID(id)
 	af := &user.AuthFields{}
 	var emailVerifiedAt, lockedUntil sqltypes.NullTime
 	err := s.q(ctx).QueryRowContext(ctx,
@@ -109,6 +116,7 @@ func (s *SQLiteUserStorage) GetAuthFieldsByID(ctx context.Context, id string) (*
 	if err != nil {
 		return nil, err
 	}
+	af.ID = sqlutil.Canonical(af.ID)
 	af.EmailVerifiedAt = emailVerifiedAt.Ptr()
 	af.LockedUntil = lockedUntil.Ptr()
 	return af, nil
@@ -123,13 +131,16 @@ func (s *SQLiteUserStorage) Create(ctx context.Context, username, email, passwor
 	return err
 }
 
-func (s *SQLiteUserStorage) List(ctx context.Context, query string) ([]*identityv1.User, error) {
+// List returns users whose username contains query. See the PostgreSQL
+// implementation for why the term is escaped and the page is bounded.
+func (s *SQLiteUserStorage) List(ctx context.Context, query string, limit, offset int) ([]*identityv1.User, error) {
 	rows, err := s.q(ctx).QueryContext(ctx,
 		`SELECT `+sqliteUserColumns+`
 		 FROM users
 		 WHERE type = 2
-		   AND (? = '' OR username LIKE '%' || ? || '%')
-		 ORDER BY username LIMIT 50`, query, query)
+		   AND (? = '' OR username LIKE '%' || ? || '%' ESCAPE '\')
+		 ORDER BY username LIMIT ? OFFSET ?`,
+		query, sqlutil.LikePrefix(query), limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +160,7 @@ func scanSQLiteUsers(rows *sql.Rows) ([]*identityv1.User, error) {
 		); err != nil {
 			return nil, err
 		}
+		u.Id = sqlutil.Canonical(u.Id)
 		u.CreateTime = timestamppb.New(createTime.V)
 		u.UpdateTime = timestamppb.New(updateTime.V)
 		users = append(users, u)
@@ -157,6 +169,8 @@ func scanSQLiteUsers(rows *sql.Rows) ([]*identityv1.User, error) {
 }
 
 func (s *SQLiteUserStorage) Update(ctx context.Context, userID, description, url string) (*identityv1.User, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	_, err := s.q(ctx).ExecContext(ctx,
 		`UPDATE users SET description=?, url=?, update_time=datetime('now') WHERE id=?`,
 		description, url, userID,
@@ -168,6 +182,8 @@ func (s *SQLiteUserStorage) Update(ctx context.Context, userID, description, url
 }
 
 func (s *SQLiteUserStorage) IncrementFailedLogins(ctx context.Context, userID string) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	_, err := s.q(ctx).ExecContext(ctx,
 		`UPDATE users SET failed_login_count = failed_login_count + 1, update_time = datetime('now') WHERE id = ?`, userID)
 	return err
@@ -177,6 +193,8 @@ func (s *SQLiteUserStorage) IncrementFailedLogins(ctx context.Context, userID st
 // The two are cleared together: a successful login or a password reset must
 // leave the account usable, and leaving locked_until set would keep it locked.
 func (s *SQLiteUserStorage) ResetFailedLogins(ctx context.Context, userID string) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	_, err := s.q(ctx).ExecContext(ctx,
 		`UPDATE users SET failed_login_count = 0, locked_until = NULL, update_time = datetime('now') WHERE id = ?`,
 		userID)
@@ -184,18 +202,24 @@ func (s *SQLiteUserStorage) ResetFailedLogins(ctx context.Context, userID string
 }
 
 func (s *SQLiteUserStorage) LockUntil(ctx context.Context, userID string, until time.Time) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	_, err := s.q(ctx).ExecContext(ctx,
 		`UPDATE users SET locked_until = ?, update_time = datetime('now') WHERE id = ?`, until, userID)
 	return err
 }
 
 func (s *SQLiteUserStorage) SetEmailVerified(ctx context.Context, userID string) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	_, err := s.q(ctx).ExecContext(ctx,
 		`UPDATE users SET email_verified_at = datetime('now'), update_time = datetime('now') WHERE id = ?`, userID)
 	return err
 }
 
 func (s *SQLiteUserStorage) UpdatePassword(ctx context.Context, userID, newHash string) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	_, err := s.q(ctx).ExecContext(ctx,
 		`UPDATE users SET password = ?, update_time = datetime('now') WHERE id = ?`, newHash, userID)
 	return err

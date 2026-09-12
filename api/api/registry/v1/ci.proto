@@ -9,10 +9,13 @@
 //
 // It follows that every stored CIRun has passed. A rejected push produces no
 // commit, and a record is keyed by the commit hash, so there is nothing to
-// attach a failure to. The lint_errors and breaking_errors fields exist for a
-// future non-blocking check mode and are empty today. No record is written at
-// all when linting is disabled for the deployment: a row claiming "passed" for
-// checks that never ran would be worse than no row.
+// attach a failure to. "Passed" and "was not checked" are different answers,
+// though, so breaking_ran records which one a row represents.
+//
+// The lint_errors and breaking_errors fields exist for a future non-blocking
+// check mode and are empty today. No record is written at all when linting is
+// disabled for the deployment: a row claiming "passed" for checks that never
+// ran would be worse than no row.
 
 syntax = "proto3";
 
@@ -35,9 +38,9 @@ message CIRun {
   string commit_hash = 3;
   // True when no lint violations were found.
   bool lint_passed = 4;
-  // True when no breaking changes were detected relative to the previous
-  // commit. Also true when the module has breaking checks disabled or the
-  // commit has no predecessor, since nothing was found to break.
+  // True when a breaking-change comparison ran against the previous commit and
+  // found nothing. False when no comparison happened, which is the same value
+  // breaking_ran carries.
   bool breaking_passed = 5;
   // Lint error messages. Empty when lint_passed is true.
   repeated string lint_errors = 6;
@@ -45,6 +48,14 @@ message CIRun {
   repeated string breaking_errors = 7;
   // When the CI run record was created.
   google.protobuf.Timestamp create_time = 8;
+  // True when a breaking-change comparison actually ran.
+  //
+  // It is false when the module has breaking checks disabled, when the
+  // deployment has them disabled, or when the commit has no predecessor to
+  // compare against. Without this field a commit whose breaking check was
+  // skipped was indistinguishable from one where it ran and passed, because
+  // both recorded breaking_passed = true.
+  bool breaking_ran = 9;
 }
 
 // GetCIRunRequest is the input for CIService.GetCIRun.

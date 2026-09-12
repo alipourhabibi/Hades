@@ -13,6 +13,11 @@ type Storage interface {
 	Create(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
 	GetByTokenHash(ctx context.Context, tokenHash string) (*Row, error)
 	MarkUsed(ctx context.Context, id uuid.UUID) error
+
+	// InvalidateForUser marks every outstanding reset token for the user as
+	// used, so that requesting a new one retires the old ones rather than
+	// adding to a growing set of simultaneously valid tokens.
+	InvalidateForUser(ctx context.Context, userID string) error
 }
 
 type Row struct {

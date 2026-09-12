@@ -56,10 +56,6 @@ const (
 	// authenticated caller, and scopes its query by their user id. No policy
 	// question arises.
 	guardSelf
-	// guardOrgRole: the handler reads the caller's role from the org membership
-	// table rather than from OPA. Org membership is not in the policy store, so
-	// the table is the authoritative source for these.
-	guardOrgRole
 	// guardPublic: the data is public by definition and no check is made.
 	guardPublic
 	// guardNone: the procedure is open to any caller that got past the
@@ -138,17 +134,17 @@ func matrix() []policyRow {
 
 		// -- Identity. --------------------------------------------------------
 		{identityv1connect.UserServiceGetUserProcedure, credOptional, guardPublic, "profile is public; email redacted unless it is the caller's own"},
-		{identityv1connect.UserServiceListUsersProcedure, credOptional, guardNone, "handler rejects anonymous callers itself, to stop unauthenticated scraping"},
+		{identityv1connect.UserServiceListUsersProcedure, credAny, guardNone, "any authenticated caller may enumerate users; anonymous callers are refused by the interceptor, which is where the handler already refused them"},
 		{identityv1connect.UserServiceUpdateUserProcedure, credAny, guardSelf, "writes the caller's own row only"},
 		{identityv1connect.UserServiceCreateUserProcedure, credAny, guardUnimplemented, "use AuthenticationService.Register"},
-		{identityv1connect.OrgServiceGetOrgProcedure, credNone, guardPublic, ""},
-		{identityv1connect.OrgServiceListOrgMembersProcedure, credNone, guardPublic, "emails redacted for an anonymous caller"},
+		{identityv1connect.OrgServiceGetOrgProcedure, credOptional, guardPublic, "public, but optional-auth rather than no-auth so a caller that presents a token is identified"},
+		{identityv1connect.OrgServiceListOrgMembersProcedure, credAny, guardNone, "a roster is a map of who works where, so it needs a credential; any authenticated caller may read it, and emails stay redacted for everyone but the caller's own"},
 		{identityv1connect.OrgServiceListOrganizationsProcedure, credOptional, guardPublic, ""},
 		{identityv1connect.OrgServiceGetUserOrgsProcedure, credOptional, guardPublic, ""},
 		{identityv1connect.OrgServiceCreateOrgProcedure, credAny, guardNone, "any authenticated user may create an org; reserved names refused"},
-		{identityv1connect.OrgServiceUpdateOrgProcedure, credAny, guardOrgRole, "org admin only"},
-		{identityv1connect.OrgServiceAddOrgMemberProcedure, credAny, guardOrgRole, "org admin only"},
-		{identityv1connect.OrgServiceRemoveOrgMemberProcedure, credAny, guardOrgRole, "org admin, or the member removing themselves; last admin refused"},
+		{identityv1connect.OrgServiceUpdateOrgProcedure, credAny, guardOPA, "org:update on the org namespace"},
+		{identityv1connect.OrgServiceAddOrgMemberProcedure, credAny, guardOPA, "org:admin on the org namespace"},
+		{identityv1connect.OrgServiceRemoveOrgMemberProcedure, credAny, guardOPA, "org:admin, or the member removing themselves; last admin refused"},
 		{identityv1connect.NotificationServiceListNotificationsProcedure, credAny, guardSelf, ""},
 		{identityv1connect.NotificationServiceMarkNotificationReadProcedure, credAny, guardSelf, "update scoped by user id in SQL"},
 
@@ -161,11 +157,11 @@ func matrix() []policyRow {
 		{modulev1connect.GraphServiceGetGraphProcedure, credOptional, guardOPA, ""},
 		{modulev1connect.DownloadServiceDownloadProcedure, credOptional, guardOPA, ""},
 		{modulev1connect.UploadServiceUploadProcedure, credPAT, guardOPA, "module:push per module, batched; PAT-only so a stolen browser session cannot push"},
-		{modulev1connect.ModuleServiceListModulesProcedure, credOptional, guardUnimplemented, ""},
+		{modulev1connect.ModuleServiceListModulesProcedure, credAny, guardUnimplemented, "not implemented by the adapter, so it carries no interceptor exemption: an exemption would describe a method that does not exist"},
 		{modulev1connect.ModuleServiceCreateModulesProcedure, credAny, guardUnimplemented, "native CreateModuleByName is the supported route"},
 		{modulev1connect.ModuleServiceUpdateModulesProcedure, credAny, guardUnimplemented, "native UpdateModule is the supported route"},
 		{modulev1connect.ModuleServiceDeleteModulesProcedure, credAny, guardUnimplemented, "module deletion is not implemented anywhere"},
-		{modulev1connect.CommitServiceListCommitsProcedure, credOptional, guardUnimplemented, ""},
+		{modulev1connect.CommitServiceListCommitsProcedure, credAny, guardUnimplemented, "not implemented by the adapter; see ModuleService/ListModules"},
 		{registryv1alpha1connect.AuthnServiceGetCurrentUserProcedure, credPAT, guardSelf, "the buf CLI login handshake"},
 		{registryv1alpha1connect.AuthnServiceGetCurrentUserSubjectProcedure, credAny, guardUnimplemented, ""},
 	}
@@ -271,7 +267,6 @@ func TestNoProcedureIsBothAnonymousAndPolicyFree(t *testing.T) {
 				authv1connect.OAuthServiceOAuthCallbackProcedure:                 true,
 				authv1connect.DeviceServiceRequestDeviceCodeProcedure:            true,
 				authv1connect.DeviceServicePollDeviceTokenProcedure:              true,
-				identityv1connect.UserServiceListUsersProcedure:                  true,
 			}
 			assert.True(t, allowed[row.procedure],
 				"%q is reachable without a credential and has no guard", row.procedure)

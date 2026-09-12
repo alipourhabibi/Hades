@@ -43,8 +43,6 @@ message APIToken {
   //                             one namespace ("alice/*")
   //
   // A scope never widens what the owning user may do; it only narrows it.
-  // An empty list means unrestricted. CreateAPIToken rejects an empty list, so
-  // only tokens predating that rule can carry one.
   repeated string scopes = 4;
   // When the token was last successfully used to authenticate a request.
   // Recorded asynchronously, so it may lag the most recent request slightly.

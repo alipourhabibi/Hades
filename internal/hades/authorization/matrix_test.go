@@ -23,24 +23,20 @@ import (
 // grants is the expected permission set, transcribed from authz.rego.
 var grants = map[string]map[string][]string{
 	"owner": {
-		"module": {"create", "read", "list", "update", "push", "delete", "admin", "transfer"},
-		"label":  {"create", "read", "list", "update", "delete"},
-		"commit": {"read", "list"},
+		"module": {"create", "read", "list", "update", "publish", "push", "delete", "admin", "transfer"},
+		"org":    {"read", "update", "admin"},
 	},
 	"admin": {
-		"module": {"create", "read", "list", "update", "push", "delete", "admin"},
-		"label":  {"create", "read", "list", "update", "delete"},
-		"commit": {"read", "list"},
+		"module": {"create", "read", "list", "update", "publish", "push", "delete", "admin"},
+		"org":    {"read", "update", "admin"},
 	},
 	"contributor": {
 		"module": {"read", "list", "push"},
-		"label":  {"read", "list"},
-		"commit": {"read", "list"},
+		"org":    {"read"},
 	},
 	"reader": {
 		"module": {"read", "list"},
-		"label":  {"read", "list"},
-		"commit": {"read", "list"},
+		"org":    {"read"},
 	},
 }
 
@@ -48,17 +44,21 @@ func allRoles() []string { return []string{"owner", "admin", "contributor", "rea
 func allResources() []string {
 	return []string{
 		string(constants.ResourceModule),
-		string(constants.ResourceLabel),
-		string(constants.ResourceCommit),
-		string(constants.ResourceNamespace),
+		string(constants.ResourceOrg),
 	}
 }
+
+// unknownResource is a resource type the policy has no rows for. It stands in
+// for the vocabulary that used to exist without enforcement ("label",
+// "commit", "namespace"), which is now removed.
+const unknownResource = "namespace"
 
 func allActions() []string {
 	return []string{
 		string(constants.ActionCreate), string(constants.ActionRead), string(constants.ActionList),
 		string(constants.ActionUpdate), string(constants.ActionPush), string(constants.ActionDelete),
 		string(constants.ActionAdmin), string(constants.ActionTransfer),
+		string(constants.ActionPublish),
 	}
 }
 
@@ -89,17 +89,18 @@ func TestMatrix_EveryRoleResourceAction(t *testing.T) {
 	}
 }
 
-// TestMatrix_NamespaceResourceIsGrantedByNoRole records that "namespace" is
-// policy vocabulary with no rows behind it. It is the reason API token scopes
-// accept only "module": a scope naming a resource type no role grants and no
-// handler asks about would be a credential that can do nothing.
-func TestMatrix_NamespaceResourceIsGrantedByNoRole(t *testing.T) {
+// TestMatrix_UnknownResourceIsGrantedByNoRole is the deny-by-default rule for
+// a resource type the policy has no rows for. It is why the scope vocabulary
+// lists only the types some check actually asks about: a scope naming a type no
+// role grants would be a credential that can do nothing while looking
+// deliberate.
+func TestMatrix_UnknownResourceIsGrantedByNoRole(t *testing.T) {
 	for _, role := range allRoles() {
 		e := engine(t, opabinding.RoleBinding{Subject: "alice", Role: role, Domain: "alice/*"})
 		for _, action := range allActions() {
 			assert.False(t,
-				allow(t, e, "alice", "alice/mymod", string(constants.ResourceNamespace), action, "private"),
-				"role %q must not grant namespace:%s", role, action)
+				allow(t, e, "alice", "alice/mymod", unknownResource, action, "private"),
+				"role %q must not grant %s:%s", role, unknownResource, action)
 		}
 	}
 }

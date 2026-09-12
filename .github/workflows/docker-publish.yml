@@ -1,8 +1,13 @@
 name: Publish Docker Images
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
     branches: [main]
+    types: [completed]
+
+permissions:
+  contents: read
 
 env:
   REGISTRY: ghcr.io
@@ -10,6 +15,7 @@ env:
 jobs:
   build-backend:
     runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: read
       packages: write
@@ -17,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Log in to ghcr.io
         uses: docker/login-action@v3
@@ -42,6 +50,13 @@ jobs:
         with:
           context: .
           push: true
+          # Stamped into the binary, so `hades --version` on a running
+          # container says which build it is. The Dockerfile takes these as
+          # ARGs and passes them to the linker. Without them every image
+          # reports "dev (unknown)".
+          build-args: |
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || format('0.0.0-{0}', github.sha) }}
+            COMMIT=${{ github.sha }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -49,6 +64,7 @@ jobs:
 
   build-migrate:
     runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: read
       packages: write
@@ -56,6 +72,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Log in to ghcr.io
         uses: docker/login-action@v3
@@ -89,6 +107,7 @@ jobs:
 
   build-frontend:
     runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: read
       packages: write
@@ -96,6 +115,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Log in to ghcr.io
         uses: docker/login-action@v3
@@ -121,6 +142,8 @@ jobs:
         with:
           context: ./frontend
           push: true
+          build-args: |
+            NEXT_PUBLIC_DOMAIN=${{ vars.NEXT_PUBLIC_DOMAIN }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

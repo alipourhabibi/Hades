@@ -2,12 +2,14 @@ package content
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/telemetry"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -34,6 +36,20 @@ func injectBufYAML(files []*registryv1.File, m *registryv1.Module, registryHost 
 	return out
 }
 
+const (
+	// maxDownloadRefs bounds how many commits or modules one request may name.
+	//
+	// Every blob of every named commit is read fully into memory and returned
+	// in a single protobuf response, so an unbounded request list is an
+	// unbounded allocation: one caller naming a hundred large modules can
+	// exhaust the process. This is the request-shaped half of the bound;
+	// maxDownloadBytes is the content-shaped half.
+	maxDownloadRefs = 50
+
+	// maxDownloadBytes caps the total content one response may carry.
+	maxDownloadBytes = 256 << 20 // 256 MiB
+)
+
 func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs []*registryv1.ModuleRef) ([]*registryv1.DownloadResponseContent, error) {
 	start := time.Now()
 
@@ -44,9 +60,18 @@ func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs [
 		span.End()
 	}()
 
+	if n := len(commitIDs) + len(moduleRefs); n > maxDownloadRefs {
+		telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
+		return nil, connerr.InvalidArgument(fmt.Sprintf(
+			"a download may name at most %d commits or modules, got %d", maxDownloadRefs, n))
+	}
+
 	user, _ := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 
 	var contents []*registryv1.DownloadResponseContent
+	// budget is decremented as content is read, so the response is bounded
+	// whatever mixture of commits and modules the caller named.
+	budget := int64(maxDownloadBytes)
 
 	for _, commitID := range commitIDs {
 		commit, err := h.commitDB.GetCommitById(ctx, commitID)
@@ -54,14 +79,18 @@ func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs [
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "get commit by id")
 			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
-			return nil, err
+			// Translated here rather than left raw: the error interceptor
+			// flattens anything that is not already a connect error to
+			// Internal, which discarded the NotFound this deliberately
+			// produces.
+			return nil, connerr.FromDB(err)
 		}
 		modules, err := h.moduleDB.GetModulesByRefs(ctx, &registryv1.ModuleRef{Id: commit.ModuleId})
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "get module for commit")
 			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
-			return nil, err
+			return nil, connerr.FromDB(err)
 		}
 		if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
 			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
@@ -72,11 +101,17 @@ func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs [
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "list blobs")
 			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
-			return nil, err
+			return nil, connerr.FromDB(err)
 		}
 		pbFiles := make([]*registryv1.File, len(gitFiles))
 		for i, f := range gitFiles {
 			pbFiles[i] = &registryv1.File{Path: f.Path, Content: f.Content}
+			budget -= int64(len(f.Content))
+		}
+		if budget < 0 {
+			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
+			return nil, connerr.ResourceExhausted(fmt.Sprintf(
+				"download exceeds the %d byte response limit; request fewer commits", maxDownloadBytes))
 		}
 		if len(modules) > 0 {
 			pbFiles = injectBufYAML(pbFiles, modules[0], h.registryHost)
@@ -93,7 +128,7 @@ func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs [
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "get modules")
 			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
-			return nil, err
+			return nil, connerr.FromDB(err)
 		}
 		if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
 			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
@@ -109,7 +144,7 @@ func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs [
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "fetch commits")
 			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
-			return nil, err
+			return nil, connerr.FromDB(err)
 		}
 		for _, commit := range commits {
 			gitFiles, err := h.gitStorage.ListBlobs(ctx, commit.Module.Name, commit.CommitHash)
@@ -117,11 +152,17 @@ func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs [
 				span.RecordError(err)
 				span.SetStatus(codes.Error, "list blobs")
 				telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
-				return nil, err
+				return nil, connerr.FromDB(err)
 			}
 			pbFiles := make([]*registryv1.File, len(gitFiles))
 			for i, f := range gitFiles {
 				pbFiles[i] = &registryv1.File{Path: f.Path, Content: f.Content}
+				budget -= int64(len(f.Content))
+			}
+			if budget < 0 {
+				telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
+				return nil, connerr.ResourceExhausted(fmt.Sprintf(
+					"download exceeds the %d byte response limit; request fewer modules", maxDownloadBytes))
 			}
 			if m, ok := moduleByID[commit.ModuleId]; ok {
 				pbFiles = injectBufYAML(pbFiles, m, h.registryHost)

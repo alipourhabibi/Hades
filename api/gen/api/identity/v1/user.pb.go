@@ -500,8 +500,16 @@ func (x *GetUserResponse) GetOrganizations() []*User {
 type ListUsersRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Optional substring search on username. Empty matches every account.
-	// At most 50 accounts are returned either way; there is no pagination.
-	Query         string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	//
+	// The search term is matched literally: "%" and "_" are escaped, so a query
+	// of "%" finds accounts whose name contains a percent sign rather than every
+	// account there is.
+	Query string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	// Maximum number of accounts to return. Zero uses the default (50) and the
+	// server clamps to 100.
+	PageSize int32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Opaque cursor from a previous response's next_page_token.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -543,10 +551,29 @@ func (x *ListUsersRequest) GetQuery() string {
 	return ""
 }
 
+func (x *ListUsersRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListUsersRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 // ListUsersResponse carries matching user records.
 type ListUsersResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Users         []*User                `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Users []*User                `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
+	// Cursor for the next page, or empty when this was the last one.
+	//
+	// Follow this rather than stopping when a page is shorter than page_size:
+	// the server may filter rows out of a page after reading them.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -586,6 +613,13 @@ func (x *ListUsersResponse) GetUsers() []*User {
 		return x.Users
 	}
 	return nil
+}
+
+func (x *ListUsersResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 // UpdateUserRequest updates the profile fields for the authenticated user.
@@ -721,11 +755,15 @@ const file_api_identity_v1_user_proto_rawDesc = "" +
 	"\x0fGetUserResponse\x12/\n" +
 	"\x04user\x18\x01 \x01(\v2\x1b.hades.api.identity.v1.UserR\x04user\x12!\n" +
 	"\fmodule_count\x18\x02 \x01(\x05R\vmoduleCount\x12A\n" +
-	"\rorganizations\x18\x03 \x03(\v2\x1b.hades.api.identity.v1.UserR\rorganizations\"(\n" +
+	"\rorganizations\x18\x03 \x03(\v2\x1b.hades.api.identity.v1.UserR\rorganizations\"d\n" +
 	"\x10ListUsersRequest\x12\x14\n" +
-	"\x05query\x18\x01 \x01(\tR\x05query\"F\n" +
+	"\x05query\x18\x01 \x01(\tR\x05query\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"n\n" +
 	"\x11ListUsersResponse\x121\n" +
-	"\x05users\x18\x01 \x03(\v2\x1b.hades.api.identity.v1.UserR\x05users\"G\n" +
+	"\x05users\x18\x01 \x03(\v2\x1b.hades.api.identity.v1.UserR\x05users\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"G\n" +
 	"\x11UpdateUserRequest\x12 \n" +
 	"\vdescription\x18\x01 \x01(\tR\vdescription\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\"E\n" +

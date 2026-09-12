@@ -2,8 +2,19 @@
 // generated Go SDKs stored in MinIO. Mount it at "/go/" and set GOPROXY:
 //
 //	export DOMAIN=registry.example.com
-//	GOPROXY=https://registry.example.com/go \
-//	  go get registry.example.com/gen/go/alice/mymodule@latest
+//	export GOPROXY=https://registry.example.com/go,https://proxy.golang.org,direct
+//	export GONOSUMDB=registry.example.com/*
+//	export GOPRIVATE=registry.example.com/*
+//	go get registry.example.com/gen/go/alice/mymodule@latest
+//
+// The registry has to be the first entry in a chain rather than the whole
+// value. Every generated SDK imports google.golang.org/protobuf, which this
+// registry does not serve, so a GOPROXY naming only the registry cannot resolve
+// any SDK's own dependencies. This proxy answers 404 for a path outside its
+// namespace, which is the signal the go command uses to try the next entry.
+//
+// GOPRIVATE and GONOSUMDB keep the checksum database out of the way: the sum
+// database has never seen these modules and never will.
 //
 // Module paths follow the form: {DOMAIN}/gen/go/{owner}/{module}
 // The DOMAIN environment variable determines the registry host used in module
@@ -35,6 +46,7 @@ import (
 	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	sdkjobdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/sdkjob"
 	sdkstorage "github.com/alipourhabibi/Hades/internal/sdk/storage"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
@@ -43,8 +55,9 @@ import (
 // testable and free of an import cycle.
 type authorizer interface {
 	// UserFromToken validates a session token or PAT and returns its user plus
-	// the scopes it carries (empty means unrestricted).
-	UserFromToken(ctx context.Context, rawToken string) (*identityv1.User, []string, error)
+	// the scopes it carries. Scopes states whether any restriction applies;
+	// an absent restriction is never inferred from an empty slice.
+	UserFromToken(ctx context.Context, rawToken string) (*identityv1.User, authorization.Scopes, error)
 	// CheckReadAccess returns an error for the first module the caller may not
 	// read. user may be nil for anonymous callers.
 	CheckReadAccess(ctx context.Context, user *identityv1.User, modules []*registryv1.Module) error
@@ -115,6 +128,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	owner, modName, err := h.parseModulePath(modulePath)
 
 	if err != nil {
+		// 404 for a path we do not serve, so the go command falls through to
+		// the next GOPROXY entry. 400 only for one we cannot parse. See
+		// errNotServed.
+		if errors.Is(err, errNotServed) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -180,7 +200,11 @@ func (h *Handler) authorize(r *http.Request, owner, modName string) (*registryv1
 	}
 
 	var user *identityv1.User
-	var scopes []string
+	// The zero value denies everything. An anonymous caller never reaches a
+	// scope check (CheckReadAccess refuses private modules for a nil user and
+	// public ones need no scope), so starting from deny rather than from
+	// unrestricted costs nothing and fails the right way if that changes.
+	scopes := authorization.UnrestrictedScopes()
 	if cred := credentialFromRequest(r); cred != "" {
 		u, s, err := h.authz.UserFromToken(ctx, cred)
 		if err != nil {
@@ -200,7 +224,7 @@ func (h *Handler) authorize(r *http.Request, owner, modName string) (*registryv1
 	// name is needed to evaluate it. Resolving the module first also means a
 	// request for a module that does not exist gets 404 rather than 403, which
 	// avoids answering "does this exist" for callers whose token cannot read it.
-	if !authorization.ScopesAllow(scopes, string(constants.ResourceModule), string(constants.ActionRead), mod.Name) {
+	if !scopes.Allow(string(constants.ResourceModule), string(constants.ActionRead), mod.Name) {
 		return nil, http.StatusForbidden
 	}
 
@@ -210,18 +234,37 @@ func (h *Handler) authorize(r *http.Request, owner, modName string) (*registryv1
 	return mod, 0
 }
 
+// errNotServed marks a module path this proxy does not serve, as distinct from
+// one it cannot parse.
+//
+// The distinction decides the status code, and the status code decides whether
+// a GOPROXY chain works. A registry proxy is meant to be the first entry in a
+// list, "https://registry.example.com/go,https://proxy.golang.org,direct", and
+// the go command walks to the next entry only on 404 or 410. Any other status
+// stops the walk and fails the build. Every generated SDK imports
+// google.golang.org/protobuf, so returning 400 for it, which is what this used
+// to do, made every SDK unusable by every consumer.
+//
+// 404 is also the honest answer: a module outside this registry's namespace is
+// a module this registry does not have.
+var errNotServed = errors.New("module path is not served by this registry")
+
 // parseModulePath extracts owner and module name from a full Go module path.
 //
 // Expected form: {registryHost}/gen/go/{owner}/{moduleName}
+//
+// Paths outside that namespace are wrapped in errNotServed. A path inside it
+// that cannot be decoded is returned as a plain error, because a malformed
+// request is the caller's mistake and no other proxy will do better with it.
 func (h *Handler) parseModulePath(modulePath string) (owner, modName string, err error) {
 	prefix := h.registryHost + "/gen/go/"
 	inner := strings.TrimPrefix(modulePath, prefix)
 	if inner == modulePath {
-		return "", "", fmt.Errorf("module path %q does not start with %q", modulePath, prefix)
+		return "", "", fmt.Errorf("%w: %q does not start with %q", errNotServed, modulePath, prefix)
 	}
 	parts := strings.SplitN(inner, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("invalid module path %q: expected {host}/gen/go/{owner}/{module}", modulePath)
+		return "", "", fmt.Errorf("%w: %q is not of the form {host}/gen/go/{owner}/{module}", errNotServed, modulePath)
 	}
 	owner, err = unescapeModulePath(parts[0])
 	if err != nil {
@@ -408,7 +451,7 @@ func (h *Handler) handleList(w http.ResponseWriter, r *http.Request, mod *regist
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprintln(w, strings.Join(versions, "\n"))
+	_, _ = fmt.Fprintln(w, strings.Join(versions, "\n"))
 }
 
 // handleInfo serves /@v/{version}.info - JSON version metadata.
@@ -442,15 +485,42 @@ func (h *Handler) handleMod(w http.ResponseWriter, r *http.Request, mod *registr
 	// S3 key: "{owner/module}/{commit_hash}/go/go.mod"
 	s3Key := fmt.Sprintf("%s/%s/go/go.mod", commit.Module.Name, commit.CommitHash)
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	rc, _, err := h.backend.GetFile(r.Context(), s3Key)
 	if err == nil {
 		defer rc.Close()
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = io.Copy(w, rc)
 		return
 	}
 
-	fmt.Fprint(w, syntheticGoMod(modulePath))
+	// The synthetic go.mod is a fallback for "the generator did not emit one",
+	// not for "storage is unreachable". Serving it on any error meant an
+	// object-storage outage was answered with a valid-looking module definition
+	// carrying the wrong content, which `go get` then cached.
+	if !isNotFound(err) {
+		h.logger.Error("goproxy: artifact storage failed reading go.mod",
+			"err", err, "key", s3Key, "module", modulePath)
+		http.Error(w, http.StatusText(http.StatusBadGateway), http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = fmt.Fprint(w, syntheticGoMod(modulePath))
+}
+
+// isNotFound reports whether err means the artifact is genuinely absent, as
+// opposed to the store being unable to answer.
+//
+// Sentinels only. This used to fall back on substring-matching the error text,
+// which reads as defensive and is the opposite: the S3 backend reported a
+// missing object as io.ErrUnexpectedEOF, matched none of the strings, and every
+// .mod request on an S3 deployment returned 502 instead of a synthetic go.mod.
+// A substring test cannot fail loudly, so a new backend that gets this wrong
+// fails the same silent way. Every backend now returns sdkstorage.ErrNotFound.
+func isNotFound(err error) bool {
+	return errors.Is(err, sdkstorage.ErrNotFound) ||
+		errors.Is(err, connerr.ErrNotFound) ||
+		errors.Is(err, os.ErrNotExist)
 }
 
 // handleZip serves /@v/{version}.zip - the module zip consumed by `go get`.

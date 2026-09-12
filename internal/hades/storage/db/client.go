@@ -34,6 +34,8 @@ import (
 	emailverificationpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/emailverification/postgres"
 	emailverificationsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/emailverification/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/gitalyoplog"
+	gitalyoplogpg "github.com/alipourhabibi/Hades/internal/hades/storage/db/gitalyoplog/postgres"
+	gitalyoplogsq "github.com/alipourhabibi/Hades/internal/hades/storage/db/gitalyoplog/sqlite"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	modulepg "github.com/alipourhabibi/Hades/internal/hades/storage/db/module/postgres"
 	modulesq "github.com/alipourhabibi/Hades/internal/hades/storage/db/module/sqlite"
@@ -92,7 +94,7 @@ type concreteStore struct {
 	totpStorage       totpsecret.Storage
 	backupStorage     backupcode.Storage
 	auditStorage      auditlog.Storage
-	gitalyOpLog       *gitalyoplog.GitalyOpLogStorage
+	gitalyOpLog       gitalyoplog.Storage
 }
 
 var _ Store = (*concreteStore)(nil)
@@ -120,7 +122,7 @@ func (s *concreteStore) DeviceGrant() devicegrant.Storage             { return s
 func (s *concreteStore) TOTPSecret() totpsecret.Storage               { return s.totpStorage }
 func (s *concreteStore) BackupCode() backupcode.Storage               { return s.backupStorage }
 func (s *concreteStore) AuditLog() auditlog.Storage                   { return s.auditStorage }
-func (s *concreteStore) GitalyOpLog() *gitalyoplog.GitalyOpLogStorage { return s.gitalyOpLog }
+func (s *concreteStore) GitalyOpLog() gitalyoplog.Storage             { return s.gitalyOpLog }
 
 // NewFromConfig selects the database backend from cfg.Backends.Database.
 func NewFromConfig(cfg config.Config, logger *log.LoggerWrapper) (Store, error) {
@@ -165,7 +167,7 @@ func New(c config.DB, logger *log.LoggerWrapper) (Store, error) {
 		totpStorage:       totpsecretpg.New(pool),
 		backupStorage:     backupcodepg.New(pool),
 		auditStorage:      auditlogpg.New(pool),
-		gitalyOpLog:       gitalyoplog.New(pool),
+		gitalyOpLog:       gitalyoplogpg.New(pool),
 	}, nil
 }
 
@@ -234,6 +236,6 @@ func NewSQLite(cfg config.Config, logger *log.LoggerWrapper) (Store, error) {
 		totpStorage:       totpsecretsq.NewTOTPSecret(sqlDB),
 		backupStorage:     backupcodesq.NewBackupCode(sqlDB),
 		auditStorage:      auditlogsq.NewAuditLog(sqlDB),
-		gitalyOpLog:       nil, // GitalyOpLog is PostgreSQL-only
+		gitalyOpLog:       gitalyoplogsq.NewGitalyOpLog(sqlDB),
 	}, nil
 }

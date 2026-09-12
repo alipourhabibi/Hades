@@ -34,7 +34,7 @@ func (s *CIRunStorage) q(ctx context.Context) txkeys.PgxQuerier {
 
 func (s *CIRunStorage) GetByModuleAndCommit(ctx context.Context, moduleID, commitHash string) (*registryv1.CIRun, error) {
 	query := `
-SELECT id, module_id, commit_hash, lint_passed, breaking_passed,
+SELECT id, module_id, commit_hash, lint_passed, breaking_passed, breaking_ran,
        COALESCE(lint_errors, '[]'::jsonb),
        COALESCE(breaking_errors, '[]'::jsonb),
        created_at
@@ -47,7 +47,7 @@ WHERE module_id = $1 AND commit_hash = $2`
 
 	err := s.q(ctx).QueryRow(ctx, query, moduleID, commitHash).Scan(
 		&run.Id, &run.ModuleId, &run.CommitHash,
-		&run.LintPassed, &run.BreakingPassed,
+		&run.LintPassed, &run.BreakingPassed, &run.BreakingRan,
 		&lintRaw, &breakingRaw, &createdAt,
 	)
 	if err != nil {
@@ -63,33 +63,35 @@ WHERE module_id = $1 AND commit_hash = $2`
 	return run, nil
 }
 
-func (s *CIRunStorage) Create(ctx context.Context, moduleID, commitHash string, lintPassed, breakingPassed bool, lintErrors, breakingErrors []string) (*registryv1.CIRun, error) {
-	lintRaw, err := json.Marshal(lintErrors)
+func (s *CIRunStorage) Create(ctx context.Context, params cirun.CreateParams) (*registryv1.CIRun, error) {
+	lintRaw, err := json.Marshal(params.LintErrors)
 	if err != nil {
 		return nil, err
 	}
-	breakingRaw, err := json.Marshal(breakingErrors)
+	breakingRaw, err := json.Marshal(params.BreakingErrors)
 	if err != nil {
 		return nil, err
 	}
 
 	query := `
-INSERT INTO ci_runs (module_id, commit_hash, lint_passed, breaking_passed, lint_errors, breaking_errors)
-VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+INSERT INTO ci_runs (module_id, commit_hash, lint_passed, breaking_passed, breaking_ran, lint_errors, breaking_errors)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
 ON CONFLICT (module_id, commit_hash) DO UPDATE
   SET lint_passed = EXCLUDED.lint_passed,
       breaking_passed = EXCLUDED.breaking_passed,
+      breaking_ran = EXCLUDED.breaking_ran,
       lint_errors = EXCLUDED.lint_errors,
       breaking_errors = EXCLUDED.breaking_errors
-RETURNING id, module_id, commit_hash, lint_passed, breaking_passed, lint_errors, breaking_errors, created_at`
+RETURNING id, module_id, commit_hash, lint_passed, breaking_passed, breaking_ran, lint_errors, breaking_errors, created_at`
 
 	run := &registryv1.CIRun{}
 	var createdAt time.Time
 	var lintRes, breakingRes []byte
 
-	err = s.q(ctx).QueryRow(ctx, query, moduleID, commitHash, lintPassed, breakingPassed, lintRaw, breakingRaw).Scan(
+	err = s.q(ctx).QueryRow(ctx, query, params.ModuleID, params.CommitHash,
+		params.LintPassed, params.BreakingPassed, params.BreakingRan, lintRaw, breakingRaw).Scan(
 		&run.Id, &run.ModuleId, &run.CommitHash,
-		&run.LintPassed, &run.BreakingPassed,
+		&run.LintPassed, &run.BreakingPassed, &run.BreakingRan,
 		&lintRes, &breakingRes, &createdAt,
 	)
 	if err != nil {

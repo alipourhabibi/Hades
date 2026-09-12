@@ -50,7 +50,7 @@ type Dependencies struct {
 	CIRunDB        cirun.Storage
 	NotificationDB notification.Storage
 	GitStorage     gitstorage.Storage
-	GitalyOpLog    *gitalyoplog.GitalyOpLogStorage
+	GitalyOpLog    gitalyoplog.Storage
 	Authorization  *authorizationsvc.Server
 	UoW            db.UnitOfWork
 	SDKConfig      config.SDKConfig
