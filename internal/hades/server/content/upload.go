@@ -2,6 +2,7 @@ package content
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -120,9 +121,15 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 			}
 			uploadFiles := map[string]*registryv1.File{}
 			for _, f := range gitBlobs {
+				if f.Path == "buf.yaml" {
+					continue // buf.yaml is registry metadata; never carry forward from git
+				}
 				uploadFiles[f.Path] = &registryv1.File{Path: f.Path, Content: f.Content}
 			}
 			for _, f := range content.Files {
+				if f.Path == "buf.yaml" {
+					continue // ignore user-supplied buf.yaml; registry settings control it
+				}
 				uploadFiles[f.Path] = &registryv1.File{Path: f.Path, Content: f.Content}
 			}
 			files = make([]*registryv1.File, 0, len(uploadFiles))
@@ -131,15 +138,27 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 			}
 			listFiles = make([]string, 0, len(gitBlobs))
 			for _, f := range gitBlobs {
+				if f.Path == "buf.yaml" {
+					continue
+				}
 				listFiles = append(listFiles, f.Path)
 			}
-			prevFiles = make([]*registryv1.File, len(gitBlobs))
-			for i, f := range gitBlobs {
-				prevFiles[i] = &registryv1.File{Path: f.Path, Content: f.Content}
+			prevFiles = make([]*registryv1.File, 0, len(gitBlobs))
+			for _, f := range gitBlobs {
+				if f.Path == "buf.yaml" {
+					continue
+				}
+				prevFiles = append(prevFiles, &registryv1.File{Path: f.Path, Content: f.Content})
 			}
 		} else {
 			listFiles = []string{}
-			files = content.Files
+			// Strip any user-supplied buf.yaml from the initial push.
+			files = make([]*registryv1.File, 0, len(content.Files))
+			for _, f := range content.Files {
+				if f.Path != "buf.yaml" {
+					files = append(files, f)
+				}
+			}
 		}
 
 		digest, err := shake256.DigestFiles(files)
@@ -167,9 +186,9 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 			gitFiles[i] = &gitstorage.File{Path: f.Path, Content: f.Content}
 		}
 
-		if h.protoLinter != nil && h.sdkConfig.LintEnabled {
+		if !emptyCommit && h.protoLinter != nil && h.sdkConfig.LintEnabled {
 			_, checksSpan := tracer.Start(ctx, "upload.proto_checks")
-			if err := h.runProtoChecks(ctx, checksSpan, files, prevFiles, emptyCommit); err != nil {
+			if err := h.runProtoChecks(ctx, checksSpan, files, prevFiles, lintPresetToRule(module[0].LintPreset), module[0].BreakingEnabled); err != nil {
 				checksSpan.End()
 				return nil, err
 			}
@@ -300,7 +319,7 @@ func (h *Handler) Upload(ctx context.Context, contents []*registryv1.UploadReque
 	return commits, nil
 }
 
-func (h *Handler) runProtoChecks(ctx context.Context, checksSpan trace.Span, files, prevFiles []*registryv1.File, emptyCommit bool) error {
+func (h *Handler) runProtoChecks(ctx context.Context, checksSpan trace.Span, files, prevFiles []*registryv1.File, lintPreset string, breakingEnabled bool) error {
 	tmpDir, err := os.MkdirTemp("", "hades-proto-*")
 	if err != nil {
 		checksSpan.RecordError(err)
@@ -316,13 +335,22 @@ func (h *Handler) runProtoChecks(ctx context.Context, checksSpan trace.Span, fil
 			return connErr.Internal("failed to write proto file")
 		}
 	}
+
+	// Write buf.yaml once, used by both lint and breaking.
+	// If buf.yaml already came from git (via writeProtoFile above), this is a no-op.
+	if err := ensureBufYAML(tmpDir, lintPreset, breakingEnabled); err != nil {
+		checksSpan.RecordError(err)
+		checksSpan.SetStatus(codes.Error, "write buf.yaml")
+		return connErr.Internal("failed to write buf.yaml")
+	}
+
 	if err := h.protoLinter.Lint(ctx, tmpDir); err != nil {
 		checksSpan.RecordError(err)
 		checksSpan.SetStatus(codes.Error, "lint")
 		return connErr.InvalidArgument(err.Error())
 	}
 
-	if !emptyCommit && h.breakingChecker != nil && h.sdkConfig.BreakingEnabled && len(prevFiles) > 0 {
+	if h.breakingChecker != nil && h.sdkConfig.BreakingEnabled && breakingEnabled && len(prevFiles) > 0 {
 		prevTmpDir, err := os.MkdirTemp("", "hades-prev-*")
 		if err != nil {
 			checksSpan.RecordError(err)
@@ -345,6 +373,43 @@ func (h *Handler) runProtoChecks(ctx context.Context, checksSpan trace.Span, fil
 		}
 	}
 	return nil
+}
+
+// generateBufYAML builds buf.yaml content from the module's current DB settings.
+func generateBufYAML(m *registryv1.Module, registryHost string) []byte {
+	bsrName := m.Name
+	if registryHost != "" {
+		bsrName = registryHost + "/" + m.Name
+	}
+	out := fmt.Sprintf("version: v2\nmodules:\n  - path: .\n    name: %s\nlint:\n  use:\n    - %s\n",
+		bsrName, lintPresetToRule(m.LintPreset))
+	if m.BreakingEnabled {
+		out += "breaking:\n  use:\n    - FILE\n"
+	}
+	return []byte(out)
+}
+
+func lintPresetToRule(p registryv1.LintPreset) string {
+	switch p {
+	case registryv1.LintPreset_LINT_PRESET_BASIC:
+		return "BASIC"
+	case registryv1.LintPreset_LINT_PRESET_MINIMAL:
+		return "MINIMAL"
+	case registryv1.LintPreset_LINT_PRESET_COMMENTS:
+		return "COMMENTS"
+	default:
+		return "DEFAULT"
+	}
+}
+
+// ensureBufYAML writes buf.yaml from DB settings into dir for lint/breaking checks.
+// Always overwrites so proto checks use current registry settings, not a user-supplied file.
+func ensureBufYAML(dir, lintPreset string, breakingEnabled bool) error {
+	content := fmt.Sprintf("version: v2\nlint:\n  use:\n    - %s\n", lintPreset)
+	if breakingEnabled {
+		content += "breaking:\n  use:\n    - FILE\n"
+	}
+	return os.WriteFile(filepath.Join(dir, "buf.yaml"), []byte(content), 0o644)
 }
 
 func writeProtoFile(dir, path string, content []byte) error {

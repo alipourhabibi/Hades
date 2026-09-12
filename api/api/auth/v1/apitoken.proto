@@ -72,11 +72,18 @@ message CreateAPITokenResponse {
 }
 
 // ListAPITokensRequest lists all active tokens for the authenticated user.
-message ListAPITokensRequest {}
+message ListAPITokensRequest {
+  // Maximum number of tokens to return. 0 uses the server default (50). Max 100.
+  int32 page_size = 1;
+  // Opaque pagination cursor from a previous response. Empty returns the first page.
+  string page_token = 2;
+}
 
 // ListAPITokensResponse carries the caller's token list.
 message ListAPITokensResponse {
   repeated APIToken tokens = 1;
+  // Cursor for the next page. Empty when this is the last page.
+  string next_page_token = 2;
 }
 
 // RevokeAPITokenRequest revokes the token with the given identifier.

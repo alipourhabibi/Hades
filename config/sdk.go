@@ -4,7 +4,6 @@ package config
 type SDKConfig struct {
 	Enabled         bool              `yaml:"enabled"`
 	BufBin          string            `yaml:"bufBin"`
-	ProtocBin       string            `yaml:"protocBin"`
 	LintEnabled     bool              `yaml:"lintEnabled"`
 	BreakingEnabled bool              `yaml:"breakingEnabled"`
 	Generators      []GeneratorConfig `yaml:"generators"`
@@ -13,8 +12,10 @@ type SDKConfig struct {
 
 type GeneratorConfig struct {
 	Language string `yaml:"language"`
-	Plugin   string `yaml:"plugin"`
-	Options  string `yaml:"options"`
+	// Plugin is the name or path of a locally installed protoc plugin binary,
+	// e.g. "protoc-gen-go" or "/usr/local/bin/protoc-gen-go".
+	Plugin  string `yaml:"plugin"`
+	Options string `yaml:"options"`
 }
 
 type SDKStorageConfig struct {

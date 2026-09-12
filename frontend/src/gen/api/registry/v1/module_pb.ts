@@ -19,7 +19,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file api/registry/v1/module.proto.
  */
 export const file_api_registry_v1_module: GenFile = /*@__PURE__*/
-  fileDesc("ChxhcGkvcmVnaXN0cnkvdjEvbW9kdWxlLnByb3RvEhVoYWRlcy5hcGkucmVnaXN0cnkudjEi3AIKBk1vZHVsZRIKCgJpZBgBIAEoCRIvCgtjcmVhdGVfdGltZRgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLdXBkYXRlX3RpbWUYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgwKBG5hbWUYBCABKAkSEAoIb3duZXJfaWQYBSABKAkSOwoKdmlzaWJpbGl0eRgGIAEoDjInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGVWaXNpYmlsaXR5EhMKC2Rlc2NyaXB0aW9uGAcgASgJEhYKDmRlZmF1bHRfYnJhbmNoGAggASgJEjEKBXN0YXRlGAkgASgOMiIuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZVN0YXRlEgsKA3VybBgKIAEoCRIaChJkZWZhdWx0X2xhYmVsX25hbWUYCyABKAkiNgoJTW9kdWxlUmVmEgoKAmlkGAEgASgJEg0KBW93bmVyGAIgASgJEg4KBm1vZHVsZRgDIAEoCSKbAQoZQ3JlYXRlTW9kdWxlQnlOYW1lUmVxdWVzdBIUCgRuYW1lGAEgASgJQga6SAPIAQESOwoKdmlzaWJpbGl0eRgCIAEoDjInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGVWaXNpYmlsaXR5EhMKC2Rlc2NyaXB0aW9uGAMgASgJEhYKDmRlZmF1bHRfYnJhbmNoGAQgASgJIksKGkNyZWF0ZU1vZHVsZUJ5TmFtZVJlc3BvbnNlEi0KBm1vZHVsZRgBIAEoCzIdLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGUiIwoSTGlzdE1vZHVsZXNSZXF1ZXN0Eg0KBW93bmVyGAEgASgJIkUKE0xpc3RNb2R1bGVzUmVzcG9uc2USLgoHbW9kdWxlcxgBIAMoCzIdLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGUiPwoQR2V0TW9kdWxlUmVxdWVzdBIVCgVvd25lchgBIAEoCUIGukgDyAEBEhQKBG5hbWUYAiABKAlCBrpIA8gBASJCChFHZXRNb2R1bGVSZXNwb25zZRItCgZtb2R1bGUYASABKAsyHS5oYWRlcy5hcGkucmVnaXN0cnkudjEuTW9kdWxlKnIKEE1vZHVsZVZpc2liaWxpdHkSIQodTU9EVUxFX1ZJU0lCSUxJVFlfVU5TUEVDSUZJRUQQABIcChhNT0RVTEVfVklTSUJJTElUWV9QVUJMSUMQARIdChlNT0RVTEVfVklTSUJJTElUWV9QUklWQVRFEAIqYQoLTW9kdWxlU3RhdGUSHAoYTU9EVUxFX1NUQVRFX1VOU1BFQ0lGSUVEEAASFwoTTU9EVUxFX1NUQVRFX0FDVElWRRABEhsKF01PRFVMRV9TVEFURV9ERVBSRUNBVEVEEAIy0AIKDU1vZHVsZVNlcnZpY2USeQoSQ3JlYXRlTW9kdWxlQnlOYW1lEjAuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkNyZWF0ZU1vZHVsZUJ5TmFtZVJlcXVlc3QaMS5oYWRlcy5hcGkucmVnaXN0cnkudjEuQ3JlYXRlTW9kdWxlQnlOYW1lUmVzcG9uc2USZAoLTGlzdE1vZHVsZXMSKS5oYWRlcy5hcGkucmVnaXN0cnkudjEuTGlzdE1vZHVsZXNSZXF1ZXN0GiouaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkxpc3RNb2R1bGVzUmVzcG9uc2USXgoJR2V0TW9kdWxlEicuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkdldE1vZHVsZVJlcXVlc3QaKC5oYWRlcy5hcGkucmVnaXN0cnkudjEuR2V0TW9kdWxlUmVzcG9uc2VC4gEKGWNvbS5oYWRlcy5hcGkucmVnaXN0cnkudjFCC01vZHVsZVByb3RvUAFaQWdpdGh1Yi5jb20vYWxpcG91cmhhYmliaS9IYWRlcy9hcGkvZ2VuL2FwaS9yZWdpc3RyeS92MTtyZWdpc3RyeXYxogIDSEFSqgIVSGFkZXMuQXBpLlJlZ2lzdHJ5LlYxygIVSGFkZXNcQXBpXFJlZ2lzdHJ5XFYx4gIhSGFkZXNcQXBpXFJlZ2lzdHJ5XFYxXEdQQk1ldGFkYXRh6gIYSGFkZXM6OkFwaTo6UmVnaXN0cnk6OlYxYgZwcm90bzM", [file_buf_validate_validate, file_google_protobuf_timestamp]);
+  fileDesc("ChxhcGkvcmVnaXN0cnkvdjEvbW9kdWxlLnByb3RvEhVoYWRlcy5hcGkucmVnaXN0cnkudjEirgMKBk1vZHVsZRIKCgJpZBgBIAEoCRIvCgtjcmVhdGVfdGltZRgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLdXBkYXRlX3RpbWUYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgwKBG5hbWUYBCABKAkSEAoIb3duZXJfaWQYBSABKAkSOwoKdmlzaWJpbGl0eRgGIAEoDjInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGVWaXNpYmlsaXR5EhMKC2Rlc2NyaXB0aW9uGAcgASgJEhYKDmRlZmF1bHRfYnJhbmNoGAggASgJEjEKBXN0YXRlGAkgASgOMiIuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZVN0YXRlEgsKA3VybBgKIAEoCRIaChJkZWZhdWx0X2xhYmVsX25hbWUYCyABKAkSNgoLbGludF9wcmVzZXQYDCABKA4yIS5oYWRlcy5hcGkucmVnaXN0cnkudjEuTGludFByZXNldBIYChBicmVha2luZ19lbmFibGVkGA0gASgIIjYKCU1vZHVsZVJlZhIKCgJpZBgBIAEoCRINCgVvd25lchgCIAEoCRIOCgZtb2R1bGUYAyABKAki7QEKGUNyZWF0ZU1vZHVsZUJ5TmFtZVJlcXVlc3QSFAoEbmFtZRgBIAEoCUIGukgDyAEBEjsKCnZpc2liaWxpdHkYAiABKA4yJy5oYWRlcy5hcGkucmVnaXN0cnkudjEuTW9kdWxlVmlzaWJpbGl0eRITCgtkZXNjcmlwdGlvbhgDIAEoCRIWCg5kZWZhdWx0X2JyYW5jaBgEIAEoCRI2CgtsaW50X3ByZXNldBgFIAEoDjIhLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5MaW50UHJlc2V0EhgKEGJyZWFraW5nX2VuYWJsZWQYBiABKAgiSwoaQ3JlYXRlTW9kdWxlQnlOYW1lUmVzcG9uc2USLQoGbW9kdWxlGAEgASgLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZSJKChJMaXN0TW9kdWxlc1JlcXVlc3QSDQoFb3duZXIYASABKAkSEQoJcGFnZV9zaXplGAIgASgFEhIKCnBhZ2VfdG9rZW4YAyABKAkiXgoTTGlzdE1vZHVsZXNSZXNwb25zZRIuCgdtb2R1bGVzGAEgAygLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZRIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkivgIKE1VwZGF0ZU1vZHVsZVJlcXVlc3QSFQoFb3duZXIYASABKAlCBrpIA8gBARIUCgRuYW1lGAIgASgJQga6SAPIAQESGAoLZGVzY3JpcHRpb24YAyABKAlIAIgBARJACgp2aXNpYmlsaXR5GAQgASgOMicuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZVZpc2liaWxpdHlIAYgBARI7CgtsaW50X3ByZXNldBgFIAEoDjIhLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5MaW50UHJlc2V0SAKIAQESHQoQYnJlYWtpbmdfZW5hYmxlZBgGIAEoCEgDiAEBQg4KDF9kZXNjcmlwdGlvbkINCgtfdmlzaWJpbGl0eUIOCgxfbGludF9wcmVzZXRCEwoRX2JyZWFraW5nX2VuYWJsZWQiRQoUVXBkYXRlTW9kdWxlUmVzcG9uc2USLQoGbW9kdWxlGAEgASgLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZSI/ChBHZXRNb2R1bGVSZXF1ZXN0EhUKBW93bmVyGAEgASgJQga6SAPIAQESFAoEbmFtZRgCIAEoCUIGukgDyAEBIkIKEUdldE1vZHVsZVJlc3BvbnNlEi0KBm1vZHVsZRgBIAEoCzIdLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Nb2R1bGUqcgoQTW9kdWxlVmlzaWJpbGl0eRIhCh1NT0RVTEVfVklTSUJJTElUWV9VTlNQRUNJRklFRBAAEhwKGE1PRFVMRV9WSVNJQklMSVRZX1BVQkxJQxABEh0KGU1PRFVMRV9WSVNJQklMSVRZX1BSSVZBVEUQAiphCgtNb2R1bGVTdGF0ZRIcChhNT0RVTEVfU1RBVEVfVU5TUEVDSUZJRUQQABIXChNNT0RVTEVfU1RBVEVfQUNUSVZFEAESGwoXTU9EVUxFX1NUQVRFX0RFUFJFQ0FURUQQAiqMAQoKTGludFByZXNldBIbChdMSU5UX1BSRVNFVF9VTlNQRUNJRklFRBAAEhcKE0xJTlRfUFJFU0VUX0RFRkFVTFQQARIVChFMSU5UX1BSRVNFVF9CQVNJQxACEhcKE0xJTlRfUFJFU0VUX01JTklNQUwQAxIYChRMSU5UX1BSRVNFVF9DT01NRU5UUxAEMrkDCg1Nb2R1bGVTZXJ2aWNlEnkKEkNyZWF0ZU1vZHVsZUJ5TmFtZRIwLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5DcmVhdGVNb2R1bGVCeU5hbWVSZXF1ZXN0GjEuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkNyZWF0ZU1vZHVsZUJ5TmFtZVJlc3BvbnNlEmQKC0xpc3RNb2R1bGVzEikuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkxpc3RNb2R1bGVzUmVxdWVzdBoqLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5MaXN0TW9kdWxlc1Jlc3BvbnNlEl4KCUdldE1vZHVsZRInLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5HZXRNb2R1bGVSZXF1ZXN0GiguaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkdldE1vZHVsZVJlc3BvbnNlEmcKDFVwZGF0ZU1vZHVsZRIqLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5VcGRhdGVNb2R1bGVSZXF1ZXN0GisuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLlVwZGF0ZU1vZHVsZVJlc3BvbnNlQuIBChljb20uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxQgtNb2R1bGVQcm90b1ABWkFnaXRodWIuY29tL2FsaXBvdXJoYWJpYmkvSGFkZXMvYXBpL2dlbi9hcGkvcmVnaXN0cnkvdjE7cmVnaXN0cnl2MaICA0hBUqoCFUhhZGVzLkFwaS5SZWdpc3RyeS5WMcoCFUhhZGVzXEFwaVxSZWdpc3RyeVxWMeICIUhhZGVzXEFwaVxSZWdpc3RyeVxWMVxHUEJNZXRhZGF0YeoCGEhhZGVzOjpBcGk6OlJlZ2lzdHJ5OjpWMWIGcHJvdG8z", [file_buf_validate_validate, file_google_protobuf_timestamp]);
 
 /**
  * Module is the metadata record for a Hades schema repository.
@@ -104,6 +104,20 @@ export type Module = Message<"hades.api.registry.v1.Module"> & {
    * @generated from field: string default_label_name = 11;
    */
   defaultLabelName: string;
+
+  /**
+   * Lint rule set enforced on upload.
+   *
+   * @generated from field: hades.api.registry.v1.LintPreset lint_preset = 12;
+   */
+  lintPreset: LintPreset;
+
+  /**
+   * Whether backward-compatibility checks are enforced on upload.
+   *
+   * @generated from field: bool breaking_enabled = 13;
+   */
+  breakingEnabled: boolean;
 };
 
 /**
@@ -181,6 +195,20 @@ export type CreateModuleByNameRequest = Message<"hades.api.registry.v1.CreateMod
    * @generated from field: string default_branch = 4;
    */
   defaultBranch: string;
+
+  /**
+   * Lint rule set to enforce on upload. Defaults to DEFAULT when unspecified.
+   *
+   * @generated from field: hades.api.registry.v1.LintPreset lint_preset = 5;
+   */
+  lintPreset: LintPreset;
+
+  /**
+   * Whether backward-compatibility checks are enforced on upload. Defaults to true.
+   *
+   * @generated from field: bool breaking_enabled = 6;
+   */
+  breakingEnabled: boolean;
 };
 
 /**
@@ -222,6 +250,20 @@ export type ListModulesRequest = Message<"hades.api.registry.v1.ListModulesReque
    * @generated from field: string owner = 1;
    */
   owner: string;
+
+  /**
+   * Maximum number of modules to return. 0 uses the server default (50). Max 100.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * Opaque pagination cursor from a previous response. Empty returns the first page.
+   *
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
 };
 
 /**
@@ -241,6 +283,13 @@ export type ListModulesResponse = Message<"hades.api.registry.v1.ListModulesResp
    * @generated from field: repeated hades.api.registry.v1.Module modules = 1;
    */
   modules: Module[];
+
+  /**
+   * Cursor for the next page. Empty when this is the last page.
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**
@@ -249,6 +298,83 @@ export type ListModulesResponse = Message<"hades.api.registry.v1.ListModulesResp
  */
 export const ListModulesResponseSchema: GenMessage<ListModulesResponse> = /*@__PURE__*/
   messageDesc(file_api_registry_v1_module, 5);
+
+/**
+ * UpdateModuleRequest updates mutable fields of an existing module.
+ * All mutable fields are optional: omit a field to leave its current value unchanged.
+ *
+ * @generated from message hades.api.registry.v1.UpdateModuleRequest
+ */
+export type UpdateModuleRequest = Message<"hades.api.registry.v1.UpdateModuleRequest"> & {
+  /**
+   * Owner username of the module.
+   *
+   * @generated from field: string owner = 1;
+   */
+  owner: string;
+
+  /**
+   * Short module name (without the owner prefix).
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * New description. Omit to leave unchanged.
+   *
+   * @generated from field: optional string description = 3;
+   */
+  description?: string;
+
+  /**
+   * New visibility. Omit to leave unchanged.
+   * TODO: changing public to private should drop star count to 0; not implemented yet.
+   *
+   * @generated from field: optional hades.api.registry.v1.ModuleVisibility visibility = 4;
+   */
+  visibility?: ModuleVisibility;
+
+  /**
+   * New lint rule set. Omit to leave unchanged.
+   *
+   * @generated from field: optional hades.api.registry.v1.LintPreset lint_preset = 5;
+   */
+  lintPreset?: LintPreset;
+
+  /**
+   * New breaking-change enforcement flag. Omit to leave unchanged.
+   *
+   * @generated from field: optional bool breaking_enabled = 6;
+   */
+  breakingEnabled?: boolean;
+};
+
+/**
+ * Describes the message hades.api.registry.v1.UpdateModuleRequest.
+ * Use `create(UpdateModuleRequestSchema)` to create a new message.
+ */
+export const UpdateModuleRequestSchema: GenMessage<UpdateModuleRequest> = /*@__PURE__*/
+  messageDesc(file_api_registry_v1_module, 6);
+
+/**
+ * UpdateModuleResponse carries the updated module record.
+ *
+ * @generated from message hades.api.registry.v1.UpdateModuleResponse
+ */
+export type UpdateModuleResponse = Message<"hades.api.registry.v1.UpdateModuleResponse"> & {
+  /**
+   * @generated from field: hades.api.registry.v1.Module module = 1;
+   */
+  module?: Module;
+};
+
+/**
+ * Describes the message hades.api.registry.v1.UpdateModuleResponse.
+ * Use `create(UpdateModuleResponseSchema)` to create a new message.
+ */
+export const UpdateModuleResponseSchema: GenMessage<UpdateModuleResponse> = /*@__PURE__*/
+  messageDesc(file_api_registry_v1_module, 7);
 
 /**
  * GetModuleRequest is the input for ModuleService.GetModule.
@@ -276,7 +402,7 @@ export type GetModuleRequest = Message<"hades.api.registry.v1.GetModuleRequest">
  * Use `create(GetModuleRequestSchema)` to create a new message.
  */
 export const GetModuleRequestSchema: GenMessage<GetModuleRequest> = /*@__PURE__*/
-  messageDesc(file_api_registry_v1_module, 6);
+  messageDesc(file_api_registry_v1_module, 8);
 
 /**
  * GetModuleResponse is the output for ModuleService.GetModule.
@@ -295,7 +421,7 @@ export type GetModuleResponse = Message<"hades.api.registry.v1.GetModuleResponse
  * Use `create(GetModuleResponseSchema)` to create a new message.
  */
 export const GetModuleResponseSchema: GenMessage<GetModuleResponse> = /*@__PURE__*/
-  messageDesc(file_api_registry_v1_module, 7);
+  messageDesc(file_api_registry_v1_module, 9);
 
 /**
  * ModuleVisibility controls who can read a module.
@@ -362,6 +488,52 @@ export const ModuleStateSchema: GenEnum<ModuleState> = /*@__PURE__*/
   enumDesc(file_api_registry_v1_module, 1);
 
 /**
+ * LintPreset selects the set of buf lint rules enforced on upload.
+ *
+ * @generated from enum hades.api.registry.v1.LintPreset
+ */
+export enum LintPreset {
+  /**
+   * @generated from enum value: LINT_PRESET_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Recommended rules for most teams.
+   *
+   * @generated from enum value: LINT_PRESET_DEFAULT = 1;
+   */
+  DEFAULT = 1,
+
+  /**
+   * A smaller, more permissive set.
+   *
+   * @generated from enum value: LINT_PRESET_BASIC = 2;
+   */
+  BASIC = 2,
+
+  /**
+   * Only the most critical checks.
+   *
+   * @generated from enum value: LINT_PRESET_MINIMAL = 3;
+   */
+  MINIMAL = 3,
+
+  /**
+   * DEFAULT plus all comment rules.
+   *
+   * @generated from enum value: LINT_PRESET_COMMENTS = 4;
+   */
+  COMMENTS = 4,
+}
+
+/**
+ * Describes the enum hades.api.registry.v1.LintPreset.
+ */
+export const LintPresetSchema: GenEnum<LintPreset> = /*@__PURE__*/
+  enumDesc(file_api_registry_v1_module, 2);
+
+/**
  * ModuleService manages Protobuf schema modules (repositories).
  *
  * Module creation allocates both a metadata row in PostgreSQL and a Git
@@ -403,6 +575,18 @@ export const ModuleService: GenService<{
     methodKind: "unary";
     input: typeof GetModuleRequestSchema;
     output: typeof GetModuleResponseSchema;
+  },
+  /**
+   * UpdateModule updates mutable metadata fields of an existing module.
+   * Returns NOT_FOUND if the module does not exist or the caller cannot read it.
+   * Returns PERMISSION_DENIED if the caller does not have update access.
+   *
+   * @generated from rpc hades.api.registry.v1.ModuleService.UpdateModule
+   */
+  updateModule: {
+    methodKind: "unary";
+    input: typeof UpdateModuleRequestSchema;
+    output: typeof UpdateModuleResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_api_registry_v1_module, 0);

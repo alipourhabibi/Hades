@@ -1,4 +1,4 @@
-// Package generate runs protoc with a configured plugin to produce SDK
+// Package generate runs buf generate with a remote plugin to produce SDK
 // source files from .proto inputs. The caller owns the output directory
 // and must remove it when done.
 package generate
@@ -6,30 +6,28 @@ package generate
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
-	"path/filepath"
 
 	"github.com/alipourhabibi/Hades/config"
 )
 
-// Generator runs protoc with a configured plugin.
+// Generator runs buf generate with a configured remote plugin.
 type Generator struct {
-	protocBin string
-	config    config.GeneratorConfig
+	bufBin string
+	config config.GeneratorConfig
 }
 
-// New creates a Generator. If protocBin is empty, "protoc" is used.
-func New(protocBin string, cfg config.GeneratorConfig) *Generator {
-	if protocBin == "" {
-		protocBin = "protoc"
+// New creates a Generator. If bufBin is empty, "buf" is used.
+func New(bufBin string, cfg config.GeneratorConfig) *Generator {
+	if bufBin == "" {
+		bufBin = "buf"
 	}
-	return &Generator{protocBin: protocBin, config: cfg}
+	return &Generator{bufBin: bufBin, config: cfg}
 }
 
-// Generate runs protoc with the configured plugin against protoDir and
-// returns the path to the temporary directory containing the generated files.
+// Generate runs buf generate with the configured remote plugin against protoDir
+// and returns the path to the temporary directory containing the generated files.
 //
 // The caller owns the returned directory and must remove it when done
 // (e.g. defer os.RemoveAll(outDir)). On failure the directory is removed
@@ -40,37 +38,29 @@ func (g *Generator) Generate(ctx context.Context, protoDir string) (outDir strin
 		return "", fmt.Errorf("generate: mktemp: %w", err)
 	}
 
-	args := buildProtocArgs(g.config.Plugin, g.config.Options, protoDir, outDir)
-	out, execErr := exec.CommandContext(ctx, g.protocBin, args...).CombinedOutput()
+	tmplDir, err := os.MkdirTemp("", "hades-sdk-tmpl-*")
+	if err != nil {
+		_ = os.RemoveAll(outDir)
+		return "", fmt.Errorf("generate: mktemp tmpl: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tmplDir) }()
+
+	tmpl := fmt.Sprintf("version: v2\nplugins:\n  - local: %s\n    out: %s\n", g.config.Plugin, outDir)
+	if g.config.Options != "" {
+		tmpl += fmt.Sprintf("    opt: %s\n", g.config.Options)
+	}
+
+	tmplPath := tmplDir + "/buf.gen.yaml"
+	if err := os.WriteFile(tmplPath, []byte(tmpl), 0o644); err != nil {
+		_ = os.RemoveAll(outDir)
+		return "", fmt.Errorf("generate: write buf.gen.yaml: %w", err)
+	}
+
+	out, execErr := exec.CommandContext(ctx, g.bufBin, "generate", "--template", tmplPath, protoDir).CombinedOutput()
 	if execErr != nil {
 		_ = os.RemoveAll(outDir)
-		return "", fmt.Errorf("protoc failed for %s:\n%s", g.config.Language, out)
+		return "", fmt.Errorf("buf generate failed for %s:\n%s", g.config.Language, out)
 	}
 
 	return outDir, nil
-}
-
-// buildProtocArgs constructs the protoc argument list.
-func buildProtocArgs(plugin, options, protoDir, outDir string) []string {
-	var protos []string
-	_ = filepath.WalkDir(protoDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		if filepath.Ext(path) == ".proto" {
-			protos = append(protos, path)
-		}
-		return nil
-	})
-
-	optStr := outDir
-	if options != "" {
-		optStr = options + ":" + outDir
-	}
-
-	args := []string{
-		fmt.Sprintf("--%s_out=%s", plugin, optStr),
-		"-I" + protoDir,
-	}
-	return append(args, protos...)
 }

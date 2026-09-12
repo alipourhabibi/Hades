@@ -105,7 +105,7 @@ func (s *Server) ConfirmEnrollTOTP(ctx context.Context, in *connect.Request[v1.C
 	}
 
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &user.Id, "totp_enabled", "", "", nil)
+		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_TOTP_ENABLED, "", "", nil)
 	}
 	return &connect.Response[v1.ConfirmEnrollTOTPResponse]{Msg: &v1.ConfirmEnrollTOTPResponse{}}, nil
 }
@@ -162,7 +162,7 @@ func (s *Server) VerifyTOTP(ctx context.Context, in *connect.Request[v1.VerifyTO
 	}
 
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &user.Id, "login_success", "", "", map[string]any{"totp": true})
+		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_LOGIN_SUCCESS, "", "", map[string]any{"totp": true})
 	}
 
 	return &connect.Response[v1.VerifyTOTPResponse]{
@@ -197,7 +197,7 @@ func (s *Server) DisableTOTP(ctx context.Context, in *connect.Request[v1.Disable
 		return nil, connErr.FromPgx(err)
 	}
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &user.Id, "totp_disabled", "", "", nil)
+		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_TOTP_DISABLED, "", "", nil)
 	}
 	return &connect.Response[v1.DisableTOTPResponse]{Msg: &v1.DisableTOTPResponse{}}, nil
 }

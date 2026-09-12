@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS modules (
     description       TEXT,
     url               TEXT,
     default_label_name TEXT,
-    default_branch    TEXT NOT NULL DEFAULT 'main'
+    default_branch    TEXT NOT NULL DEFAULT 'main',
+    lint_preset       INTEGER NOT NULL DEFAULT 1,
+    breaking_enabled  INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS commits (

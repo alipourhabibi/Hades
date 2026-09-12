@@ -7,6 +7,8 @@ package module
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,9 +30,10 @@ import (
 // moduleStorage is the subset of ModuleStorage used by the Server.
 type moduleStorage interface {
 	GetModulesByRefs(ctx context.Context, refs ...*registrypbv1.ModuleRef) ([]*registrypbv1.Module, error)
-	ListModules(ctx context.Context, ownerUsername string) ([]*registrypbv1.Module, error)
+	ListModules(ctx context.Context, ownerUsername string, limit, offset int) ([]*registrypbv1.Module, error)
 	GetModuleByOwnerAndName(ctx context.Context, owner, name string) (*registrypbv1.Module, error)
-	Create(ctx context.Context, name, ownerId string, visibility registrypbv1.ModuleVisibility, state registrypbv1.ModuleState, description, url, defaultLabelName, defaultBranch string) (*registrypbv1.Module, error)
+	Create(ctx context.Context, name, ownerId string, visibility registrypbv1.ModuleVisibility, state registrypbv1.ModuleState, description, url, defaultLabelName, defaultBranch string, lintPreset registrypbv1.LintPreset, breakingEnabled bool) (*registrypbv1.Module, error)
+	Update(ctx context.Context, req *registrypbv1.UpdateModuleRequest) (*registrypbv1.Module, error)
 }
 
 // authService is the subset of the authorization Server used by the Server.
@@ -43,6 +46,7 @@ type Server struct {
 	registryv1.ModuleServiceHandler
 
 	logger          *log.LoggerWrapper
+	registryHost    string
 	moduleDBStorage moduleStorage
 	commitDBStorage commitdb.Storage
 	gitStorage      gitstorage.Storage
@@ -54,6 +58,7 @@ type Server struct {
 func NewServer(deps *server.Dependencies) *Server {
 	return &Server{
 		logger:          deps.Logger,
+		registryHost:    deps.RegistryHost,
 		moduleDBStorage: deps.ModuleDB,
 		commitDBStorage: deps.CommitDB,
 		gitStorage:      deps.GitStorage,
@@ -80,7 +85,18 @@ func (s *Server) ListModules(ctx context.Context, in *connect.Request[registrypb
 	// public modules plus any private modules they are authorised to read.
 	user, _ := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 
-	modules, err := s.moduleDBStorage.ListModules(ctx, in.Msg.Owner)
+	pageSize := int(in.Msg.PageSize)
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	offset := 0
+	if in.Msg.PageToken != "" {
+		if n, err := strconv.Atoi(in.Msg.PageToken); err == nil {
+			offset = n
+		}
+	}
+
+	modules, err := s.moduleDBStorage.ListModules(ctx, in.Msg.Owner, pageSize, offset)
 	if err != nil {
 		userID := "anonymous"
 		if user != nil {
@@ -101,8 +117,13 @@ func (s *Server) ListModules(ctx context.Context, in *connect.Request[registrypb
 		}
 	}
 
+	nextPageToken := ""
+	if len(modules) == pageSize {
+		nextPageToken = strconv.Itoa(offset + pageSize)
+	}
+
 	return &connect.Response[registrypbv1.ListModulesResponse]{
-		Msg: &registrypbv1.ListModulesResponse{Modules: visible},
+		Msg: &registrypbv1.ListModulesResponse{Modules: visible, NextPageToken: nextPageToken},
 	}, nil
 }
 
@@ -159,8 +180,24 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 		return nil, connErr.PermissionDenied("user is not allowed to create this repo")
 	}
 
+	lintPreset := in.Msg.LintPreset
+	if lintPreset == registrypbv1.LintPreset_LINT_PRESET_UNSPECIFIED {
+		lintPreset = registrypbv1.LintPreset_LINT_PRESET_DEFAULT
+	}
+	breakingEnabled := in.Msg.BreakingEnabled
+
+	bsrName := moduleFullName
+	if s.registryHost != "" {
+		bsrName = s.registryHost + "/" + moduleFullName
+	}
+	bufYAML := fmt.Sprintf("version: v2\nmodules:\n  - path: .\n    name: %s\nlint:\n  use:\n    - %s\n", bsrName, lintPresetToRule(lintPreset))
+	if breakingEnabled {
+		bufYAML += "breaking:\n  use:\n    - FILE\n"
+	}
+
 	initialFiles := []*registrypbv1.File{
 		{Path: "README.md", Content: []byte("")},
+		{Path: "buf.yaml", Content: []byte(bufYAML)},
 	}
 	// Write a 'pending' log entry (auto-committed, outside the UoW) so that the
 	// background cleanup job can compensate if the server crashes mid-operation.
@@ -189,6 +226,8 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 			"",
 			"",
 			in.Msg.DefaultBranch,
+			lintPreset,
+			breakingEnabled,
 		)
 		if err != nil {
 			return nil, connErr.FromPgx(err)
@@ -251,4 +290,51 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 			Module: module,
 		},
 	}, nil
+}
+
+func (s *Server) UpdateModule(ctx context.Context, in *connect.Request[registrypbv1.UpdateModuleRequest]) (*connect.Response[registrypbv1.UpdateModuleResponse], error) {
+	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
+	if !ok {
+		s.logger.Error("missing user in context", "procedure", "UpdateModule")
+		return nil, connErr.Unauthenticated("not authenticated")
+	}
+
+	moduleFullName := in.Msg.Owner + "/" + in.Msg.Name
+
+	can, err := s.authorization.Can(ctx, &constants.Policy{
+		Subject:      user.Username,
+		ResourceType: string(constants.ResourceModule),
+		Action:       string(constants.ActionUpdate),
+		Domain:       moduleFullName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !can.Allowed {
+		s.logger.Warn("user not allowed to update module", "procedure", "UpdateModule", "user_id", user.Id, "module", moduleFullName)
+		return nil, connErr.PermissionDenied("user is not allowed to update this module")
+	}
+
+	updated, err := s.moduleDBStorage.Update(ctx, in.Msg)
+	if err != nil {
+		s.logger.Error("failed to update module", "error", err, "procedure", "UpdateModule", "module", moduleFullName)
+		return nil, connErr.FromPgx(err)
+	}
+
+	return &connect.Response[registrypbv1.UpdateModuleResponse]{
+		Msg: &registrypbv1.UpdateModuleResponse{Module: updated},
+	}, nil
+}
+
+func lintPresetToRule(p registrypbv1.LintPreset) string {
+	switch p {
+	case registrypbv1.LintPreset_LINT_PRESET_BASIC:
+		return "BASIC"
+	case registrypbv1.LintPreset_LINT_PRESET_MINIMAL:
+		return "MINIMAL"
+	case registrypbv1.LintPreset_LINT_PRESET_COMMENTS:
+		return "COMMENTS"
+	default:
+		return "DEFAULT"
+	}
 }

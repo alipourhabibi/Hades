@@ -338,7 +338,11 @@ func (x *CreateAPITokenResponse) GetCreatedAt() *timestamppb.Timestamp {
 
 // ListAPITokensRequest lists all active tokens for the authenticated user.
 type ListAPITokensRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Maximum number of tokens to return. 0 uses the server default (50). Max 100.
+	PageSize int32 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Opaque pagination cursor from a previous response. Empty returns the first page.
+	PageToken     string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -373,10 +377,26 @@ func (*ListAPITokensRequest) Descriptor() ([]byte, []int) {
 	return file_api_auth_v1_apitoken_proto_rawDescGZIP(), []int{3}
 }
 
+func (x *ListAPITokensRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListAPITokensRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 // ListAPITokensResponse carries the caller's token list.
 type ListAPITokensResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Tokens        []*APIToken            `protobuf:"bytes,1,rep,name=tokens,proto3" json:"tokens,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Tokens []*APIToken            `protobuf:"bytes,1,rep,name=tokens,proto3" json:"tokens,omitempty"`
+	// Cursor for the next page. Empty when this is the last page.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -416,6 +436,13 @@ func (x *ListAPITokensResponse) GetTokens() []*APIToken {
 		return x.Tokens
 	}
 	return nil
+}
+
+func (x *ListAPITokensResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 // RevokeAPITokenRequest revokes the token with the given identifier.
@@ -528,10 +555,14 @@ const file_api_auth_v1_apitoken_proto_rawDesc = "" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12\x16\n" +
 	"\x06prefix\x18\x03 \x01(\tR\x06prefix\x129\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x16\n" +
-	"\x14ListAPITokensRequest\"L\n" +
+	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"R\n" +
+	"\x14ListAPITokensRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"t\n" +
 	"\x15ListAPITokensResponse\x123\n" +
-	"\x06tokens\x18\x01 \x03(\v2\x1b.hades.api.auth.v1.APITokenR\x06tokens\"1\n" +
+	"\x06tokens\x18\x01 \x03(\v2\x1b.hades.api.auth.v1.APITokenR\x06tokens\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"1\n" +
 	"\x15RevokeAPITokenRequest\x12\x18\n" +
 	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\"\x18\n" +
 	"\x16RevokeAPITokenResponse*\x8b\x01\n" +

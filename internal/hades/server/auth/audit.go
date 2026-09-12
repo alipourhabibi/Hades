@@ -42,7 +42,7 @@ func (s *Server) ListAuditLog(ctx context.Context, in *connect.Request[v1.ListAu
 	for _, row := range rows {
 		ae := &v1.AuditEvent{
 			Id:        row.ID.String(),
-			EventType: row.Event,
+			EventType: row.EventType,
 			IpAddress: row.IPAddress,
 			UserAgent: row.UserAgent,
 			CreatedAt: timestamppb.New(row.CreatedAt),

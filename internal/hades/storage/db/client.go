@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -195,6 +196,19 @@ func NewSQLite(cfg config.Config, logger *log.LoggerWrapper) (Store, error) {
 	}
 	if _, err := sqlDB.Exec(sqliteMigration); err != nil {
 		return nil, fmt.Errorf("db: sqlite: migrate: %w", err)
+	}
+
+	// Apply incremental column additions for existing databases.
+	// SQLite lacks ALTER TABLE ADD COLUMN IF NOT EXISTS, so we run each statement
+	// and ignore the "duplicate column name" error that fires for fresh DBs
+	// (whose schema already includes the column in CREATE TABLE).
+	for _, stmt := range []string{
+		`ALTER TABLE modules ADD COLUMN lint_preset INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE modules ADD COLUMN breaking_enabled INTEGER NOT NULL DEFAULT 1`,
+	} {
+		if _, err := sqlDB.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("db: sqlite: column migration: %w", err)
+		}
 	}
 
 	sqRes := resourcesq.NewResource(sqlDB)

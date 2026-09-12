@@ -12,6 +12,7 @@ package commit
 
 import (
 	"context"
+	"strconv"
 
 	"connectrpc.com/connect"
 
@@ -36,6 +37,7 @@ type Handler struct {
 	registryv1connect.UnimplementedCommitServiceHandler
 
 	logger          *log.LoggerWrapper
+	registryHost    string
 	commitDBStorage commitdb.Storage
 	moduleDBStorage moduledb.Storage
 	gitStorage      gitstorage.Storage
@@ -47,6 +49,7 @@ type Handler struct {
 func NewHandler(deps *server.Dependencies) *Handler {
 	return &Handler{
 		logger:          deps.Logger,
+		registryHost:    deps.RegistryHost,
 		commitDBStorage: deps.CommitDB,
 		moduleDBStorage: deps.ModuleDB,
 		gitStorage:      deps.GitStorage,
@@ -75,14 +78,30 @@ func (h *Handler) ListCommits(ctx context.Context, in *connect.Request[registryp
 		return nil, err
 	}
 
-	commits, err := h.commitDBStorage.ListByModule(ctx, modules[0].Id)
+	pageSize := int(in.Msg.PageSize)
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	offset := 0
+	if in.Msg.PageToken != "" {
+		if n, err := strconv.Atoi(in.Msg.PageToken); err == nil {
+			offset = n
+		}
+	}
+
+	commits, err := h.commitDBStorage.ListByModule(ctx, modules[0].Id, pageSize, offset)
 	if err != nil {
 		h.logger.Error("failed to list commits", "error", err, "procedure", "ListCommits", "user_id", userID, "module_id", modules[0].Id)
 		return nil, connErr.FromPgx(err)
 	}
 
+	nextPageToken := ""
+	if len(commits) == pageSize {
+		nextPageToken = strconv.Itoa(offset + pageSize)
+	}
+
 	return &connect.Response[registrypbv1.ListCommitsResponse]{
-		Msg: &registrypbv1.ListCommitsResponse{Commits: commits},
+		Msg: &registrypbv1.ListCommitsResponse{Commits: commits, NextPageToken: nextPageToken},
 	}, nil
 }
 

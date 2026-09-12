@@ -331,7 +331,11 @@ type ListCommitsRequest struct {
 	// Username of the module owner.
 	Owner string `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`
 	// Short module name (without the owner prefix).
-	Module        string `protobuf:"bytes,2,opt,name=module,proto3" json:"module,omitempty"`
+	Module string `protobuf:"bytes,2,opt,name=module,proto3" json:"module,omitempty"`
+	// Maximum number of commits to return. 0 uses the server default (50). Max 100.
+	PageSize int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Opaque pagination cursor from a previous response. Empty returns the first page.
+	PageToken     string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -380,11 +384,27 @@ func (x *ListCommitsRequest) GetModule() string {
 	return ""
 }
 
+func (x *ListCommitsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListCommitsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 // ListCommitsResponse is the output for CommitService.ListCommits.
 type ListCommitsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Commits for the module, ordered newest first.
-	Commits       []*Commit `protobuf:"bytes,1,rep,name=commits,proto3" json:"commits,omitempty"`
+	Commits []*Commit `protobuf:"bytes,1,rep,name=commits,proto3" json:"commits,omitempty"`
+	// Cursor for the next page. Empty when this is the last page.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -424,6 +444,13 @@ func (x *ListCommitsResponse) GetCommits() []*Commit {
 		return x.Commits
 	}
 	return nil
+}
+
+func (x *ListCommitsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 // GetCommitRequest is the input for CommitService.GetCommit.
@@ -1088,12 +1115,16 @@ const file_api_registry_v1_commit_proto_rawDesc = "" +
 	"\x06digest\x18\t \x01(\v2\x1d.hades.api.registry.v1.DigestR\x06digest\x12+\n" +
 	"\x12created_by_user_id\x18\n" +
 	" \x01(\tR\x0fcreatedByUserId\x12,\n" +
-	"\x12source_control_url\x18\v \x01(\tR\x10sourceControlUrl\"R\n" +
+	"\x12source_control_url\x18\v \x01(\tR\x10sourceControlUrl\"\x8e\x01\n" +
 	"\x12ListCommitsRequest\x12\x1c\n" +
 	"\x05owner\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x05owner\x12\x1e\n" +
-	"\x06module\x18\x02 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x06module\"N\n" +
+	"\x06module\x18\x02 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x06module\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\"v\n" +
 	"\x13ListCommitsResponse\x127\n" +
-	"\acommits\x18\x01 \x03(\v2\x1d.hades.api.registry.v1.CommitR\acommits\";\n" +
+	"\acommits\x18\x01 \x03(\v2\x1d.hades.api.registry.v1.CommitR\acommits\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\";\n" +
 	"\x10GetCommitRequest\x12'\n" +
 	"\vcommit_hash\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\n" +
 	"commitHash\"J\n" +

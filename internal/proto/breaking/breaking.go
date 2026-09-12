@@ -1,21 +1,16 @@
 // Package breaking wraps the buf CLI to detect backward-incompatible changes
 // between two directories of .proto files. It is called during upload to
 // reject pushes that would break existing consumers.
+//
+// The caller (runProtoChecks) is responsible for writing buf.yaml to
+// newDir before calling Check. This package does not create it.
 package breaking
 
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 )
-
-const bufYAML = `version: v2
-breaking:
-  use:
-    - FILE
-`
 
 // Checker runs buf breaking against two directories of .proto files.
 type Checker struct {
@@ -31,13 +26,10 @@ func New(bufBin string) *Checker {
 }
 
 // Check compares newDir against prevDir for backward-incompatible changes.
-// If prevDir is empty the check is skipped (first push).
+// If prevDir is empty the check is skipped. buf.yaml must already exist in newDir.
 func (c *Checker) Check(ctx context.Context, newDir, prevDir string) error {
 	if prevDir == "" {
 		return nil
-	}
-	if err := writeBufYAML(newDir); err != nil {
-		return fmt.Errorf("breaking: failed to write buf.yaml: %w", err)
 	}
 	out, err := exec.CommandContext(ctx, c.bufBin,
 		"breaking", newDir, "--against", prevDir).CombinedOutput()
@@ -45,14 +37,4 @@ func (c *Checker) Check(ctx context.Context, newDir, prevDir string) error {
 		return fmt.Errorf("breaking change detected:\n%s", out)
 	}
 	return nil
-}
-
-// writeBufYAML writes the default buf.yaml only when the directory does not
-// already contain one (i.e. the module did not upload its own buf.yaml).
-func writeBufYAML(dir string) error {
-	path := filepath.Join(dir, "buf.yaml")
-	if _, err := os.Stat(path); err == nil {
-		return nil // module has its own buf.yaml; honour it
-	}
-	return os.WriteFile(path, []byte(bufYAML), 0o644)
 }

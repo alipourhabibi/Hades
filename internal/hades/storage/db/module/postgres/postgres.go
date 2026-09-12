@@ -37,14 +37,16 @@ func (m *ModuleStorage) Create(
 	visibility registryv1.ModuleVisibility,
 	state registryv1.ModuleState,
 	description, url, defaultLabelName, defaultBranch string,
+	lintPreset registryv1.LintPreset,
+	breakingEnabled bool,
 ) (*registryv1.Module, error) {
 	query := `
 INSERT INTO modules (
-  name, owner_id, visibility, state, description, url, default_label_name, default_branch
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, create_time, update_time, name, owner_id, visibility, state, description, url, default_label_name, default_branch`
+  name, owner_id, visibility, state, description, url, default_label_name, default_branch, lint_preset, breaking_enabled
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, create_time, update_time, name, owner_id, visibility, state, description, url, default_label_name, default_branch, lint_preset, breaking_enabled`
 
-	row := m.q(ctx).QueryRow(ctx, query, name, ownerId, visibility, state, description, url, defaultLabelName, defaultBranch)
+	row := m.q(ctx).QueryRow(ctx, query, name, ownerId, visibility, state, description, url, defaultLabelName, defaultBranch, lintPreset, breakingEnabled)
 	mod, err := scanModuleRow(row)
 	if err != nil {
 		return nil, err
@@ -66,6 +68,7 @@ func scanModuleRow(row interface {
 		&mod.Visibility, &mod.State,
 		&mod.Description, &mod.Url,
 		&mod.DefaultLabelName, &mod.DefaultBranch,
+		&mod.LintPreset, &mod.BreakingEnabled,
 	)
 	if err != nil {
 		return nil, err
@@ -81,20 +84,57 @@ SELECT
   modules.name, modules.owner_id,
   modules.visibility, modules.state,
   modules.description, modules.url,
-  modules.default_label_name, modules.default_branch
+  modules.default_label_name, modules.default_branch,
+  modules.lint_preset, modules.breaking_enabled
 FROM modules`
 
-func (m *ModuleStorage) ListModules(ctx context.Context, ownerUsername string) ([]*registryv1.Module, error) {
+func (m *ModuleStorage) Update(ctx context.Context, req *registryv1.UpdateModuleRequest) (*registryv1.Module, error) {
+	// Convert optional enum pointers to *int32 so pgx sends NULL for unset fields.
+	var vis, lint *int32
+	if req.Visibility != nil {
+		v := int32(*req.Visibility)
+		vis = &v
+	}
+	if req.LintPreset != nil {
+		v := int32(*req.LintPreset)
+		lint = &v
+	}
+	query := `
+UPDATE modules
+SET
+  description     = COALESCE($3, description),
+  visibility      = COALESCE($4, visibility),
+  lint_preset     = COALESCE($5, lint_preset),
+  breaking_enabled = COALESCE($6, breaking_enabled),
+  update_time     = now()
+FROM users
+WHERE users.id = modules.owner_id AND users.username = $1 AND modules.name = $2
+RETURNING modules.id, modules.create_time, modules.update_time, modules.name, modules.owner_id,
+          modules.visibility, modules.state, modules.description, modules.url,
+          modules.default_label_name, modules.default_branch, modules.lint_preset, modules.breaking_enabled`
+
+	row := m.q(ctx).QueryRow(ctx, query, req.Owner, req.Owner+"/"+req.Name, req.Description, vis, lint, req.BreakingEnabled)
+	return scanModuleRow(row)
+}
+
+func (m *ModuleStorage) ListModules(ctx context.Context, ownerUsername string, limit, offset int) ([]*registryv1.Module, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
 	var query string
 	var args []interface{}
 	if ownerUsername == "" {
-		query = moduleSelectColumns + " ORDER BY modules.create_time DESC"
+		query = moduleSelectColumns + " ORDER BY modules.create_time DESC LIMIT $1 OFFSET $2"
+		args = []interface{}{limit, offset}
 	} else {
 		query = moduleSelectColumns + `
 JOIN users ON users.id = modules.owner_id
 WHERE users.username = $1
-ORDER BY modules.create_time DESC`
-		args = append(args, ownerUsername)
+ORDER BY modules.create_time DESC LIMIT $2 OFFSET $3`
+		args = []interface{}{ownerUsername, limit, offset}
 	}
 
 	rows, err := m.q(ctx).Query(ctx, query, args...)

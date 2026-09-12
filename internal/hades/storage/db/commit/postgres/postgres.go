@@ -228,7 +228,13 @@ func scanCommitRows(rows pgx.Rows) ([]*registryv1.Commit, error) {
 	return commits, rows.Err()
 }
 
-func (c *CommitStorage) ListByModule(ctx context.Context, moduleID string) ([]*registryv1.Commit, error) {
+func (c *CommitStorage) ListByModule(ctx context.Context, moduleID string, limit, offset int) ([]*registryv1.Commit, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
 	q := `
 SELECT
   c.id, c.commit_hash, c.create_time, c.update_time,
@@ -239,9 +245,9 @@ FROM commits c
 JOIN users u ON u.id = c.owner_id
 JOIN modules m ON m.id = c.module_id
 WHERE c.module_id = $1
-ORDER BY c.create_time DESC`
+ORDER BY c.create_time DESC LIMIT $2 OFFSET $3`
 
-	rows, err := c.q(ctx).Query(ctx, q, moduleID)
+	rows, err := c.q(ctx).Query(ctx, q, moduleID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

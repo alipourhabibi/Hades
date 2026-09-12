@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 
+	authv1 "github.com/alipourhabibi/Hades/api/gen/api/auth/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/auditlog"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
@@ -26,7 +27,7 @@ func (s *SQLiteAuditLogStorage) q(ctx context.Context) txkeys.SQLQuerier {
 	return s.db
 }
 
-func (s *SQLiteAuditLogStorage) Create(ctx context.Context, userID *string, event, ipAddress, userAgent string, metadata map[string]any) error {
+func (s *SQLiteAuditLogStorage) Create(ctx context.Context, userID *string, event authv1.AuditEventType, ipAddress, userAgent string, metadata map[string]any) error {
 	var metaJSON []byte
 	if metadata != nil {
 		var err error
@@ -37,7 +38,7 @@ func (s *SQLiteAuditLogStorage) Create(ctx context.Context, userID *string, even
 	}
 	_, err := s.q(ctx).ExecContext(ctx,
 		`INSERT INTO audit_log (user_id, event, ip_address, user_agent, metadata) VALUES (?, ?, ?, ?, ?)`,
-		userID, event, ipAddress, userAgent, metaJSON)
+		userID, event.String(), ipAddress, userAgent, metaJSON)
 	return err
 }
 
@@ -58,10 +59,12 @@ func (s *SQLiteAuditLogStorage) List(ctx context.Context, userID string, pageSiz
 	for rows.Next() {
 		row := &auditlog.Row{}
 		var metaJSON []byte
+		var eventStr string
 		var createdAt sqltypes.Time
-		if err := rows.Scan(&row.ID, &row.UserID, &row.Event, &row.IPAddress, &row.UserAgent, &metaJSON, &createdAt); err != nil {
+		if err := rows.Scan(&row.ID, &row.UserID, &eventStr, &row.IPAddress, &row.UserAgent, &metaJSON, &createdAt); err != nil {
 			return nil, err
 		}
+		row.EventType = authv1.AuditEventType(authv1.AuditEventType_value[eventStr])
 		row.CreatedAt = createdAt.V
 		if metaJSON != nil {
 			_ = json.Unmarshal(metaJSON, &row.Metadata)

@@ -81,7 +81,17 @@ const ModuleWizard: React.FC<ModuleWizardProps> = ({ onClose, onCreated }) => {
   const addDep = (n: string) => setDeps(d => [...d, n]);
   const remDep = (n: string) => setDeps(d => d.filter(x => x !== n));
 
-  const bufYaml = `version: v2\nmodules:\n  - path: .\n    name: ${DOMAIN}/${owner}/${name || 'my-module'}\n${deps.length ? `deps:\n${deps.map(d => `  - ${d}`).join('\n')}\n` : ''}lint:\n  use:\n    - ${lintPreset}\nbreaking:\n  use:\n    - ${breaking ? 'FILE' : '# (disabled)'}`;
+  const bufYaml = [
+    'version: v2',
+    'modules:',
+    '  - path: .',
+    `    name: ${DOMAIN}/${owner}/${name || 'my-module'}`,
+    ...(deps.length ? ['deps:', ...deps.map(d => `  - ${d}`)] : []),
+    'lint:',
+    '  use:',
+    `    - ${lintPreset}`,
+    ...(breaking ? ['breaking:', '  use:', '    - FILE'] : []),
+  ].join('\n');
 
   const nameValid = name.trim().length >= 2 && /^[a-z][a-z0-9-]*$/.test(name);
   const canNext = step === 0 ? nameValid : true;
@@ -116,12 +126,20 @@ const ModuleWizard: React.FC<ModuleWizardProps> = ({ onClose, onCreated }) => {
     setLoading(true);
     setError('');
     try {
+      const lintPresetMap: Record<string, string> = {
+        DEFAULT:  'LINT_PRESET_DEFAULT',
+        BASIC:    'LINT_PRESET_BASIC',
+        MINIMAL:  'LINT_PRESET_MINIMAL',
+        COMMENTS: 'LINT_PRESET_COMMENTS',
+      };
       const res = await rpcFetch<{ module?: { name?: string } }>(
         '/hades.api.registry.v1.ModuleService/CreateModuleByName',
         {
           name,
           visibility: visibility === 'private' ? 'MODULE_VISIBILITY_PRIVATE' : 'MODULE_VISIBILITY_PUBLIC',
           description,
+          lint_preset:      lintPresetMap[lintPreset] ?? 'LINT_PRESET_DEFAULT',
+          breaking_enabled: breaking,
         }
       );
       const fullName = res.module?.name || `${owner}/${name}`;

@@ -103,7 +103,7 @@ func (s *Server) OAuthCallback(ctx context.Context, in *connect.Request[v1.OAuth
 		}
 		_ = s.oauthIdentityDB.Create(ctx, userID, pName, providerUID, emailAddr)
 		if s.auditLogDB != nil {
-			_ = s.auditLogDB.Create(ctx, &userID, "oauth_linked", "", "", map[string]any{"provider": pName})
+			_ = s.auditLogDB.Create(ctx, &userID, v1.AuditEventType_AUDIT_EVENT_TYPE_OAUTH_LINKED, "", "", map[string]any{"provider": pName})
 		}
 	} else {
 		userID = identity.UserID
@@ -229,7 +229,7 @@ func (s *Server) UnlinkProvider(ctx context.Context, in *connect.Request[v1.Unli
 		return nil, connErr.FromPgx(err)
 	}
 	if s.auditLogDB != nil {
-		_ = s.auditLogDB.Create(ctx, &user.Id, "oauth_unlinked", "", "", map[string]any{"provider": pName})
+		_ = s.auditLogDB.Create(ctx, &user.Id, v1.AuditEventType_AUDIT_EVENT_TYPE_OAUTH_UNLINKED, "", "", map[string]any{"provider": pName})
 	}
 	return &connect.Response[v1.UnlinkProviderResponse]{Msg: &v1.UnlinkProviderResponse{}}, nil
 }

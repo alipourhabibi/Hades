@@ -84,7 +84,6 @@ totp:
 sdk:
   enabled: true
   bufBin: "buf"
-  protocBin: "protoc"
   lintEnabled: false
   breakingEnabled: false
   generators:

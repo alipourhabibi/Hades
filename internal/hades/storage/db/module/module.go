@@ -9,8 +9,9 @@ import (
 
 // Storage is the domain interface for module persistence.
 type Storage interface {
-	Create(ctx context.Context, name, ownerId string, visibility registryv1.ModuleVisibility, state registryv1.ModuleState, description, url, defaultLabelName, defaultBranch string) (*registryv1.Module, error)
-	ListModules(ctx context.Context, ownerUsername string) ([]*registryv1.Module, error)
+	Create(ctx context.Context, name, ownerId string, visibility registryv1.ModuleVisibility, state registryv1.ModuleState, description, url, defaultLabelName, defaultBranch string, lintPreset registryv1.LintPreset, breakingEnabled bool) (*registryv1.Module, error)
+	Update(ctx context.Context, req *registryv1.UpdateModuleRequest) (*registryv1.Module, error)
+	ListModules(ctx context.Context, ownerUsername string, limit, offset int) ([]*registryv1.Module, error)
 	GetModuleByOwnerAndName(ctx context.Context, owner, name string) (*registryv1.Module, error)
 	GetModulesByRefs(ctx context.Context, refs ...*registryv1.ModuleRef) ([]*registryv1.Module, error)
 	CountByOwner(ctx context.Context, ownerID string) (int32, error)

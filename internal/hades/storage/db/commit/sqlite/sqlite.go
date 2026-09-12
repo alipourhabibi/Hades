@@ -169,9 +169,15 @@ LIMIT 1`, ref.Owner+"/"+ref.Module)
 	return commits, nil
 }
 
-func (c *SQLiteCommitStorage) ListByModule(ctx context.Context, moduleID string) ([]*registryv1.Commit, error) {
+func (c *SQLiteCommitStorage) ListByModule(ctx context.Context, moduleID string, limit, offset int) ([]*registryv1.Commit, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
 	rows, err := c.q(ctx).QueryContext(ctx,
-		`SELECT `+sqliteCommitJoinCols+` WHERE c.module_id = ? ORDER BY c.create_time DESC`, moduleID)
+		`SELECT `+sqliteCommitJoinCols+` WHERE c.module_id = ? ORDER BY c.create_time DESC LIMIT ? OFFSET ?`, moduleID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

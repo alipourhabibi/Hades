@@ -14,6 +14,27 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
+// injectBufYAML replaces or appends a buf.yaml entry in files with content
+// generated from the module's current DB settings, so downloads always reflect
+// the latest registry configuration rather than whatever was stored in git.
+func injectBufYAML(files []*registryv1.File, m *registryv1.Module, registryHost string) []*registryv1.File {
+	generated := generateBufYAML(m, registryHost)
+	out := make([]*registryv1.File, 0, len(files)+1)
+	found := false
+	for _, f := range files {
+		if f.Path == "buf.yaml" {
+			out = append(out, &registryv1.File{Path: "buf.yaml", Content: generated})
+			found = true
+		} else {
+			out = append(out, f)
+		}
+	}
+	if !found {
+		out = append(out, &registryv1.File{Path: "buf.yaml", Content: generated})
+	}
+	return out
+}
+
 func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs []*registryv1.ModuleRef) ([]*registryv1.DownloadResponseContent, error) {
 	start := time.Now()
 	var memBefore runtime.MemStats
@@ -60,6 +81,9 @@ func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs [
 		for i, f := range gitFiles {
 			pbFiles[i] = &registryv1.File{Path: f.Path, Content: f.Content}
 		}
+		if len(modules) > 0 {
+			pbFiles = injectBufYAML(pbFiles, modules[0], h.registryHost)
+		}
 		contents = append(contents, &registryv1.DownloadResponseContent{
 			Commit: commit,
 			Files:  pbFiles,
@@ -77,6 +101,11 @@ func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs [
 		if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
 			telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "error")))
 			return nil, err
+		}
+		// Build a lookup so we can find the module for each commit.
+		moduleByID := make(map[string]*registryv1.Module, len(modules))
+		for _, m := range modules {
+			moduleByID[m.Id] = m
 		}
 		commits, err := h.commitDB.GetCommitByOwnerModule(ctx, moduleRefs)
 		if err != nil {
@@ -96,6 +125,9 @@ func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs [
 			pbFiles := make([]*registryv1.File, len(gitFiles))
 			for i, f := range gitFiles {
 				pbFiles[i] = &registryv1.File{Path: f.Path, Content: f.Content}
+			}
+			if m, ok := moduleByID[commit.ModuleId]; ok {
+				pbFiles = injectBufYAML(pbFiles, m, h.registryHost)
 			}
 			contents = append(contents, &registryv1.DownloadResponseContent{
 				Commit: commit,

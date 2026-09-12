@@ -133,6 +133,66 @@ func (ModuleState) EnumDescriptor() ([]byte, []int) {
 	return file_api_registry_v1_module_proto_rawDescGZIP(), []int{1}
 }
 
+// LintPreset selects the set of buf lint rules enforced on upload.
+type LintPreset int32
+
+const (
+	LintPreset_LINT_PRESET_UNSPECIFIED LintPreset = 0
+	// Recommended rules for most teams.
+	LintPreset_LINT_PRESET_DEFAULT LintPreset = 1
+	// A smaller, more permissive set.
+	LintPreset_LINT_PRESET_BASIC LintPreset = 2
+	// Only the most critical checks.
+	LintPreset_LINT_PRESET_MINIMAL LintPreset = 3
+	// DEFAULT plus all comment rules.
+	LintPreset_LINT_PRESET_COMMENTS LintPreset = 4
+)
+
+// Enum value maps for LintPreset.
+var (
+	LintPreset_name = map[int32]string{
+		0: "LINT_PRESET_UNSPECIFIED",
+		1: "LINT_PRESET_DEFAULT",
+		2: "LINT_PRESET_BASIC",
+		3: "LINT_PRESET_MINIMAL",
+		4: "LINT_PRESET_COMMENTS",
+	}
+	LintPreset_value = map[string]int32{
+		"LINT_PRESET_UNSPECIFIED": 0,
+		"LINT_PRESET_DEFAULT":     1,
+		"LINT_PRESET_BASIC":       2,
+		"LINT_PRESET_MINIMAL":     3,
+		"LINT_PRESET_COMMENTS":    4,
+	}
+)
+
+func (x LintPreset) Enum() *LintPreset {
+	p := new(LintPreset)
+	*p = x
+	return p
+}
+
+func (x LintPreset) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (LintPreset) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_registry_v1_module_proto_enumTypes[2].Descriptor()
+}
+
+func (LintPreset) Type() protoreflect.EnumType {
+	return &file_api_registry_v1_module_proto_enumTypes[2]
+}
+
+func (x LintPreset) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use LintPreset.Descriptor instead.
+func (LintPreset) EnumDescriptor() ([]byte, []int) {
+	return file_api_registry_v1_module_proto_rawDescGZIP(), []int{2}
+}
+
 // Module is the metadata record for a Hades schema repository.
 type Module struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -159,8 +219,12 @@ type Module struct {
 	Url string `protobuf:"bytes,10,opt,name=url,proto3" json:"url,omitempty"`
 	// Default label used when a commit is pushed without an explicit label.
 	DefaultLabelName string `protobuf:"bytes,11,opt,name=default_label_name,json=defaultLabelName,proto3" json:"default_label_name,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Lint rule set enforced on upload.
+	LintPreset LintPreset `protobuf:"varint,12,opt,name=lint_preset,json=lintPreset,proto3,enum=hades.api.registry.v1.LintPreset" json:"lint_preset,omitempty"`
+	// Whether backward-compatibility checks are enforced on upload.
+	BreakingEnabled bool `protobuf:"varint,13,opt,name=breaking_enabled,json=breakingEnabled,proto3" json:"breaking_enabled,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Module) Reset() {
@@ -270,6 +334,20 @@ func (x *Module) GetDefaultLabelName() string {
 	return ""
 }
 
+func (x *Module) GetLintPreset() LintPreset {
+	if x != nil {
+		return x.LintPreset
+	}
+	return LintPreset_LINT_PRESET_UNSPECIFIED
+}
+
+func (x *Module) GetBreakingEnabled() bool {
+	if x != nil {
+		return x.BreakingEnabled
+	}
+	return false
+}
+
 // ModuleRef is a lightweight reference to a module used in upload payloads.
 type ModuleRef struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -345,8 +423,12 @@ type CreateModuleByNameRequest struct {
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	// Default branch name. Defaults to "main" when empty.
 	DefaultBranch string `protobuf:"bytes,4,opt,name=default_branch,json=defaultBranch,proto3" json:"default_branch,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Lint rule set to enforce on upload. Defaults to DEFAULT when unspecified.
+	LintPreset LintPreset `protobuf:"varint,5,opt,name=lint_preset,json=lintPreset,proto3,enum=hades.api.registry.v1.LintPreset" json:"lint_preset,omitempty"`
+	// Whether backward-compatibility checks are enforced on upload. Defaults to true.
+	BreakingEnabled bool `protobuf:"varint,6,opt,name=breaking_enabled,json=breakingEnabled,proto3" json:"breaking_enabled,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *CreateModuleByNameRequest) Reset() {
@@ -407,6 +489,20 @@ func (x *CreateModuleByNameRequest) GetDefaultBranch() string {
 	return ""
 }
 
+func (x *CreateModuleByNameRequest) GetLintPreset() LintPreset {
+	if x != nil {
+		return x.LintPreset
+	}
+	return LintPreset_LINT_PRESET_UNSPECIFIED
+}
+
+func (x *CreateModuleByNameRequest) GetBreakingEnabled() bool {
+	if x != nil {
+		return x.BreakingEnabled
+	}
+	return false
+}
+
 // CreateModuleByNameResponse carries the newly created module record.
 type CreateModuleByNameResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -457,7 +553,11 @@ type ListModulesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Filter by owner username. When empty, all modules visible to the caller
 	// are returned (public modules and private modules the caller can read).
-	Owner         string `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`
+	Owner string `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`
+	// Maximum number of modules to return. 0 uses the server default (50). Max 100.
+	PageSize int32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Opaque pagination cursor from a previous response. Empty returns the first page.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -499,10 +599,26 @@ func (x *ListModulesRequest) GetOwner() string {
 	return ""
 }
 
+func (x *ListModulesRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListModulesRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 // ListModulesResponse is the output for ModuleService.ListModules.
 type ListModulesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Modules       []*Module              `protobuf:"bytes,1,rep,name=modules,proto3" json:"modules,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Modules []*Module              `protobuf:"bytes,1,rep,name=modules,proto3" json:"modules,omitempty"`
+	// Cursor for the next page. Empty when this is the last page.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -544,6 +660,151 @@ func (x *ListModulesResponse) GetModules() []*Module {
 	return nil
 }
 
+func (x *ListModulesResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+// UpdateModuleRequest updates mutable fields of an existing module.
+// All mutable fields are optional: omit a field to leave its current value unchanged.
+type UpdateModuleRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Owner username of the module.
+	Owner string `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`
+	// Short module name (without the owner prefix).
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// New description. Omit to leave unchanged.
+	Description *string `protobuf:"bytes,3,opt,name=description,proto3,oneof" json:"description,omitempty"`
+	// New visibility. Omit to leave unchanged.
+	// TODO: changing public to private should drop star count to 0; not implemented yet.
+	Visibility *ModuleVisibility `protobuf:"varint,4,opt,name=visibility,proto3,enum=hades.api.registry.v1.ModuleVisibility,oneof" json:"visibility,omitempty"`
+	// New lint rule set. Omit to leave unchanged.
+	LintPreset *LintPreset `protobuf:"varint,5,opt,name=lint_preset,json=lintPreset,proto3,enum=hades.api.registry.v1.LintPreset,oneof" json:"lint_preset,omitempty"`
+	// New breaking-change enforcement flag. Omit to leave unchanged.
+	BreakingEnabled *bool `protobuf:"varint,6,opt,name=breaking_enabled,json=breakingEnabled,proto3,oneof" json:"breaking_enabled,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *UpdateModuleRequest) Reset() {
+	*x = UpdateModuleRequest{}
+	mi := &file_api_registry_v1_module_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateModuleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateModuleRequest) ProtoMessage() {}
+
+func (x *UpdateModuleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_registry_v1_module_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateModuleRequest.ProtoReflect.Descriptor instead.
+func (*UpdateModuleRequest) Descriptor() ([]byte, []int) {
+	return file_api_registry_v1_module_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *UpdateModuleRequest) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *UpdateModuleRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateModuleRequest) GetDescription() string {
+	if x != nil && x.Description != nil {
+		return *x.Description
+	}
+	return ""
+}
+
+func (x *UpdateModuleRequest) GetVisibility() ModuleVisibility {
+	if x != nil && x.Visibility != nil {
+		return *x.Visibility
+	}
+	return ModuleVisibility_MODULE_VISIBILITY_UNSPECIFIED
+}
+
+func (x *UpdateModuleRequest) GetLintPreset() LintPreset {
+	if x != nil && x.LintPreset != nil {
+		return *x.LintPreset
+	}
+	return LintPreset_LINT_PRESET_UNSPECIFIED
+}
+
+func (x *UpdateModuleRequest) GetBreakingEnabled() bool {
+	if x != nil && x.BreakingEnabled != nil {
+		return *x.BreakingEnabled
+	}
+	return false
+}
+
+// UpdateModuleResponse carries the updated module record.
+type UpdateModuleResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Module        *Module                `protobuf:"bytes,1,opt,name=module,proto3" json:"module,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateModuleResponse) Reset() {
+	*x = UpdateModuleResponse{}
+	mi := &file_api_registry_v1_module_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateModuleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateModuleResponse) ProtoMessage() {}
+
+func (x *UpdateModuleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_registry_v1_module_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateModuleResponse.ProtoReflect.Descriptor instead.
+func (*UpdateModuleResponse) Descriptor() ([]byte, []int) {
+	return file_api_registry_v1_module_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *UpdateModuleResponse) GetModule() *Module {
+	if x != nil {
+		return x.Module
+	}
+	return nil
+}
+
 // GetModuleRequest is the input for ModuleService.GetModule.
 type GetModuleRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -557,7 +818,7 @@ type GetModuleRequest struct {
 
 func (x *GetModuleRequest) Reset() {
 	*x = GetModuleRequest{}
-	mi := &file_api_registry_v1_module_proto_msgTypes[6]
+	mi := &file_api_registry_v1_module_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -569,7 +830,7 @@ func (x *GetModuleRequest) String() string {
 func (*GetModuleRequest) ProtoMessage() {}
 
 func (x *GetModuleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_registry_v1_module_proto_msgTypes[6]
+	mi := &file_api_registry_v1_module_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -582,7 +843,7 @@ func (x *GetModuleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetModuleRequest.ProtoReflect.Descriptor instead.
 func (*GetModuleRequest) Descriptor() ([]byte, []int) {
-	return file_api_registry_v1_module_proto_rawDescGZIP(), []int{6}
+	return file_api_registry_v1_module_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetModuleRequest) GetOwner() string {
@@ -609,7 +870,7 @@ type GetModuleResponse struct {
 
 func (x *GetModuleResponse) Reset() {
 	*x = GetModuleResponse{}
-	mi := &file_api_registry_v1_module_proto_msgTypes[7]
+	mi := &file_api_registry_v1_module_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -621,7 +882,7 @@ func (x *GetModuleResponse) String() string {
 func (*GetModuleResponse) ProtoMessage() {}
 
 func (x *GetModuleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_registry_v1_module_proto_msgTypes[7]
+	mi := &file_api_registry_v1_module_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -634,7 +895,7 @@ func (x *GetModuleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetModuleResponse.ProtoReflect.Descriptor instead.
 func (*GetModuleResponse) Descriptor() ([]byte, []int) {
-	return file_api_registry_v1_module_proto_rawDescGZIP(), []int{7}
+	return file_api_registry_v1_module_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetModuleResponse) GetModule() *Module {
@@ -648,7 +909,7 @@ var File_api_registry_v1_module_proto protoreflect.FileDescriptor
 
 const file_api_registry_v1_module_proto_rawDesc = "" +
 	"\n" +
-	"\x1capi/registry/v1/module.proto\x12\x15hades.api.registry.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xcd\x03\n" +
+	"\x1capi/registry/v1/module.proto\x12\x15hades.api.registry.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbc\x04\n" +
 	"\x06Module\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12;\n" +
 	"\vcreate_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
@@ -665,24 +926,50 @@ const file_api_registry_v1_module_proto_rawDesc = "" +
 	"\x05state\x18\t \x01(\x0e2\".hades.api.registry.v1.ModuleStateR\x05state\x12\x10\n" +
 	"\x03url\x18\n" +
 	" \x01(\tR\x03url\x12,\n" +
-	"\x12default_label_name\x18\v \x01(\tR\x10defaultLabelName\"I\n" +
+	"\x12default_label_name\x18\v \x01(\tR\x10defaultLabelName\x12B\n" +
+	"\vlint_preset\x18\f \x01(\x0e2!.hades.api.registry.v1.LintPresetR\n" +
+	"lintPreset\x12)\n" +
+	"\x10breaking_enabled\x18\r \x01(\bR\x0fbreakingEnabled\"I\n" +
 	"\tModuleRef\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05owner\x18\x02 \x01(\tR\x05owner\x12\x16\n" +
-	"\x06module\x18\x03 \x01(\tR\x06module\"\xc9\x01\n" +
+	"\x06module\x18\x03 \x01(\tR\x06module\"\xb8\x02\n" +
 	"\x19CreateModuleByNameRequest\x12\x1a\n" +
 	"\x04name\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x04name\x12G\n" +
 	"\n" +
 	"visibility\x18\x02 \x01(\x0e2'.hades.api.registry.v1.ModuleVisibilityR\n" +
 	"visibility\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12%\n" +
-	"\x0edefault_branch\x18\x04 \x01(\tR\rdefaultBranch\"S\n" +
+	"\x0edefault_branch\x18\x04 \x01(\tR\rdefaultBranch\x12B\n" +
+	"\vlint_preset\x18\x05 \x01(\x0e2!.hades.api.registry.v1.LintPresetR\n" +
+	"lintPreset\x12)\n" +
+	"\x10breaking_enabled\x18\x06 \x01(\bR\x0fbreakingEnabled\"S\n" +
 	"\x1aCreateModuleByNameResponse\x125\n" +
-	"\x06module\x18\x01 \x01(\v2\x1d.hades.api.registry.v1.ModuleR\x06module\"*\n" +
+	"\x06module\x18\x01 \x01(\v2\x1d.hades.api.registry.v1.ModuleR\x06module\"f\n" +
 	"\x12ListModulesRequest\x12\x14\n" +
-	"\x05owner\x18\x01 \x01(\tR\x05owner\"N\n" +
+	"\x05owner\x18\x01 \x01(\tR\x05owner\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"v\n" +
 	"\x13ListModulesResponse\x127\n" +
-	"\amodules\x18\x01 \x03(\v2\x1d.hades.api.registry.v1.ModuleR\amodules\"L\n" +
+	"\amodules\x18\x01 \x03(\v2\x1d.hades.api.registry.v1.ModuleR\amodules\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x81\x03\n" +
+	"\x13UpdateModuleRequest\x12\x1c\n" +
+	"\x05owner\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x05owner\x12\x1a\n" +
+	"\x04name\x18\x02 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x04name\x12%\n" +
+	"\vdescription\x18\x03 \x01(\tH\x00R\vdescription\x88\x01\x01\x12L\n" +
+	"\n" +
+	"visibility\x18\x04 \x01(\x0e2'.hades.api.registry.v1.ModuleVisibilityH\x01R\n" +
+	"visibility\x88\x01\x01\x12G\n" +
+	"\vlint_preset\x18\x05 \x01(\x0e2!.hades.api.registry.v1.LintPresetH\x02R\n" +
+	"lintPreset\x88\x01\x01\x12.\n" +
+	"\x10breaking_enabled\x18\x06 \x01(\bH\x03R\x0fbreakingEnabled\x88\x01\x01B\x0e\n" +
+	"\f_descriptionB\r\n" +
+	"\v_visibilityB\x0e\n" +
+	"\f_lint_presetB\x13\n" +
+	"\x11_breaking_enabled\"M\n" +
+	"\x14UpdateModuleResponse\x125\n" +
+	"\x06module\x18\x01 \x01(\v2\x1d.hades.api.registry.v1.ModuleR\x06module\"L\n" +
 	"\x10GetModuleRequest\x12\x1c\n" +
 	"\x05owner\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x05owner\x12\x1a\n" +
 	"\x04name\x18\x02 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x04name\"J\n" +
@@ -695,11 +982,19 @@ const file_api_registry_v1_module_proto_rawDesc = "" +
 	"\vModuleState\x12\x1c\n" +
 	"\x18MODULE_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13MODULE_STATE_ACTIVE\x10\x01\x12\x1b\n" +
-	"\x17MODULE_STATE_DEPRECATED\x10\x022\xd0\x02\n" +
+	"\x17MODULE_STATE_DEPRECATED\x10\x02*\x8c\x01\n" +
+	"\n" +
+	"LintPreset\x12\x1b\n" +
+	"\x17LINT_PRESET_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13LINT_PRESET_DEFAULT\x10\x01\x12\x15\n" +
+	"\x11LINT_PRESET_BASIC\x10\x02\x12\x17\n" +
+	"\x13LINT_PRESET_MINIMAL\x10\x03\x12\x18\n" +
+	"\x14LINT_PRESET_COMMENTS\x10\x042\xb9\x03\n" +
 	"\rModuleService\x12y\n" +
 	"\x12CreateModuleByName\x120.hades.api.registry.v1.CreateModuleByNameRequest\x1a1.hades.api.registry.v1.CreateModuleByNameResponse\x12d\n" +
 	"\vListModules\x12).hades.api.registry.v1.ListModulesRequest\x1a*.hades.api.registry.v1.ListModulesResponse\x12^\n" +
-	"\tGetModule\x12'.hades.api.registry.v1.GetModuleRequest\x1a(.hades.api.registry.v1.GetModuleResponseB\xe2\x01\n" +
+	"\tGetModule\x12'.hades.api.registry.v1.GetModuleRequest\x1a(.hades.api.registry.v1.GetModuleResponse\x12g\n" +
+	"\fUpdateModule\x12*.hades.api.registry.v1.UpdateModuleRequest\x1a+.hades.api.registry.v1.UpdateModuleResponseB\xe2\x01\n" +
 	"\x19com.hades.api.registry.v1B\vModuleProtoP\x01ZAgithub.com/alipourhabibi/Hades/api/gen/api/registry/v1;registryv1\xa2\x02\x03HAR\xaa\x02\x15Hades.Api.Registry.V1\xca\x02\x15Hades\\Api\\Registry\\V1\xe2\x02!Hades\\Api\\Registry\\V1\\GPBMetadata\xea\x02\x18Hades::Api::Registry::V1b\x06proto3"
 
 var (
@@ -714,41 +1009,51 @@ func file_api_registry_v1_module_proto_rawDescGZIP() []byte {
 	return file_api_registry_v1_module_proto_rawDescData
 }
 
-var file_api_registry_v1_module_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_api_registry_v1_module_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_api_registry_v1_module_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_api_registry_v1_module_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_api_registry_v1_module_proto_goTypes = []any{
 	(ModuleVisibility)(0),              // 0: hades.api.registry.v1.ModuleVisibility
 	(ModuleState)(0),                   // 1: hades.api.registry.v1.ModuleState
-	(*Module)(nil),                     // 2: hades.api.registry.v1.Module
-	(*ModuleRef)(nil),                  // 3: hades.api.registry.v1.ModuleRef
-	(*CreateModuleByNameRequest)(nil),  // 4: hades.api.registry.v1.CreateModuleByNameRequest
-	(*CreateModuleByNameResponse)(nil), // 5: hades.api.registry.v1.CreateModuleByNameResponse
-	(*ListModulesRequest)(nil),         // 6: hades.api.registry.v1.ListModulesRequest
-	(*ListModulesResponse)(nil),        // 7: hades.api.registry.v1.ListModulesResponse
-	(*GetModuleRequest)(nil),           // 8: hades.api.registry.v1.GetModuleRequest
-	(*GetModuleResponse)(nil),          // 9: hades.api.registry.v1.GetModuleResponse
-	(*timestamppb.Timestamp)(nil),      // 10: google.protobuf.Timestamp
+	(LintPreset)(0),                    // 2: hades.api.registry.v1.LintPreset
+	(*Module)(nil),                     // 3: hades.api.registry.v1.Module
+	(*ModuleRef)(nil),                  // 4: hades.api.registry.v1.ModuleRef
+	(*CreateModuleByNameRequest)(nil),  // 5: hades.api.registry.v1.CreateModuleByNameRequest
+	(*CreateModuleByNameResponse)(nil), // 6: hades.api.registry.v1.CreateModuleByNameResponse
+	(*ListModulesRequest)(nil),         // 7: hades.api.registry.v1.ListModulesRequest
+	(*ListModulesResponse)(nil),        // 8: hades.api.registry.v1.ListModulesResponse
+	(*UpdateModuleRequest)(nil),        // 9: hades.api.registry.v1.UpdateModuleRequest
+	(*UpdateModuleResponse)(nil),       // 10: hades.api.registry.v1.UpdateModuleResponse
+	(*GetModuleRequest)(nil),           // 11: hades.api.registry.v1.GetModuleRequest
+	(*GetModuleResponse)(nil),          // 12: hades.api.registry.v1.GetModuleResponse
+	(*timestamppb.Timestamp)(nil),      // 13: google.protobuf.Timestamp
 }
 var file_api_registry_v1_module_proto_depIdxs = []int32{
-	10, // 0: hades.api.registry.v1.Module.create_time:type_name -> google.protobuf.Timestamp
-	10, // 1: hades.api.registry.v1.Module.update_time:type_name -> google.protobuf.Timestamp
+	13, // 0: hades.api.registry.v1.Module.create_time:type_name -> google.protobuf.Timestamp
+	13, // 1: hades.api.registry.v1.Module.update_time:type_name -> google.protobuf.Timestamp
 	0,  // 2: hades.api.registry.v1.Module.visibility:type_name -> hades.api.registry.v1.ModuleVisibility
 	1,  // 3: hades.api.registry.v1.Module.state:type_name -> hades.api.registry.v1.ModuleState
-	0,  // 4: hades.api.registry.v1.CreateModuleByNameRequest.visibility:type_name -> hades.api.registry.v1.ModuleVisibility
-	2,  // 5: hades.api.registry.v1.CreateModuleByNameResponse.module:type_name -> hades.api.registry.v1.Module
-	2,  // 6: hades.api.registry.v1.ListModulesResponse.modules:type_name -> hades.api.registry.v1.Module
-	2,  // 7: hades.api.registry.v1.GetModuleResponse.module:type_name -> hades.api.registry.v1.Module
-	4,  // 8: hades.api.registry.v1.ModuleService.CreateModuleByName:input_type -> hades.api.registry.v1.CreateModuleByNameRequest
-	6,  // 9: hades.api.registry.v1.ModuleService.ListModules:input_type -> hades.api.registry.v1.ListModulesRequest
-	8,  // 10: hades.api.registry.v1.ModuleService.GetModule:input_type -> hades.api.registry.v1.GetModuleRequest
-	5,  // 11: hades.api.registry.v1.ModuleService.CreateModuleByName:output_type -> hades.api.registry.v1.CreateModuleByNameResponse
-	7,  // 12: hades.api.registry.v1.ModuleService.ListModules:output_type -> hades.api.registry.v1.ListModulesResponse
-	9,  // 13: hades.api.registry.v1.ModuleService.GetModule:output_type -> hades.api.registry.v1.GetModuleResponse
-	11, // [11:14] is the sub-list for method output_type
-	8,  // [8:11] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	2,  // 4: hades.api.registry.v1.Module.lint_preset:type_name -> hades.api.registry.v1.LintPreset
+	0,  // 5: hades.api.registry.v1.CreateModuleByNameRequest.visibility:type_name -> hades.api.registry.v1.ModuleVisibility
+	2,  // 6: hades.api.registry.v1.CreateModuleByNameRequest.lint_preset:type_name -> hades.api.registry.v1.LintPreset
+	3,  // 7: hades.api.registry.v1.CreateModuleByNameResponse.module:type_name -> hades.api.registry.v1.Module
+	3,  // 8: hades.api.registry.v1.ListModulesResponse.modules:type_name -> hades.api.registry.v1.Module
+	0,  // 9: hades.api.registry.v1.UpdateModuleRequest.visibility:type_name -> hades.api.registry.v1.ModuleVisibility
+	2,  // 10: hades.api.registry.v1.UpdateModuleRequest.lint_preset:type_name -> hades.api.registry.v1.LintPreset
+	3,  // 11: hades.api.registry.v1.UpdateModuleResponse.module:type_name -> hades.api.registry.v1.Module
+	3,  // 12: hades.api.registry.v1.GetModuleResponse.module:type_name -> hades.api.registry.v1.Module
+	5,  // 13: hades.api.registry.v1.ModuleService.CreateModuleByName:input_type -> hades.api.registry.v1.CreateModuleByNameRequest
+	7,  // 14: hades.api.registry.v1.ModuleService.ListModules:input_type -> hades.api.registry.v1.ListModulesRequest
+	11, // 15: hades.api.registry.v1.ModuleService.GetModule:input_type -> hades.api.registry.v1.GetModuleRequest
+	9,  // 16: hades.api.registry.v1.ModuleService.UpdateModule:input_type -> hades.api.registry.v1.UpdateModuleRequest
+	6,  // 17: hades.api.registry.v1.ModuleService.CreateModuleByName:output_type -> hades.api.registry.v1.CreateModuleByNameResponse
+	8,  // 18: hades.api.registry.v1.ModuleService.ListModules:output_type -> hades.api.registry.v1.ListModulesResponse
+	12, // 19: hades.api.registry.v1.ModuleService.GetModule:output_type -> hades.api.registry.v1.GetModuleResponse
+	10, // 20: hades.api.registry.v1.ModuleService.UpdateModule:output_type -> hades.api.registry.v1.UpdateModuleResponse
+	17, // [17:21] is the sub-list for method output_type
+	13, // [13:17] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_api_registry_v1_module_proto_init() }
@@ -756,13 +1061,14 @@ func file_api_registry_v1_module_proto_init() {
 	if File_api_registry_v1_module_proto != nil {
 		return
 	}
+	file_api_registry_v1_module_proto_msgTypes[6].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_registry_v1_module_proto_rawDesc), len(file_api_registry_v1_module_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   8,
+			NumEnums:      3,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
