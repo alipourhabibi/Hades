@@ -28,7 +28,7 @@ type resourceResolver interface {
 }
 
 type Server struct {
-	modulev1connect.DownloadServiceHandler
+	modulev1connect.UnimplementedDownloadServiceHandler
 
 	handler  downloadProvider
 	resolver resourceResolver

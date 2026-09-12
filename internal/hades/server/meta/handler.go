@@ -7,8 +7,8 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	registrypbv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
+	registrypbv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	registryv1connect "github.com/alipourhabibi/Hades/api/gen/api/registry/v1/registryv1connect"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
@@ -25,8 +25,8 @@ type readAccessChecker interface {
 
 // Handler implements both CIService and SDKService handlers.
 type Handler struct {
-	registryv1connect.CIServiceHandler
-	registryv1connect.SDKServiceHandler
+	registryv1connect.UnimplementedCIServiceHandler
+	registryv1connect.UnimplementedSDKServiceHandler
 
 	logger          *log.LoggerWrapper
 	ciRunStorage    cirun.Storage
@@ -101,7 +101,7 @@ func (h *Handler) ListSDKs(ctx context.Context, in *connect.Request[registrypbv1
 	jobs, err := h.sdkJobStorage.ListByModule(ctx, modules[0].Id)
 	if err != nil {
 		h.logger.Error("failed to list SDK jobs", "error", err, "procedure", "ListSDKs", "user_id", userID, "module_id", modules[0].Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
 	sdkJobs := make([]*registrypbv1.SDKJob, 0, len(jobs))

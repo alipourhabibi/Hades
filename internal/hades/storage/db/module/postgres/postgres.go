@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
@@ -184,7 +185,7 @@ func (m *ModuleStorage) GetModulesByRefs(ctx context.Context, refs ...*registryv
 		}
 		mod, err := scanModuleRow(row)
 		if err != nil {
-			return nil, connErr.FromPgx(err)
+			return nil, connErr.FromDB(err)
 		}
 		modules = append(modules, mod)
 	}
@@ -200,3 +201,62 @@ func (m *ModuleStorage) CountByOwner(ctx context.Context, ownerID string) (int32
 }
 
 var _ module.Storage = (*ModuleStorage)(nil)
+
+// visibilityPredicate narrows a module query to rows the caller may plausibly
+// read. See module.Storage.ListVisibleModules: this is a pre-filter, and the
+// OPA policy remains the authority.
+//
+// A module is included when it is public, when the caller owns it, or when the
+// caller holds a role binding whose domain is either the module's full name or
+// the module's owning namespace ("owner/*"). Those are exactly the domain forms
+// AddBasicRoles, AddOrgOwner and AddOrgMemberBinding write.
+const visibilityPredicate = `(
+    modules.visibility = 1
+    OR ($SUBJECT_ID <> '' AND modules.owner_id::text = $SUBJECT_ID)
+    OR ($SUBJECT <> '' AND EXISTS (
+        SELECT 1 FROM opa_role_bindings b
+        WHERE b.subject = $SUBJECT
+          AND (b.domain = modules.name OR b.domain = split_part(modules.name, '/', 1) || '/*')
+    ))
+)`
+
+// ListVisibleModules implements module.Storage.
+func (m *ModuleStorage) ListVisibleModules(ctx context.Context, ownerUsername, subject, subjectID string, limit, offset int) ([]*registryv1.Module, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	predicate := strings.NewReplacer("$SUBJECT_ID", "$1", "$SUBJECT", "$2").Replace(visibilityPredicate)
+
+	var query string
+	args := []interface{}{subjectID, subject}
+	if ownerUsername == "" {
+		query = moduleSelectColumns + " WHERE " + predicate + " ORDER BY modules.create_time DESC LIMIT $3 OFFSET $4"
+		args = append(args, limit, offset)
+	} else {
+		query = moduleSelectColumns + `
+JOIN users ON users.id = modules.owner_id
+WHERE users.username = $3 AND ` + predicate + `
+ORDER BY modules.create_time DESC LIMIT $4 OFFSET $5`
+		args = append(args, ownerUsername, limit, offset)
+	}
+
+	rows, err := m.q(ctx).Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var modules []*registryv1.Module
+	for rows.Next() {
+		mod, err := scanModuleRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		modules = append(modules, mod)
+	}
+	return modules, rows.Err()
+}

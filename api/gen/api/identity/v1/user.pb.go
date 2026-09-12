@@ -135,10 +135,6 @@ func (UserState) EnumDescriptor() ([]byte, []int) {
 }
 
 // User is the canonical account record shared by individuals and organizations.
-//
-// Note: the password field is intentionally empty in all read responses.
-// It exists in this message only for internal service-to-service use; it is
-// never populated in responses returned to external callers.
 type User struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Unique user identifier (UUID).
@@ -147,11 +143,17 @@ type User struct {
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	// When the account was last updated.
 	UpdateTime *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
-	// Unique username used in module paths and mentions.
+	// Unique username used in module paths and mentions. Always lowercase.
 	Username string `protobuf:"bytes,4,opt,name=username,proto3" json:"username,omitempty"`
-	// Email address. Not returned in public read responses.
+	// Email address of the account.
+	//
+	// Returned only on the caller's own record. On anyone else's it is cleared,
+	// in profile reads and in listings alike, so the registry cannot be used to
+	// harvest addresses. Also empty for organization accounts, which have no
+	// address of their own.
 	Email string `protobuf:"bytes,5,opt,name=email,proto3" json:"email,omitempty"`
-	// Reserved for internal use. Always empty in external responses.
+	// Reserved. Always empty: the password hash is read through a separate
+	// internal path and is never carried on this message.
 	Password string `protobuf:"bytes,6,opt,name=password,proto3" json:"password,omitempty"`
 	// Whether this record represents a human user or an organization.
 	Type UserType `protobuf:"varint,7,opt,name=type,proto3,enum=hades.api.identity.v1.UserType" json:"type,omitempty"`
@@ -266,8 +268,10 @@ func (x *User) GetUrl() string {
 }
 
 // CreateUserRequest creates a new user account.
-// New clients should use AuthenticationService.Register instead, which also
-// sends a verification email. This RPC exists for internal/admin use.
+//
+// Not implemented: this RPC returns UNIMPLEMENTED. Use
+// AuthenticationService.Register, which also validates the password against the
+// configured policy and sends a verification email.
 type CreateUserRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Username      string                 `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
@@ -432,9 +436,10 @@ type GetUserResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Full user record.
 	User *User `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
-	// Number of modules owned by this user or organization.
+	// Number of modules owned by this user, including private ones the caller
+	// cannot read.
 	ModuleCount int32 `protobuf:"varint,2,opt,name=module_count,json=moduleCount,proto3" json:"module_count,omitempty"`
-	// Organizations the user belongs to. Empty for organization accounts.
+	// Organizations the user belongs to.
 	Organizations []*User `protobuf:"bytes,3,rep,name=organizations,proto3" json:"organizations,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -494,7 +499,8 @@ func (x *GetUserResponse) GetOrganizations() []*User {
 // ListUsersRequest searches for user accounts.
 type ListUsersRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Optional substring search on username. Empty returns the first 50 users.
+	// Optional substring search on username. Empty matches every account.
+	// At most 50 accounts are returned either way; there is no pagination.
 	Query         string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -586,9 +592,10 @@ func (x *ListUsersResponse) GetUsers() []*User {
 // Only the caller's own account can be updated via this RPC.
 type UpdateUserRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// New description. Empty leaves the field unchanged.
+	// New description. Both fields are written on every call, so passing an empty
+	// string clears the stored value rather than leaving it unchanged.
 	Description string `protobuf:"bytes,1,opt,name=description,proto3" json:"description,omitempty"`
-	// New URL. Empty leaves the field unchanged.
+	// New URL. Cleared by an empty string, as with description.
 	Url           string `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

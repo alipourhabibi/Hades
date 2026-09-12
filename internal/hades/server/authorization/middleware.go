@@ -324,10 +324,11 @@ func (s *Server) UserFromToken(ctx context.Context, rawToken string) (*identityv
 	}
 }
 
-// ScopesAllow reports whether scopes permit resource_type:action.
-// An empty slice means unrestricted.
-func ScopesAllow(scopes []string, resourceType, action string) bool {
-	return scopeCovers(scopes, resourceType, action)
+// ScopesAllow reports whether scopes permit resource_type:action on domain.
+// An empty slice means unrestricted. Pass the module full name as domain; see
+// scopeCovers for the grammar.
+func ScopesAllow(scopes []string, resourceType, action, domain string) bool {
+	return scopeCovers(scopes, resourceType, action, domain)
 }
 
 // validateSessionChecks runs all security checks for a session token. Fails

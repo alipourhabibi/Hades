@@ -3,12 +3,15 @@ package gitaly
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
-	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
+	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/git"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // GitalyStorage implements git.Storage using the Gitaly gRPC sub-services.
@@ -83,14 +86,23 @@ func (g *GitalyStorage) RollbackCommit(ctx context.Context, repoPath, branch, cu
 
 func (g *GitalyStorage) GetFile(ctx context.Context, repoPath, ref, filePath string) ([]byte, int64, error) {
 	owner, module := splitPath(repoPath)
-	content, size, err := g.treeSvc.GetFileContent(ctx, owner, module, filePath)
+	content, size, err := g.treeSvc.GetFileContent(ctx, owner, module, ref, filePath)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "file not found") {
+		if isNotFound(err) {
 			return nil, 0, git.ErrNotFound
 		}
 		return nil, 0, err
 	}
 	return content, size, nil
+}
+
+// isNotFound reports whether err means the requested path or revision is not in
+// the repository, from either our own sentinel or Gitaly's gRPC status.
+func isNotFound(err error) bool {
+	if errors.Is(err, ErrTreeNotFound) {
+		return true
+	}
+	return status.Code(err) == codes.NotFound
 }
 
 func (g *GitalyStorage) ListFiles(ctx context.Context, repoPath, ref string) ([]string, error) {
@@ -128,8 +140,11 @@ func (g *GitalyStorage) StreamBlobsToDir(ctx context.Context, repoPath, commitHa
 
 func (g *GitalyStorage) GetTreeEntries(ctx context.Context, repoPath, ref, dir string) ([]*git.TreeEntry, error) {
 	owner, module := splitPath(repoPath)
-	pbEntries, err := g.treeSvc.GetTreeEntries(ctx, owner, module, dir)
+	pbEntries, err := g.treeSvc.GetTreeEntries(ctx, owner, module, ref, dir)
 	if err != nil {
+		if isNotFound(err) {
+			return nil, git.ErrNotFound
+		}
 		return nil, err
 	}
 	entries := make([]*git.TreeEntry, len(pbEntries))

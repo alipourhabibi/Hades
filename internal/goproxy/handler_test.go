@@ -55,6 +55,9 @@ func (f *fakeModuleDB) Update(context.Context, *registryv1.UpdateModuleRequest) 
 func (f *fakeModuleDB) ListModules(context.Context, string, int, int) ([]*registryv1.Module, error) {
 	return nil, nil
 }
+func (f *fakeModuleDB) ListVisibleModules(context.Context, string, string, string, int, int) ([]*registryv1.Module, error) {
+	return nil, nil
+}
 func (f *fakeModuleDB) GetModuleByOwnerAndName(context.Context, string, string) (*registryv1.Module, error) {
 	return f.mod, f.err
 }

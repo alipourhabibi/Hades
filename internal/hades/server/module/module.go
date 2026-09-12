@@ -27,10 +27,27 @@ import (
 	"github.com/google/uuid"
 )
 
+// recordOpLogFailure marks a pending Gitaly operation-log entry as failed.
+// Best effort: the log exists so a crashed operation can be compensated later,
+// and a failure to update it must not mask the original error.
+func (s *Server) recordOpLogFailure(ctx context.Context, logID uuid.UUID, cause error) {
+	if s.gitalyOpLog == nil || logID == uuid.Nil {
+		return
+	}
+	if err := s.gitalyOpLog.UpdateStatus(ctx, logID, gitalyoplog.StatusFailed, "", cause.Error()); err != nil {
+		s.logger.Error("failed to update gitaly op log", "error", err, "log_id", logID)
+	}
+}
+
+// orgStorage is the subset of org.Storage used by the Server.
+type orgStorage interface {
+	GetByName(ctx context.Context, name string) (*identityv1.User, error)
+}
+
 // moduleStorage is the subset of ModuleStorage used by the Server.
 type moduleStorage interface {
 	GetModulesByRefs(ctx context.Context, refs ...*registrypbv1.ModuleRef) ([]*registrypbv1.Module, error)
-	ListModules(ctx context.Context, ownerUsername string, limit, offset int) ([]*registrypbv1.Module, error)
+	ListVisibleModules(ctx context.Context, ownerUsername, subject, subjectID string, limit, offset int) ([]*registrypbv1.Module, error)
 	GetModuleByOwnerAndName(ctx context.Context, owner, name string) (*registrypbv1.Module, error)
 	Create(ctx context.Context, name, ownerId string, visibility registrypbv1.ModuleVisibility, state registrypbv1.ModuleState, description, url, defaultLabelName, defaultBranch string, lintPreset registrypbv1.LintPreset, breakingEnabled bool) (*registrypbv1.Module, error)
 	Update(ctx context.Context, req *registrypbv1.UpdateModuleRequest) (*registrypbv1.Module, error)
@@ -43,7 +60,7 @@ type authService interface {
 }
 
 type Server struct {
-	registryv1.ModuleServiceHandler
+	registryv1.UnimplementedModuleServiceHandler
 
 	logger          *log.LoggerWrapper
 	registryHost    string
@@ -51,6 +68,7 @@ type Server struct {
 	commitDBStorage commitdb.Storage
 	gitStorage      gitstorage.Storage
 	authorization   authService
+	orgDBStorage    orgStorage
 	uow             db.UnitOfWork
 	gitalyOpLog     *gitalyoplog.GitalyOpLogStorage
 }
@@ -63,6 +81,7 @@ func NewServer(deps *server.Dependencies) *Server {
 		commitDBStorage: deps.CommitDB,
 		gitStorage:      deps.GitStorage,
 		authorization:   deps.Authorization,
+		orgDBStorage:    deps.OrgDB,
 		uow:             deps.UoW,
 		gitalyOpLog:     deps.GitalyOpLog,
 	}
@@ -76,7 +95,13 @@ func (s *Server) GetModules(ctx context.Context, refs []*registrypbv1.ModuleRef)
 	if err != nil {
 		return nil, err
 	}
-	return modules, s.authorization.CheckReadAccess(ctx, user, modules)
+	// Nothing is returned alongside the error. Returning the modules and the
+	// access error together made correctness depend on every caller checking the
+	// error first, and one call site that did not would disclose private modules.
+	if err := s.authorization.CheckReadAccess(ctx, user, modules); err != nil {
+		return nil, err
+	}
+	return modules, nil
 }
 
 func (s *Server) ListModules(ctx context.Context, in *connect.Request[registrypbv1.ListModulesRequest]) (*connect.Response[registrypbv1.ListModulesResponse], error) {
@@ -85,47 +110,73 @@ func (s *Server) ListModules(ctx context.Context, in *connect.Request[registrypb
 	// public modules plus any private modules they are authorised to read.
 	user, _ := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 
-	pageSize := int(in.Msg.PageSize)
-	if pageSize <= 0 {
-		pageSize = 50
-	}
-	offset := 0
-	if in.Msg.PageToken != "" {
-		if n, err := strconv.Atoi(in.Msg.PageToken); err == nil {
-			offset = n
-		}
+	pageSize, offset := server.Page(in.Msg.PageSize, in.Msg.PageToken)
+
+	userID := "anonymous"
+	if user != nil {
+		userID = user.Id
 	}
 
-	modules, err := s.moduleDBStorage.ListModules(ctx, in.Msg.Owner, pageSize, offset)
-	if err != nil {
-		userID := "anonymous"
-		if user != nil {
-			userID = user.Id
-		}
-		s.logger.Error("failed to list modules", "error", err, "procedure", "ListModules", "user_id", userID)
-		return nil, connErr.FromPgx(err)
+	// The query itself narrows to what the caller can plausibly read: public
+	// modules, their own, and anything covered by one of their role bindings.
+	// CheckReadAccess still runs on every row because the OPA policy, not the
+	// SQL, is the authority; the pre-filter exists so that a page is not mostly
+	// discarded afterwards.
+	//
+	// The batch loop remains as the backstop for the rare row the pre-filter
+	// admits but the policy rejects, so a page is still the size the caller
+	// asked for. In practice it now completes on the first iteration.
+	subject, subjectID := "", ""
+	if user != nil {
+		subject, subjectID = user.Username, user.Id
 	}
 
-	// Filter to only modules the caller can read. CheckReadAccess silently
-	// returns NotFound for private modules the caller cannot access - that
-	// error code is used to hide their existence from anonymous callers.
-	// List semantics: filter rather than fail on the first denied module.
-	var visible []*registrypbv1.Module
-	for _, m := range modules {
-		if err := s.authorization.CheckReadAccess(ctx, user, []*registrypbv1.Module{m}); err == nil {
-			visible = append(visible, m)
+	visible := make([]*registrypbv1.Module, 0, pageSize)
+	scanOffset := offset
+	exhausted := false
+	for batch := 0; batch < maxListScanBatches && len(visible) < pageSize; batch++ {
+		modules, err := s.moduleDBStorage.ListVisibleModules(ctx, in.Msg.Owner, subject, subjectID, pageSize, scanOffset)
+		if err != nil {
+			s.logger.Error("failed to list modules", "error", err, "procedure", "ListModules", "user_id", userID)
+			return nil, connErr.FromDB(err)
+		}
+		if len(modules) == 0 {
+			exhausted = true
+			break
+		}
+		for _, m := range modules {
+			scanOffset++
+			// CheckReadAccess reports private modules the caller cannot read as
+			// NotFound, which is what hides their existence. List semantics are
+			// to filter rather than fail on the first denied module.
+			if err := s.authorization.CheckReadAccess(ctx, user, []*registrypbv1.Module{m}); err == nil {
+				visible = append(visible, m)
+				if len(visible) == pageSize {
+					break
+				}
+			}
+		}
+		if len(modules) < pageSize {
+			exhausted = true
+			break
 		}
 	}
 
 	nextPageToken := ""
-	if len(modules) == pageSize {
-		nextPageToken = strconv.Itoa(offset + pageSize)
+	if !exhausted {
+		nextPageToken = strconv.Itoa(scanOffset)
 	}
 
 	return &connect.Response[registrypbv1.ListModulesResponse]{
 		Msg: &registrypbv1.ListModulesResponse{Modules: visible, NextPageToken: nextPageToken},
 	}, nil
 }
+
+// maxListScanBatches bounds how many raw pages ListModules will read while
+// trying to fill one visible page. The SQL pre-filter normally makes one batch
+// enough; this bounds the pathological case where the policy rejects rows the
+// pre-filter admitted.
+const maxListScanBatches = 10
 
 func (s *Server) GetModule(ctx context.Context, in *connect.Request[registrypbv1.GetModuleRequest]) (*connect.Response[registrypbv1.GetModuleResponse], error) {
 	// user may be nil for anonymous access; CheckReadAccess handles the nil case.
@@ -164,7 +215,25 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
-	moduleFullName := user.Username + "/" + in.Msg.Name
+	// The namespace defaults to the caller's own username. Naming an
+	// organisation here creates the module in that org's namespace, which the
+	// OPA check below then authorises: org membership grants bindings over
+	// "<org>/*", so no policy change is needed to support it.
+	ownerName := strings.ToLower(strings.TrimSpace(in.Msg.Owner))
+	if ownerName == "" {
+		ownerName = user.Username
+	}
+	ownerID := user.Id
+	if ownerName != user.Username {
+		org, err := s.orgDBStorage.GetByName(ctx, ownerName)
+		if err != nil {
+			s.logger.Warn("module owner namespace not found", "procedure", "CreateModuleByName", "user_id", user.Id, "owner", ownerName)
+			return nil, connErr.NotFound("owner namespace not found")
+		}
+		ownerID = org.Id
+	}
+
+	moduleFullName := ownerName + "/" + in.Msg.Name
 
 	can, err := s.authorization.Can(ctx, &constants.Policy{
 		Subject:      user.Username,
@@ -206,20 +275,37 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 		logID, _ = s.gitalyOpLog.CreatePending(ctx, gitalyoplog.OpCreateModule, moduleFullName, user.Id)
 	}
 
-	// All DB and Gitaly operations happen inside a single UoW callback.
+	// Git work first, then a short DB transaction, matching the ordering settled
+	// for Upload: a Gitaly RPC inside an open transaction holds a database
+	// connection across two network round trips.
 	//
-	// Order: (1) DB module insert → (2) Gitaly CreateRepository →
-	//        (3) Gitaly UserCommitFiles → (4) DB commit insert.
+	// Order: (1) Gitaly CreateRepository → (2) Gitaly UserCommitFiles →
+	//        (3) one transaction inserting the module and commit rows.
 	//
-	// On any error inside the callback:
-	//   - The UoW auto-rolls back all DB writes.
-	//   - Any Gitaly repository created is removed via DeleteRepository.
-	result, err := s.uow.Do(ctx, func(ctx context.Context) (interface{}, error) {
-		// 1. DB first: insert module row.
+	// Compensation is saga-style: if any later step fails, the repository
+	// created in (1) is deleted. The pending gitalyOpLog entry written above
+	// lets the cleanup job compensate if the process dies mid-sequence.
+	if err := s.gitStorage.CreateRepository(ctx, moduleFullName, in.Msg.DefaultBranch); err != nil {
+		s.recordOpLogFailure(ctx, logID, err)
+		return nil, err
+	}
+
+	gitFiles := make([]*gitstorage.File, len(initialFiles))
+	for i, f := range initialFiles {
+		gitFiles[i] = &gitstorage.File{Path: f.Path, Content: f.Content}
+	}
+	commitHash, err := s.gitStorage.PutFiles(ctx, moduleFullName, in.Msg.DefaultBranch, gitFiles, user.Username, user.Email, "initial commit", nil)
+	if err != nil {
+		_ = s.gitStorage.DeleteRepository(ctx, moduleFullName)
+		s.recordOpLogFailure(ctx, logID, err)
+		return nil, err
+	}
+
+	result, err := s.uow.Do(ctx, func(txCtx context.Context) (interface{}, error) {
 		module, err := s.moduleDBStorage.Create(
-			ctx,
+			txCtx,
 			moduleFullName,
-			user.Id,
+			ownerID,
 			in.Msg.Visibility,
 			registrypbv1.ModuleState_MODULE_STATE_ACTIVE,
 			in.Msg.Description,
@@ -230,28 +316,11 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 			breakingEnabled,
 		)
 		if err != nil {
-			return nil, connErr.FromPgx(err)
+			return nil, connErr.FromDB(err)
 		}
 
-		// 2. Git: create repository.
-		if err := s.gitStorage.CreateRepository(ctx, moduleFullName, in.Msg.DefaultBranch); err != nil {
-			return nil, err
-		}
-
-		// 3. Git: write initial commit.
-		gitFiles := make([]*gitstorage.File, len(initialFiles))
-		for i, f := range initialFiles {
-			gitFiles[i] = &gitstorage.File{Path: f.Path, Content: f.Content}
-		}
-		commitHash, err := s.gitStorage.PutFiles(ctx, moduleFullName, in.Msg.DefaultBranch, gitFiles, user.Username, user.Email, "initial commit", nil)
-		if err != nil {
-			_ = s.gitStorage.DeleteRepository(ctx, moduleFullName)
-			return nil, err
-		}
-
-		// 4. DB: insert commit row using the git-returned hash.
 		if err := s.commitDBStorage.Create(
-			ctx,
+			txCtx,
 			uuid.New(),
 			commitHash,
 			user.Id,
@@ -261,12 +330,15 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 			user.Id,
 			"",
 		); err != nil {
-			_ = s.gitStorage.DeleteRepository(ctx, moduleFullName)
-			return nil, connErr.FromPgx(err)
+			return nil, connErr.FromDB(err)
 		}
 
 		return module, nil
 	}, 30*time.Second)
+	if err != nil {
+		// The DB rolled itself back; undo the git side to match.
+		_ = s.gitStorage.DeleteRepository(ctx, moduleFullName)
+	}
 
 	// Update the operation log (auto-committed, outside the UoW).
 	if s.gitalyOpLog != nil && logID != uuid.Nil {
@@ -318,7 +390,7 @@ func (s *Server) UpdateModule(ctx context.Context, in *connect.Request[registryp
 	updated, err := s.moduleDBStorage.Update(ctx, in.Msg)
 	if err != nil {
 		s.logger.Error("failed to update module", "error", err, "procedure", "UpdateModule", "module", moduleFullName)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
 	return &connect.Response[registrypbv1.UpdateModuleResponse]{

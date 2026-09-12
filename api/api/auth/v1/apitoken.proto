@@ -3,7 +3,7 @@
 // API tokens are long-lived credentials intended for non-interactive clients
 // such as CI pipelines and the buf CLI. Token values are hashed on the server;
 // the plaintext is returned exactly once at creation time and cannot be
-// retrieved again. Tokens support optional expiry and coarse-grained scopes.
+// retrieved again. Tokens carry scopes and an optional expiry.
 
 syntax = "proto3";
 
@@ -19,7 +19,8 @@ enum APITokenStatus {
   API_TOKEN_STATUS_UNSPECIFIED = 0;
   // Token is valid and can be used to authenticate.
   API_TOKEN_STATUS_ACTIVE = 1;
-  // Token was explicitly revoked and can no longer be used.
+  // Token was explicitly revoked and can no longer be used. Revoked tokens are
+  // filtered out of ListAPITokens, so this value does not appear there.
   API_TOKEN_STATUS_REVOKED = 2;
   // Token has passed its expiry time and can no longer be used.
   API_TOKEN_STATUS_EXPIRED = 3;
@@ -32,12 +33,21 @@ message APIToken {
   string id = 1;
   // Human-readable name given at creation time.
   string name = 2;
-  // Short prefix of the token (e.g. "hades1_ab123") used to identify the
+  // Short prefix of the token (e.g. "hades1_1a2b3c4d") used to identify the
   // token in UI without exposing the full value.
   string prefix = 3;
-  // Granted permission scopes (empty means full access for the owning user).
+  // Granted permission scopes, in one of two forms:
+  //
+  //   resource:action           applies to every module
+  //   resource:action:domain    applies to one module ("alice/mymod") or to
+  //                             one namespace ("alice/*")
+  //
+  // A scope never widens what the owning user may do; it only narrows it.
+  // An empty list means unrestricted. CreateAPIToken rejects an empty list, so
+  // only tokens predating that rule can carry one.
   repeated string scopes = 4;
   // When the token was last successfully used to authenticate a request.
+  // Recorded asynchronously, so it may lag the most recent request slightly.
   // Null if the token has never been used.
   google.protobuf.Timestamp last_used_at = 5;
   // When the token expires. Null means the token does not expire.
@@ -52,9 +62,15 @@ message APIToken {
 message CreateAPITokenRequest {
   // Human-readable label for the token, shown in listings.
   string name = 1 [(buf.validate.field).required = true];
-  // Optional permission scopes. Empty grants the same access as the owner.
+  // Permission scopes for the token; see APIToken.scopes for the grammar.
+  //
+  // At least one scope is required. An empty list means unrestricted in the
+  // enforcement path, so a client that simply omitted the field would receive a
+  // full-authority credential by accident. Unrecognised and duplicate scopes
+  // are rejected.
   repeated string scopes = 2;
-  // Optional expiry. When omitted the token does not expire.
+  // Optional expiry. When omitted the token does not expire. Must be in the
+  // future and no more than one year out.
   google.protobuf.Timestamp expires_at = 3;
 }
 
@@ -71,7 +87,7 @@ message CreateAPITokenResponse {
   google.protobuf.Timestamp created_at = 4;
 }
 
-// ListAPITokensRequest lists all active tokens for the authenticated user.
+// ListAPITokensRequest lists the authenticated user's non-revoked tokens.
 message ListAPITokensRequest {
   // Maximum number of tokens to return. 0 uses the server default (50). Max 100.
   int32 page_size = 1;
@@ -99,12 +115,21 @@ message RevokeAPITokenResponse {}
 //
 // Tokens are hashed on the server; only the prefix is retained for display.
 // Revoked tokens are rejected immediately on the next use.
+//
+// Every RPC here requires an interactive session token (hds_sess_). An API
+// token cannot manage API tokens: otherwise a leaked one could mint a
+// replacement with wider scopes that outlived revocation of the original.
 service APITokenService {
   // CreateAPIToken creates a new API token and returns the plaintext value.
   // The plaintext is never available again after this call.
+  //
+  // Returns INVALID_ARGUMENT for an empty, unknown, or duplicated scope or for
+  // an expiry that is in the past or beyond the one-year maximum, and
+  // RESOURCE_EXHAUSTED once the account holds 50 active tokens.
   rpc CreateAPIToken(CreateAPITokenRequest) returns (CreateAPITokenResponse);
 
-  // ListAPITokens returns all non-revoked API tokens for the caller.
+  // ListAPITokens returns a page of the caller's non-revoked API tokens,
+  // newest first. Expired tokens are still listed, with status EXPIRED.
   rpc ListAPITokens(ListAPITokensRequest) returns (ListAPITokensResponse);
 
   // RevokeAPIToken permanently revokes the given token.

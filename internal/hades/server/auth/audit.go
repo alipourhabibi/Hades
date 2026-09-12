@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"strconv"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -11,6 +10,7 @@ import (
 	v1 "github.com/alipourhabibi/Hades/api/gen/api/auth/v1"
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
+	"github.com/alipourhabibi/Hades/internal/hades/server"
 	connErr "github.com/alipourhabibi/Hades/utils/errors"
 )
 
@@ -21,21 +21,12 @@ func (s *Server) ListAuditLog(ctx context.Context, in *connect.Request[v1.ListAu
 		return nil, connErr.Unauthenticated("not authenticated")
 	}
 
-	pageSize := int(in.Msg.PageSize)
-	if pageSize <= 0 {
-		pageSize = 50
-	}
-	offset := 0
-	if in.Msg.PageToken != "" {
-		if n, err := strconv.Atoi(in.Msg.PageToken); err == nil {
-			offset = n
-		}
-	}
+	pageSize, offset := server.Page(in.Msg.PageSize, in.Msg.PageToken)
 
 	rows, err := s.auditLogDB.List(ctx, user.Id, pageSize, offset)
 	if err != nil {
 		s.logger.Error("failed to list audit log", "error", err, "procedure", "ListAuditLog", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
 	events := make([]*v1.AuditEvent, 0, len(rows))
@@ -55,10 +46,7 @@ func (s *Server) ListAuditLog(ctx context.Context, in *connect.Request[v1.ListAu
 		events = append(events, ae)
 	}
 
-	nextPageToken := ""
-	if len(rows) == pageSize {
-		nextPageToken = strconv.Itoa(offset + pageSize)
-	}
+	nextPageToken := server.NextPageToken(len(rows), pageSize, offset)
 
 	return &connect.Response[v1.ListAuditLogResponse]{
 		Msg: &v1.ListAuditLogResponse{

@@ -27,7 +27,9 @@ message SDKJob {
   string language = 4;
   // protoc plug-in used for generation (e.g. "protoc-gen-go").
   string plugin = 5;
-  // Job lifecycle status: "pending", "running", "succeeded", "failed", "dead".
+  // Job lifecycle status: "pending", "running", "succeeded", "failed", or
+  // "dead". A failed job is retried; "dead" means the retry budget is spent
+  // and it will not be attempted again.
   string status = 6;
   // Storage path of the generated artifact. Set on success, empty otherwise.
   string output_location = 7;
@@ -35,7 +37,8 @@ message SDKJob {
   string error_message = 8;
   // When the job was created.
   google.protobuf.Timestamp create_time = 9;
-  // When the job last transitioned to a terminal state (succeeded or failed).
+  // When the job last reached a terminal state (succeeded, failed, or dead).
+  // Unset while the job is pending or running.
   google.protobuf.Timestamp update_time = 10;
 }
 
@@ -56,11 +59,18 @@ message ListSDKsResponse {
 // SDKService exposes SDK generation job status for schema modules.
 //
 // Jobs are created automatically on each module push; there is no RPC to
-// create them manually. Poll ListSDKs to wait for a job to reach a terminal
-// state before downloading the artifact.
+// create them manually, and none to fetch an artifact: generated SDKs are
+// served over the Go module proxy endpoint, not through this service. Poll
+// ListSDKs to wait for a job to reach a terminal state first.
+//
+// Readable anonymously, subject to the same per-module read check as the rest
+// of the registry: a private module the caller cannot read is reported as
+// NOT_FOUND.
 service SDKService {
-  // ListSDKs returns all SDK generation jobs for the given module, ordered
-  // newest first. Returns NOT_FOUND if the module does not exist or the
-  // caller cannot read it.
+  // ListSDKs returns every SDK generation job for the given module, ordered
+  // newest first, including jobs that are still pending or have failed. There
+  // is no pagination.
+  //
+  // Returns NOT_FOUND if the module does not exist or the caller cannot read it.
   rpc ListSDKs(ListSDKsRequest) returns (ListSDKsResponse);
 }

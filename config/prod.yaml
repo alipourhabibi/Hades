@@ -49,7 +49,6 @@ auth:
   session:
     idleTimeoutDays: 7
     absoluteTimeoutDays: 14
-    rotationGraceSeconds: 30
   lockout:
     maxAttempts: 5
     cooldownMinutes: 30
@@ -80,7 +79,10 @@ redis:
 # IMPORTANT: generate a random 64-char hex key before deploying
 # openssl rand -hex 32
 totp:
-  encryptionKey: "CHANGE_ME_generate_with_openssl_rand_hex_32_output_here_000000000"
+  # 32-byte AES-256 key as 64 hex characters: openssl rand -hex 32
+  # Supplied through the environment so the key is not written to disk.
+  # Leaving it unset disables TOTP enrolment rather than failing startup.
+  encryptionKey: "${HADES_TOTP_ENCRYPTION_KEY}"
   issuer: "Hades"
 
 sdk:

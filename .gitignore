@@ -32,6 +32,9 @@ buf.lock
 /hades
 
 # runtime data (repos, generated SDKs, SQLite DB)
+# Underscore-prefixed so the go tool does not treat generated SDK trees as
+# packages of this module; see config.DiskStorageConfig.
+/_data/
 /data/
 *.db
 *.db-shm

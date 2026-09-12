@@ -56,6 +56,26 @@ func (g *GitalyArtifactStorage) Download(ctx context.Context, key string) ([]*sd
 	return files, nil
 }
 
+// ListFiles returns the relative paths of every blob under keyPrefix.
+//
+// The underlying ListBlobs reads content as well, so this does not reduce work
+// against this backend; it exists so the interface has one streaming-shaped
+// contract across all backends.
+func (g *GitalyArtifactStorage) ListFiles(ctx context.Context, keyPrefix string) ([]string, error) {
+	g.ensureRepo(ctx)
+	gitFiles, err := g.git.ListBlobs(ctx, artifactRepo, "main")
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, f := range gitFiles {
+		if len(f.Path) > len(keyPrefix) && f.Path[:len(keyPrefix)] == keyPrefix {
+			paths = append(paths, f.Path[len(keyPrefix)+1:])
+		}
+	}
+	return paths, nil
+}
+
 // GetFile fetches a single artifact blob by its exact key path.
 func (g *GitalyArtifactStorage) GetFile(ctx context.Context, key string) (io.ReadCloser, int64, error) {
 	g.ensureRepo(ctx)

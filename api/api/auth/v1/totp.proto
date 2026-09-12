@@ -9,6 +9,11 @@
 //
 // Once enabled, login returns pending_totp=true and the caller must call
 // VerifyTOTP to obtain a fully authenticated session token.
+//
+// Every RPC that changes TOTP state re-checks the account password, and
+// enrollment on an account that already has TOTP enabled is refused: without
+// those two rules a stolen session could replace or strip the second factor
+// in a single call.
 
 syntax = "proto3";
 
@@ -21,7 +26,8 @@ import "google/protobuf/timestamp.proto";
 option go_package = "gen/api/auth/v1";
 
 // BackupCode records a single TOTP backup code. Each code is one-time-use;
-// used_at is set when the code has been consumed.
+// used_at is set when the code has been consumed. Only the hash of a code is
+// stored, so the plaintext is available solely from the response that minted it.
 message BackupCode {
   // Unique backup code identifier (UUID).
   string id = 1;
@@ -30,7 +36,12 @@ message BackupCode {
 }
 
 // BeginEnrollTOTPRequest initiates TOTP enrollment for the authenticated user.
-message BeginEnrollTOTPRequest {}
+message BeginEnrollTOTPRequest {
+  // Current account password, required to authorise starting enrolment.
+  // Enrolment replaces any pending secret and regenerates backup codes, so it
+  // must not be reachable with a stolen session alone.
+  string password = 1 [(buf.validate.field).required = true];
+}
 
 // BeginEnrollTOTPResponse carries the TOTP secret and one-time backup codes.
 message BeginEnrollTOTPResponse {
@@ -40,15 +51,17 @@ message BeginEnrollTOTPResponse {
   string secret = 1;
   // otpauth:// URL encoding the secret, suitable for QR code generation.
   string totp_url = 2;
-  // One-time backup codes to store securely. Each can be used once in place
-  // of a TOTP code if the authenticator is unavailable.
+  // Ten one-time backup codes to store securely. Each can be used once in
+  // place of a TOTP code at VerifyTOTP if the authenticator is unavailable.
+  // Any codes from an earlier enrolment are invalidated.
   repeated string backup_codes = 3;
 }
 
 // ConfirmEnrollTOTPRequest completes TOTP enrollment by verifying the first code.
 message ConfirmEnrollTOTPRequest {
   // Current 6-digit TOTP code from the authenticator app, used to confirm
-  // that the secret was imported correctly.
+  // that the secret was imported correctly. A backup code is not accepted
+  // here: the point of this call is to prove the secret was imported.
   string code = 1 [(buf.validate.field).required = true];
 }
 
@@ -57,13 +70,15 @@ message ConfirmEnrollTOTPResponse {}
 
 // VerifyTOTPRequest provides the TOTP code for a pending login session.
 message VerifyTOTPRequest {
-  // Current 6-digit TOTP code (or a backup code) for the authenticated user.
+  // Current 6-digit TOTP code, or one of the account's unused backup codes.
   string code = 1 [(buf.validate.field).required = true];
 }
 
-// VerifyTOTPResponse carries the fully authenticated session token.
+// VerifyTOTPResponse carries the now fully authenticated session.
 message VerifyTOTPResponse {
-  // Standard login response with a now-fully-authenticated session token.
+  // Standard login response. The token is the same one the caller presented;
+  // the session behind it is now marked TOTP-verified, so it is accepted by
+  // every other procedure. pending_totp is not set.
   LoginResponse login = 1;
 }
 
@@ -81,7 +96,8 @@ message ListBackupCodesRequest {}
 
 // ListBackupCodesResponse carries the caller's backup code records.
 message ListBackupCodesResponse {
-  // All backup codes for the caller, including used ones.
+  // All backup codes for the caller, including used ones. Identifiers and
+  // usage state only; the code values themselves are not recoverable.
   repeated BackupCode backup_codes = 1;
 }
 
@@ -93,7 +109,7 @@ message RegenerateBackupCodesRequest {
 
 // RegenerateBackupCodesResponse carries the newly generated backup codes.
 message RegenerateBackupCodesResponse {
-  // New plaintext backup codes. Store these securely; they cannot be
+  // Ten new plaintext backup codes. Store these securely; they cannot be
   // retrieved again.
   repeated string backup_codes = 1;
 }
@@ -103,27 +119,53 @@ message RegenerateBackupCodesResponse {
 // Enrollment requires two calls: BeginEnrollTOTP followed by ConfirmEnrollTOTP.
 // The two-step design ensures the user has successfully imported the secret
 // before TOTP is activated on the account.
+//
+// Every RPC here requires an interactive session token (hds_sess_) and rejects
+// personal API tokens. VerifyTOTP is the one procedure callable by a session
+// that is still pending its second factor.
+//
+// Code verification is rate limited per account (five attempts per five
+// minutes) because a six-digit code with several live windows is otherwise
+// brute-forceable by anyone holding a password-authenticated session.
 service TOTPService {
   // BeginEnrollTOTP generates a new TOTP secret and backup codes.
   // TOTP is not active until ConfirmEnrollTOTP succeeds.
+  //
+  // Returns UNAUTHENTICATED if the password is wrong, and FAILED_PRECONDITION
+  // if TOTP is already enabled (disable it first) or the account has no
+  // password to check, as accounts created through OAuth do not.
   rpc BeginEnrollTOTP(BeginEnrollTOTPRequest) returns (BeginEnrollTOTPResponse);
 
   // ConfirmEnrollTOTP activates TOTP by verifying the first code from the
-  // newly imported secret. Returns UNAUTHENTICATED if the code is invalid.
+  // newly imported secret.
+  //
+  // Returns UNAUTHENTICATED if the code is invalid, NOT_FOUND if enrollment
+  // was never started, and RESOURCE_EXHAUSTED past the attempt limit.
   rpc ConfirmEnrollTOTP(ConfirmEnrollTOTPRequest) returns (ConfirmEnrollTOTPResponse);
 
-  // VerifyTOTP completes a pending TOTP login and returns a fully authenticated
-  // session token. Can be called with a backup code when the authenticator is
-  // unavailable.
+  // VerifyTOTP completes a pending TOTP login and marks the caller's session
+  // fully authenticated. Accepts a backup code when the authenticator is
+  // unavailable; the code is consumed.
+  //
+  // Returns UNAUTHENTICATED if neither the TOTP code nor a backup code
+  // matches, NOT_FOUND if the account does not have TOTP enabled, and
+  // RESOURCE_EXHAUSTED past the attempt limit.
   rpc VerifyTOTP(VerifyTOTPRequest) returns (VerifyTOTPResponse);
 
-  // DisableTOTP disables TOTP for the caller's account after password verification.
+  // DisableTOTP disables TOTP for the caller's account after password
+  // verification, deleting the secret and all backup codes.
+  //
+  // Returns UNAUTHENTICATED if the password is wrong and FAILED_PRECONDITION
+  // if the account has no password to check.
   rpc DisableTOTP(DisableTOTPRequest) returns (DisableTOTPResponse);
 
   // ListBackupCodes returns all backup codes for the caller, including consumed ones.
   rpc ListBackupCodes(ListBackupCodesRequest) returns (ListBackupCodesResponse);
 
-  // RegenerateBackupCodes replaces all backup codes with a fresh set.
-  // All previous backup codes are immediately invalidated.
+  // RegenerateBackupCodes replaces all backup codes with a fresh set after
+  // password verification. All previous backup codes are immediately invalidated.
+  //
+  // Returns UNAUTHENTICATED if the password is wrong and FAILED_PRECONDITION
+  // if the account has no password to check.
   rpc RegenerateBackupCodes(RegenerateBackupCodesRequest) returns (RegenerateBackupCodesResponse);
 }

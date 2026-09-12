@@ -20,6 +20,11 @@ import { MethodKind } from "@bufbuild/protobuf";
  * messages with type = USER_TYPE_ORGANIZATION. Module ownership and RBAC
  * treat user and org UUIDs identically.
  *
+ * Membership is authorised from the membership table rather than through OPA,
+ * because the table is where org roles live. Every write below is atomic across
+ * the membership row and the matching OPA binding: half the pair would be a
+ * member who cannot act, or permissions with no membership record.
+ *
  * @generated from service hades.api.identity.v1.OrgService
  */
 export const OrgService = {
@@ -27,6 +32,7 @@ export const OrgService = {
   methods: {
     /**
      * GetOrg returns the organization record for the given username.
+     * Readable anonymously.
      * Returns NOT_FOUND if no organization with that name exists.
      *
      * @generated from rpc hades.api.identity.v1.OrgService.GetOrg
@@ -38,7 +44,8 @@ export const OrgService = {
       kind: MethodKind.Unary,
     },
     /**
-     * ListOrgMembers returns all members of the given organization with their roles.
+     * ListOrgMembers returns all members of the given organization with their
+     * roles. Readable anonymously.
      *
      * @generated from rpc hades.api.identity.v1.OrgService.ListOrgMembers
      */
@@ -50,7 +57,9 @@ export const OrgService = {
     },
     /**
      * CreateOrg creates a new organization. The caller becomes its first admin.
-     * Returns ALREADY_EXISTS if the username is taken.
+     *
+     * Returns ALREADY_EXISTS if the name is taken by any user or organization,
+     * and INVALID_ARGUMENT if it is reserved.
      *
      * @generated from rpc hades.api.identity.v1.OrgService.CreateOrg
      */
@@ -62,7 +71,7 @@ export const OrgService = {
     },
     /**
      * UpdateOrg updates the description and URL of an organization.
-     * Requires the caller to be an admin of the org.
+     * Returns PERMISSION_DENIED unless the caller is an admin of the org.
      *
      * @generated from rpc hades.api.identity.v1.OrgService.UpdateOrg
      */
@@ -74,7 +83,9 @@ export const OrgService = {
     },
     /**
      * AddOrgMember adds a user to an organization with the given role.
-     * Requires the caller to be an admin of the org.
+     * Calling it for an existing member updates their role.
+     * Returns PERMISSION_DENIED unless the caller is an admin of the org, and
+     * NOT_FOUND if the org or the target user does not exist.
      *
      * @generated from rpc hades.api.identity.v1.OrgService.AddOrgMember
      */
@@ -85,8 +96,12 @@ export const OrgService = {
       kind: MethodKind.Unary,
     },
     /**
-     * RemoveOrgMember removes a user from an organization.
-     * Requires the caller to be an admin of the org, or the member themselves.
+     * RemoveOrgMember removes a user from an organization. The caller must be an
+     * admin of the org, or the member themselves.
+     *
+     * Returns PERMISSION_DENIED otherwise, NOT_FOUND if the target is not a
+     * member, and FAILED_PRECONDITION when the target is the org's last admin:
+     * removing them would leave nobody able to appoint a replacement.
      *
      * @generated from rpc hades.api.identity.v1.OrgService.RemoveOrgMember
      */
@@ -97,7 +112,7 @@ export const OrgService = {
       kind: MethodKind.Unary,
     },
     /**
-     * ListOrganizations returns organizations matching an optional query.
+     * ListOrganizations returns up to 50 organizations matching an optional query.
      *
      * @generated from rpc hades.api.identity.v1.OrgService.ListOrganizations
      */
@@ -109,6 +124,7 @@ export const OrgService = {
     },
     /**
      * GetUserOrgs returns all organizations the given user belongs to.
+     * Returns NOT_FOUND if no account with that username exists.
      *
      * @generated from rpc hades.api.identity.v1.OrgService.GetUserOrgs
      */

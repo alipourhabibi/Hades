@@ -17,7 +17,7 @@ import (
 
 // Handler implements the NotificationService ConnectRPC handler.
 type Handler struct {
-	registryv1connect.NotificationServiceHandler
+	registryv1connect.UnimplementedNotificationServiceHandler
 
 	logger              *log.LoggerWrapper
 	notificationStorage notification.Storage
@@ -40,7 +40,7 @@ func (h *Handler) ListNotifications(ctx context.Context, in *connect.Request[reg
 	notifications, err := h.notificationStorage.ListForUser(ctx, user.Id)
 	if err != nil {
 		h.logger.Error("failed to list notifications", "error", err, "procedure", "ListNotifications", "user_id", user.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
 	return &connect.Response[registrypbv1.ListNotificationsResponse]{
@@ -57,7 +57,7 @@ func (h *Handler) MarkNotificationRead(ctx context.Context, in *connect.Request[
 
 	if err := h.notificationStorage.MarkRead(ctx, in.Msg.Id, user.Id); err != nil {
 		h.logger.Error("failed to mark notification read", "error", err, "procedure", "MarkNotificationRead", "user_id", user.Id, "notification_id", in.Msg.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
 	return &connect.Response[registrypbv1.MarkNotificationReadResponse]{

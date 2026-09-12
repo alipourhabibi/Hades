@@ -3,10 +3,12 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -53,18 +55,29 @@ func (uow *PGUnitOfWork) Do(ctx context.Context, fn TransactionFN, timeout time.
 
 	result, err := fn(txCtx)
 	if err != nil {
-		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
-			return nil, fmt.Errorf("transaction rollback failed: %v for error: %v", rollbackErr, err)
+		// Roll back on a fresh context. Reusing ctx means that when the callback
+		// failed because the timeout fired, the rollback is issued on an expired
+		// context and fails too. The original error is always what is returned:
+		// a rollback failure is an operational detail, not the reason the caller's
+		// request failed.
+		rollbackCtx, cancelRollback := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+		defer cancelRollback()
+		if rollbackErr := tx.Rollback(rollbackCtx); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+			return nil, fmt.Errorf("%w (rollback also failed: %v)", err, rollbackErr)
 		}
 		return nil, err
 	}
 
 	if commitErr := tx.Commit(ctx); commitErr != nil {
-		return nil, fmt.Errorf("transaction commit failed: %v", commitErr)
+		return nil, fmt.Errorf("transaction commit failed: %w", commitErr)
 	}
 
 	return result, nil
 }
+
+// rollbackTimeout bounds a rollback issued after the caller's context is
+// already done.
+const rollbackTimeout = 5 * time.Second
 
 // SQLiteUnitOfWork implements UnitOfWork on top of a *sql.DB (SQLite).
 type SQLiteUnitOfWork struct {
@@ -88,14 +101,17 @@ func (uow *SQLiteUnitOfWork) Do(ctx context.Context, fn TransactionFN, timeout t
 
 	result, err := fn(txCtx)
 	if err != nil {
-		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			return nil, fmt.Errorf("transaction rollback failed: %v for error: %v", rollbackErr, err)
+		// The original error is what the caller needs; a rollback failure is
+		// reported alongside it rather than replacing it. sql.ErrTxDone means the
+		// transaction already ended, which is not a failure worth surfacing.
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			return nil, fmt.Errorf("%w (rollback also failed: %v)", err, rollbackErr)
 		}
 		return nil, err
 	}
 
 	if commitErr := tx.Commit(); commitErr != nil {
-		return nil, fmt.Errorf("transaction commit failed: %v", commitErr)
+		return nil, fmt.Errorf("transaction commit failed: %w", commitErr)
 	}
 
 	return result, nil

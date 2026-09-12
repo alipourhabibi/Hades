@@ -34,10 +34,9 @@ func (s *SQLiteUserStorage) q(ctx context.Context) txkeys.SQLQuerier {
 func scanSQLiteUser(row *sql.Row) (*identityv1.User, error) {
 	u := &identityv1.User{}
 	var createTime, updateTime sqltypes.Time
-	var password sql.NullString
 	err := row.Scan(
 		&u.Id, &createTime, &updateTime,
-		&u.Username, &u.Email, &password,
+		&u.Username, &u.Email,
 		&u.Type, &u.State, &u.Description, &u.Url,
 	)
 	if err != nil {
@@ -46,13 +45,16 @@ func scanSQLiteUser(row *sql.Row) (*identityv1.User, error) {
 		}
 		return nil, err
 	}
-	u.Password = password.String
 	u.CreateTime = timestamppb.New(createTime.V)
 	u.UpdateTime = timestamppb.New(updateTime.V)
 	return u, nil
 }
 
-const sqliteUserColumns = `id, create_time, update_time, username, email, password, type, state, description, url`
+// sqliteUserColumns deliberately omits the password column. identityv1.User is
+// what every read handler returns to the caller, so a hash loaded into
+// User.Password would travel out over the wire; nothing reads it from there,
+// and password checks go through GetAuthFields* instead.
+const sqliteUserColumns = `id, create_time, update_time, username, email, type, state, description, url`
 
 func (s *SQLiteUserStorage) GetByUsername(ctx context.Context, username string) (*identityv1.User, error) {
 	return scanSQLiteUser(s.q(ctx).QueryRowContext(ctx,
@@ -64,9 +66,18 @@ func (s *SQLiteUserStorage) GetByID(ctx context.Context, id string) (*identityv1
 		`SELECT `+sqliteUserColumns+` FROM users WHERE id = ?`, id))
 }
 
+// GetByEmail returns the user account with the given email address.
+//
+// Only real user accounts are considered. Organisations live in the same table
+// with an empty email, so a lookup for "" would otherwise match an org row and
+// hand a caller an organisation identity; the empty-email guard and the type
+// filter each independently prevent that.
 func (s *SQLiteUserStorage) GetByEmail(ctx context.Context, email string) (*identityv1.User, error) {
+	if email == "" {
+		return nil, sql.ErrNoRows
+	}
 	return scanSQLiteUser(s.q(ctx).QueryRowContext(ctx,
-		`SELECT `+sqliteUserColumns+` FROM users WHERE email = ?`, email))
+		`SELECT `+sqliteUserColumns+` FROM users WHERE email = ? AND email <> '' AND type = 2`, email))
 }
 
 func (s *SQLiteUserStorage) GetAuthFieldsByUsername(ctx context.Context, username string) (*user.AuthFields, error) {
@@ -131,15 +142,13 @@ func scanSQLiteUsers(rows *sql.Rows) ([]*identityv1.User, error) {
 	for rows.Next() {
 		u := &identityv1.User{}
 		var createTime, updateTime sqltypes.Time
-		var password sql.NullString
 		if err := rows.Scan(
 			&u.Id, &createTime, &updateTime,
-			&u.Username, &u.Email, &password,
+			&u.Username, &u.Email,
 			&u.Type, &u.State, &u.Description, &u.Url,
 		); err != nil {
 			return nil, err
 		}
-		u.Password = password.String
 		u.CreateTime = timestamppb.New(createTime.V)
 		u.UpdateTime = timestamppb.New(updateTime.V)
 		users = append(users, u)
@@ -164,9 +173,13 @@ func (s *SQLiteUserStorage) IncrementFailedLogins(ctx context.Context, userID st
 	return err
 }
 
+// ResetFailedLogins clears the failed-login counter and any active lockout.
+// The two are cleared together: a successful login or a password reset must
+// leave the account usable, and leaving locked_until set would keep it locked.
 func (s *SQLiteUserStorage) ResetFailedLogins(ctx context.Context, userID string) error {
 	_, err := s.q(ctx).ExecContext(ctx,
-		`UPDATE users SET failed_login_count = 0, update_time = datetime('now') WHERE id = ?`, userID)
+		`UPDATE users SET failed_login_count = 0, locked_until = NULL, update_time = datetime('now') WHERE id = ?`,
+		userID)
 	return err
 }
 

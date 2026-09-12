@@ -3,6 +3,7 @@ package identity
 
 import (
 	"context"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -10,6 +11,7 @@ import (
 	registryv1connect "github.com/alipourhabibi/Hades/api/gen/api/identity/v1/identityv1connect"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/server"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db"
 	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	orgdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/org"
 	userdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
@@ -25,15 +27,20 @@ type orgAuthz interface {
 }
 
 // Handler implements both UserService and OrgService handlers.
+//
+// The Unimplemented embeds, rather than the bare handler interfaces, supply the
+// one procedure this type does not define: UserService.CreateUser. A nil
+// interface embed would panic on call instead of returning Unimplemented.
 type Handler struct {
-	registryv1connect.UserServiceHandler
-	registryv1connect.OrgServiceHandler
+	registryv1connect.UnimplementedUserServiceHandler
+	registryv1connect.UnimplementedOrgServiceHandler
 
 	logger     *log.LoggerWrapper
 	userDB     userdb.Storage
 	orgStorage orgdb.Storage
 	moduleDB   moduledb.Storage
 	authz      orgAuthz
+	uow        db.UnitOfWork
 }
 
 func NewHandler(deps *server.Dependencies) *Handler {
@@ -43,7 +50,40 @@ func NewHandler(deps *server.Dependencies) *Handler {
 		orgStorage: deps.OrgDB,
 		moduleDB:   deps.ModuleDB,
 		authz:      deps.Authorization,
+		uow:        deps.UoW,
 	}
+}
+
+// redactEmails clears the email address on every record that is not the
+// caller's own.
+//
+// An address is personal data that nothing in the registry needs in order to
+// display a profile or a member list. Returning it made every account's address
+// readable by any authenticated caller, and ListUsers handed over 50 at a time.
+// The caller's own address stays, since the account settings page reads it.
+//
+// The records come fresh from the database on each request, so clearing the
+// field in place affects only this response.
+func redactEmails(caller *registrypbv1.User, users ...*registrypbv1.User) {
+	callerID := ""
+	if caller != nil {
+		callerID = caller.Id
+	}
+	for _, u := range users {
+		if u == nil {
+			continue
+		}
+		if callerID != "" && u.Id == callerID {
+			continue
+		}
+		u.Email = ""
+	}
+}
+
+// callerFrom returns the authenticated user, or nil for an anonymous request.
+func callerFrom(ctx context.Context) *registrypbv1.User {
+	caller, _ := ctx.Value(constants.ContextKeyUser).(*registrypbv1.User)
+	return caller
 }
 
 func (h *Handler) GetUser(ctx context.Context, in *connect.Request[registrypbv1.GetUserRequest]) (*connect.Response[registrypbv1.GetUserResponse], error) {
@@ -72,6 +112,10 @@ func (h *Handler) GetUser(ctx context.Context, in *connect.Request[registrypbv1.
 		orgs = []*registrypbv1.User{}
 	}
 
+	caller := callerFrom(ctx)
+	redactEmails(caller, user)
+	redactEmails(caller, orgs...)
+
 	return &connect.Response[registrypbv1.GetUserResponse]{
 		Msg: &registrypbv1.GetUserResponse{
 			User:          user,
@@ -97,6 +141,7 @@ func (h *Handler) ListUsers(ctx context.Context, in *connect.Request[registrypbv
 	if users == nil {
 		users = []*registrypbv1.User{}
 	}
+	redactEmails(callerFrom(ctx), users...)
 	return &connect.Response[registrypbv1.ListUsersResponse]{
 		Msg: &registrypbv1.ListUsersResponse{Users: users},
 	}, nil
@@ -157,11 +202,13 @@ func (h *Handler) ListOrgMembers(ctx context.Context, in *connect.Request[regist
 	members, err := h.orgStorage.ListMembers(ctx, org.Id)
 	if err != nil {
 		h.logger.Error("failed to list org members", "error", err, "procedure", "ListOrgMembers", "org_id", org.Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
+	caller := callerFrom(ctx)
 	pbMembers := make([]*registrypbv1.OrgMember, 0, len(members))
 	for _, m := range members {
+		redactEmails(caller, m.User)
 		pbMembers = append(pbMembers, &registrypbv1.OrgMember{
 			User: m.User,
 			Role: m.Role,
@@ -182,6 +229,7 @@ func (h *Handler) ListOrganizations(ctx context.Context, in *connect.Request[reg
 	if orgs == nil {
 		orgs = []*registrypbv1.User{}
 	}
+	redactEmails(callerFrom(ctx), orgs...)
 	return &connect.Response[registrypbv1.ListOrganizationsResponse]{
 		Msg: &registrypbv1.ListOrganizationsResponse{Organizations: orgs},
 	}, nil
@@ -202,6 +250,7 @@ func (h *Handler) GetUserOrgs(ctx context.Context, in *connect.Request[registryp
 	if orgs == nil {
 		orgs = []*registrypbv1.User{}
 	}
+	redactEmails(callerFrom(ctx), orgs...)
 	return &connect.Response[registrypbv1.GetUserOrgsResponse]{
 		Msg: &registrypbv1.GetUserOrgsResponse{Organizations: orgs},
 	}, nil
@@ -213,19 +262,36 @@ func (h *Handler) CreateOrg(ctx context.Context, in *connect.Request[registrypbv
 		return nil, connErr.Unauthenticated("authentication required")
 	}
 
-	org, err := h.orgStorage.Create(ctx, in.Msg.Name, in.Msg.Description, in.Msg.Url, caller.Id)
-	if err != nil {
-		h.logger.Error("failed to create org", "error", err, "name", in.Msg.Name)
-		return nil, connErr.FromPgx(err)
+	// Organisations share the users table and the same namespace as usernames,
+	// and an org name becomes the first path segment of every module it owns.
+	// Register applies this list; without it here an org could claim "go",
+	// "gen", or "settings" and shadow a real route.
+	if constants.IsReservedName(in.Msg.Name) {
+		return nil, connErr.InvalidArgument("organization name is reserved")
 	}
 
-	if err := h.authz.AddOrgOwner(ctx, caller.Username, org.Username); err != nil {
-		h.logger.Error("failed to add org owner binding", "error", err, "org", org.Username, "caller", caller.Username)
-		return nil, connErr.Internal("failed to set org owner permissions")
+	// The org row, the creator's admin membership (written by Create) and the
+	// OPA owner binding are one unit. Written separately, a failure between them
+	// leaves an org whose creator cannot administer it, or an OPA binding
+	// pointing at an org that does not exist.
+	result, err := h.uow.Do(ctx, func(txCtx context.Context) (interface{}, error) {
+		org, err := h.orgStorage.Create(txCtx, in.Msg.Name, in.Msg.Description, in.Msg.Url, caller.Id)
+		if err != nil {
+			h.logger.Error("failed to create org", "error", err, "name", in.Msg.Name)
+			return nil, connErr.FromDB(err)
+		}
+		if err := h.authz.AddOrgOwner(txCtx, caller.Username, org.Username); err != nil {
+			h.logger.Error("failed to add org owner binding", "error", err, "org", org.Username, "caller", caller.Username)
+			return nil, connErr.Internal("failed to set org owner permissions")
+		}
+		return org, nil
+	}, 15*time.Second)
+	if err != nil {
+		return nil, err
 	}
 
 	return &connect.Response[registrypbv1.CreateOrgResponse]{
-		Msg: &registrypbv1.CreateOrgResponse{Org: org},
+		Msg: &registrypbv1.CreateOrgResponse{Org: result.(*registrypbv1.User)},
 	}, nil
 }
 
@@ -284,19 +350,27 @@ func (h *Handler) AddOrgMember(ctx context.Context, in *connect.Request[registry
 	if memberRole == "" {
 		memberRole = "member"
 	}
-	if err := h.orgStorage.AddMember(ctx, org.Id, target.Id, memberRole); err != nil {
-		h.logger.Error("failed to add org member", "error", err, "org_id", org.Id, "member_id", target.Id)
-		return nil, connErr.Internal("failed to add member")
-	}
-
 	// Map org "member" → OPA "contributor"; "admin" stays "admin".
 	opaRole := memberRole
 	if opaRole == "member" {
 		opaRole = constants.RoleContributor
 	}
-	if err := h.authz.AddOrgMemberBinding(ctx, target.Username, opaRole, org.Username); err != nil {
-		h.logger.Error("failed to add org member binding", "error", err, "org", org.Username, "member", target.Username)
-		return nil, connErr.Internal("failed to set member permissions")
+
+	// Membership row and OPA binding are written together: the two stores
+	// together are what grants access, and half of the pair is either a
+	// member who cannot act or permissions with no membership record.
+	if _, err := h.uow.Do(ctx, func(txCtx context.Context) (interface{}, error) {
+		if err := h.orgStorage.AddMember(txCtx, org.Id, target.Id, memberRole); err != nil {
+			h.logger.Error("failed to add org member", "error", err, "org_id", org.Id, "member_id", target.Id)
+			return nil, connErr.Internal("failed to add member")
+		}
+		if err := h.authz.AddOrgMemberBinding(txCtx, target.Username, opaRole, org.Username); err != nil {
+			h.logger.Error("failed to add org member binding", "error", err, "org", org.Username, "member", target.Username)
+			return nil, connErr.Internal("failed to set member permissions")
+		}
+		return nil, nil
+	}, 15*time.Second); err != nil {
+		return nil, err
 	}
 
 	return &connect.Response[registrypbv1.AddOrgMemberResponse]{
@@ -326,14 +400,44 @@ func (h *Handler) RemoveOrgMember(ctx context.Context, in *connect.Request[regis
 		return nil, connErr.NotFound("user not found")
 	}
 
-	if err := h.orgStorage.RemoveMember(ctx, org.Id, target.Id); err != nil {
-		h.logger.Error("failed to remove org member", "error", err, "org_id", org.Id, "member_id", target.Id)
-		return nil, connErr.Internal("failed to remove member")
+	// Removing the last admin would leave the org permanently unmanageable:
+	// UpdateOrg and AddOrgMember both require an existing admin, so nobody could
+	// ever appoint a replacement. This also covers an admin removing themselves.
+	targetRole, err := h.orgStorage.GetMemberRole(ctx, org.Id, target.Id)
+	if err != nil {
+		return nil, connErr.NotFound("user is not a member of this organization")
+	}
+	if targetRole == "admin" {
+		members, err := h.orgStorage.ListMembers(ctx, org.Id)
+		if err != nil {
+			h.logger.Error("failed to list org members", "error", err, "procedure", "RemoveOrgMember", "org_id", org.Id)
+			return nil, connErr.FromDB(err)
+		}
+		admins := 0
+		for _, m := range members {
+			if m.Role == "admin" {
+				admins++
+			}
+		}
+		if admins <= 1 {
+			return nil, connErr.FailedPrecondition("cannot remove the last admin of an organization")
+		}
 	}
 
-	if err := h.authz.DeleteOrgBinding(ctx, target.Username, org.Username); err != nil {
-		h.logger.Error("failed to delete org member binding", "error", err, "org", org.Username, "member", target.Username)
-		return nil, connErr.Internal("failed to remove member permissions")
+	// Removing the membership row without removing the binding would leave the
+	// user with live permissions over the org, so the two go together.
+	if _, err := h.uow.Do(ctx, func(txCtx context.Context) (interface{}, error) {
+		if err := h.orgStorage.RemoveMember(txCtx, org.Id, target.Id); err != nil {
+			h.logger.Error("failed to remove org member", "error", err, "org_id", org.Id, "member_id", target.Id)
+			return nil, connErr.Internal("failed to remove member")
+		}
+		if err := h.authz.DeleteOrgBinding(txCtx, target.Username, org.Username); err != nil {
+			h.logger.Error("failed to delete org member binding", "error", err, "org", org.Username, "member", target.Username)
+			return nil, connErr.Internal("failed to remove member permissions")
+		}
+		return nil, nil
+	}, 15*time.Second); err != nil {
+		return nil, err
 	}
 
 	return &connect.Response[registrypbv1.RemoveOrgMemberResponse]{

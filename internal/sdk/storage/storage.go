@@ -21,7 +21,17 @@ type Backend interface {
 	// The upload is idempotent: files already present at their object key are skipped.
 	Upload(ctx context.Context, keyPrefix string, localDir string) (locationURI string, err error)
 	// Download retrieves all generated SDK files for the given key prefix.
+	//
+	// Every file is held in memory at once. Prefer ListFiles plus GetFile when
+	// the result is streamed to a client rather than inspected as a whole.
 	Download(ctx context.Context, key string) ([]*File, error)
+	// ListFiles returns the relative paths of every file stored under keyPrefix,
+	// without reading any content.
+	//
+	// Paired with GetFile this lets a caller stream a large artifact set with
+	// bounded memory: the Go module proxy builds a zip whose size is otherwise
+	// proportional to the SDK size times the number of concurrent downloads.
+	ListFiles(ctx context.Context, keyPrefix string) ([]string, error)
 	// GetFile streams a single object by its exact key.
 	// The caller is responsible for closing the returned ReadCloser.
 	// Returns (nil, 0, ErrNotFound) when the key does not exist.

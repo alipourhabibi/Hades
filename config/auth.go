@@ -3,10 +3,10 @@ package config
 // AuthConfig configures authentication subsystems: passwords, sessions,
 // lockout behaviour, email verification, and password reset.
 type AuthConfig struct {
-	Password          PasswordConfig     `json:"password" yaml:"password"`
-	Session           SessionConfig      `json:"session" yaml:"session"`
-	Lockout           LockoutConfig      `json:"lockout" yaml:"lockout"`
-	EmailVerification EmailVerifConfig   `json:"emailVerification" yaml:"emailVerification"`
+	Password          PasswordConfig      `json:"password" yaml:"password"`
+	Session           SessionConfig       `json:"session" yaml:"session"`
+	Lockout           LockoutConfig       `json:"lockout" yaml:"lockout"`
+	EmailVerification EmailVerifConfig    `json:"emailVerification" yaml:"emailVerification"`
 	PasswordReset     PasswordResetConfig `json:"passwordReset" yaml:"passwordReset"`
 }
 
@@ -16,9 +16,10 @@ type PasswordConfig struct {
 }
 
 type SessionConfig struct {
-	IdleTimeoutDays      int `json:"idleTimeoutDays" yaml:"idleTimeoutDays"`
-	AbsoluteTimeoutDays  int `json:"absoluteTimeoutDays" yaml:"absoluteTimeoutDays"`
-	RotationGraceSeconds int `json:"rotationGraceSeconds" yaml:"rotationGraceSeconds"`
+	IdleTimeoutDays     int `json:"idleTimeoutDays" yaml:"idleTimeoutDays"`
+	AbsoluteTimeoutDays int `json:"absoluteTimeoutDays" yaml:"absoluteTimeoutDays"`
+	// Session tokens are deliberately non-rotating; see session.Storage. There
+	// is no rotation grace window to configure.
 }
 
 type LockoutConfig struct {

@@ -25,7 +25,7 @@ type modulesProvider interface {
 // Server is the buf.build protocol adapter for module queries.
 // All business logic lives in module.Server (own handler).
 type Server struct {
-	moduleConnV1.ModuleServiceHandler
+	moduleConnV1.UnimplementedModuleServiceHandler
 
 	handler modulesProvider
 	logger  *log.LoggerWrapper

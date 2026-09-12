@@ -32,11 +32,13 @@ const (
 // LoginRequest carries the credentials for password-based login.
 type LoginRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Username of the account to authenticate.
+	// Username of the account to authenticate. Matched case-insensitively:
+	// the server lowercases it before lookup.
 	Username string `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
 	// Password for the account.
 	Password string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
 	// Optional User-Agent string recorded in the session row for audit purposes.
+	// When empty the User-Agent request header is used instead.
 	UserAgent     string `protobuf:"bytes,3,opt,name=user_agent,json=userAgent,proto3" json:"user_agent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -97,7 +99,10 @@ func (x *LoginRequest) GetUserAgent() string {
 type LoginResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Bearer token to include in the Authorization header for subsequent calls.
-	// Empty when pending_totp is true.
+	//
+	// Always set. When pending_totp is true the token identifies the session for
+	// VerifyTOTP but is rejected by every other procedure until the second factor
+	// is confirmed.
 	Token string `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
 	// True when the account has TOTP enabled and the session is not yet fully
 	// authenticated. The caller must complete VerifyTOTP before the token
@@ -154,13 +159,22 @@ func (x *LoginResponse) GetPendingTotp() bool {
 // RegisterRequest carries the information needed to create a new account.
 type RegisterRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Desired username. Must be 2–32 characters.
+	// Desired username. Must be 2-32 characters. Lowercased by the server, so
+	// usernames differing only in case are the same account. A name on the
+	// reserved list (route names such as "go" or "settings") is rejected.
 	Username string `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
-	// Plaintext password. Must be at least 8 characters; stored as a bcrypt hash.
+	// Plaintext password, stored as a bcrypt hash.
+	//
+	// The 8-character floor below is only the wire-level minimum. The server
+	// additionally enforces auth.password.minLength from its configuration,
+	// which defaults to 12, so a password accepted by this constraint can still
+	// be rejected with INVALID_ARGUMENT.
 	Password string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
 	// Optional human-readable description shown on the user profile.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	// Email address used for verification and password reset.
+	// Email address used for verification and password reset. Lowercased by the
+	// server. Required: an account with no address could not verify its email,
+	// and Login refuses unverified accounts.
 	Email         string `protobuf:"bytes,4,opt,name=email,proto3" json:"email,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -619,12 +633,12 @@ func (*ResendVerificationEmailResponse) Descriptor() ([]byte, []int) {
 	return file_api_auth_v1_auth_proto_rawDescGZIP(), []int{11}
 }
 
-// RequestPasswordResetRequest initiates a password reset flow by sending a
-// reset link to the given email address.
+// RequestPasswordResetRequest initiates a password reset flow by emailing a
+// single-use reset token to the given address.
 type RequestPasswordResetRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Email address of the account to reset. No error is returned if the address
-	// is not found, to avoid leaking account existence.
+	// Email address of the account to reset. Matched case-insensitively. No error
+	// is returned if the address is not found, to avoid leaking account existence.
 	Email         string `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -709,7 +723,9 @@ type ResetPasswordRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The reset token from the password-reset email.
 	Token string `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
-	// The new plaintext password. Must be at least 8 characters.
+	// The new plaintext password. As with RegisterRequest.password, the server
+	// enforces auth.password.minLength (default 12) on top of the 8-character
+	// wire minimum below.
 	NewPassword   string `protobuf:"bytes,2,opt,name=new_password,json=newPassword,proto3" json:"new_password,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -801,7 +817,9 @@ type ChangePasswordRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Current password, required to authorise the change.
 	OldPassword string `protobuf:"bytes,1,opt,name=old_password,json=oldPassword,proto3" json:"old_password,omitempty"`
-	// New plaintext password. Must be at least 8 characters.
+	// The new plaintext password. As with RegisterRequest.password, the server
+	// enforces auth.password.minLength (default 12) on top of the 8-character
+	// wire minimum below.
 	NewPassword string `protobuf:"bytes,2,opt,name=new_password,json=newPassword,proto3" json:"new_password,omitempty"`
 	// When true, all sessions other than the current one are revoked on success.
 	// Useful after a suspected credential compromise.

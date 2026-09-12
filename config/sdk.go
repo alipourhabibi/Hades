@@ -2,12 +2,18 @@ package config
 
 // SDKConfig configures the SDK code generation pipeline.
 type SDKConfig struct {
-	Enabled         bool              `yaml:"enabled"`
-	BufBin          string            `yaml:"bufBin"`
-	LintEnabled     bool              `yaml:"lintEnabled"`
-	BreakingEnabled bool              `yaml:"breakingEnabled"`
-	Generators      []GeneratorConfig `yaml:"generators"`
-	Storage         SDKStorageConfig  `yaml:"storage"`
+	Enabled         bool   `yaml:"enabled"`
+	BufBin          string `yaml:"bufBin"`
+	LintEnabled     bool   `yaml:"lintEnabled"`
+	BreakingEnabled bool   `yaml:"breakingEnabled"`
+	// MaxUploadFiles caps how many files a single push may contain.
+	// Zero uses the built-in default; see internal/hades/server/content.
+	MaxUploadFiles int `json:"maxUploadFiles" yaml:"maxUploadFiles"`
+	// MaxUploadBytes caps the total content size of a single push in bytes.
+	// Zero uses the built-in default.
+	MaxUploadBytes int64             `json:"maxUploadBytes" yaml:"maxUploadBytes"`
+	Generators     []GeneratorConfig `yaml:"generators"`
+	Storage        SDKStorageConfig  `yaml:"storage"`
 }
 
 type GeneratorConfig struct {

@@ -101,6 +101,7 @@ export const ListSessionsRequestSchema: GenMessage<ListSessionsRequest> = /*@__P
 export type ListSessionsResponse = Message<"hades.api.auth.v1.ListSessionsResponse"> & {
   /**
    * Active sessions for the caller, ordered by last_activity_at descending.
+   * Revoked and expired sessions are omitted.
    *
    * @generated from field: repeated hades.api.auth.v1.Session sessions = 1;
    */
@@ -185,6 +186,9 @@ export const RevokeAllOtherSessionsResponseSchema: GenMessage<RevokeAllOtherSess
  *
  * Ownership is enforced server-side: callers can only operate on sessions that
  * belong to them. Attempting to revoke another user's session returns NOT_FOUND.
+ *
+ * Every RPC here requires an interactive session token (hds_sess_) and rejects
+ * personal API tokens, so a leaked API token cannot evict the account owner.
  *
  * @generated from service hades.api.auth.v1.SessionService
  */

@@ -34,7 +34,7 @@ type OrgMember struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The member's user profile.
 	User *User `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
-	// Role of the member (e.g. "admin", "member").
+	// Role of the member: "admin" or "member".
 	Role          string `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -134,7 +134,8 @@ func (x *GetOrgRequest) GetName() string {
 type GetOrgResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Org   *User                  `protobuf:"bytes,1,opt,name=org,proto3" json:"org,omitempty"`
-	// Number of modules owned by this organization.
+	// Number of modules owned by this organization, including private ones the
+	// caller cannot read.
 	ModuleCount int32 `protobuf:"varint,2,opt,name=module_count,json=moduleCount,proto3" json:"module_count,omitempty"`
 	// Number of members in this organization.
 	MemberCount   int32 `protobuf:"varint,3,opt,name=member_count,json=memberCount,proto3" json:"member_count,omitempty"`
@@ -287,7 +288,10 @@ func (x *ListOrgMembersResponse) GetMembers() []*OrgMember {
 // CreateOrgRequest creates a new organization owned by the authenticated user.
 type CreateOrgRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Desired organization username. Must be unique in the registry.
+	// Desired organization username. Must be unique across the whole identity
+	// namespace, which users and organizations share, and must not be one of the
+	// reserved route names: an org name is the first path segment of every module
+	// it owns.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// Optional human-readable description.
 	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
@@ -398,9 +402,10 @@ type UpdateOrgRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Username of the organization to update.
 	OrgName string `protobuf:"bytes,1,opt,name=org_name,json=orgName,proto3" json:"org_name,omitempty"`
-	// New description. Empty leaves the field unchanged.
+	// New description. Both fields are written on every call, so passing an empty
+	// string clears the stored value rather than leaving it unchanged.
 	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
-	// New URL. Empty leaves the field unchanged.
+	// New URL. Cleared by an empty string, as with description.
 	Url           string `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -510,6 +515,8 @@ type AddOrgMemberRequest struct {
 	// Username of the user to add.
 	Username string `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
 	// Role to assign. Valid values: "member", "admin". Defaults to "member".
+	// "member" grants the contributor role over the org's namespace; "admin"
+	// additionally allows managing the org and its membership.
 	Role          string `protobuf:"bytes,3,opt,name=role,proto3" json:"role,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -698,7 +705,8 @@ func (*RemoveOrgMemberResponse) Descriptor() ([]byte, []int) {
 // ListOrganizationsRequest searches for organization accounts.
 type ListOrganizationsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Optional substring search on org username. Empty returns the first 50 orgs.
+	// Optional substring search on org username. Empty matches every
+	// organization. At most 50 are returned either way; there is no pagination.
 	Query         string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

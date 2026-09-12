@@ -2,11 +2,10 @@ package content
 
 import (
 	"context"
-	"runtime"
 	"time"
 
-	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
+	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
@@ -37,8 +36,6 @@ func injectBufYAML(files []*registryv1.File, m *registryv1.Module, registryHost 
 
 func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs []*registryv1.ModuleRef) ([]*registryv1.DownloadResponseContent, error) {
 	start := time.Now()
-	var memBefore runtime.MemStats
-	runtime.ReadMemStats(&memBefore)
 
 	tracer := telemetry.Tracer("hades/download")
 	ctx, span := tracer.Start(ctx, "download")
@@ -136,12 +133,6 @@ func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs [
 		}
 	}
 
-	var memAfter runtime.MemStats
-	runtime.ReadMemStats(&memAfter)
-	allocDelta := int64(memAfter.TotalAlloc - memBefore.TotalAlloc)
-	gcRuns := int64(memAfter.NumGC - memBefore.NumGC)
-	gcPauseMs := float64(memAfter.PauseTotalNs-memBefore.PauseTotalNs) / 1e6
-
 	var totalProtoBytes int64
 	for _, c := range contents {
 		for _, f := range c.Files {
@@ -149,11 +140,11 @@ func (h *Handler) Download(ctx context.Context, commitIDs []string, moduleRefs [
 		}
 	}
 
+	// Process-wide allocation and GC counters are not sampled per request:
+	// runtime.ReadMemStats stops the world, and its deltas are process-global,
+	// so under concurrency they attribute unrelated work to this download.
 	telemetry.DownloadRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "ok")))
 	telemetry.DownloadProtoBytes.Record(ctx, totalProtoBytes)
-	telemetry.DownloadAllocBytes.Record(ctx, allocDelta)
-	telemetry.DownloadGCRuns.Record(ctx, gcRuns)
-	telemetry.DownloadGCPauseMs.Record(ctx, gcPauseMs)
 
 	return contents, nil
 }

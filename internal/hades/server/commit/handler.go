@@ -12,7 +12,7 @@ package commit
 
 import (
 	"context"
-	"strconv"
+	"errors"
 
 	"connectrpc.com/connect"
 
@@ -57,6 +57,26 @@ func NewHandler(deps *server.Dependencies) *Handler {
 	}
 }
 
+// resolveRef turns an optional commit hash into a git ref, defaulting to HEAD.
+//
+// The commit is verified to belong to the module the caller was authorised for.
+// Commit hashes are unique across the whole registry, so without that check a
+// caller with access to one module could read any commit of any other module by
+// passing its hash.
+func (h *Handler) resolveRef(ctx context.Context, module *registrypbv1.Module, commitHash string) (string, error) {
+	if commitHash == "" {
+		return "HEAD", nil
+	}
+	commit, err := h.commitDBStorage.GetByHash(ctx, commitHash)
+	if err != nil {
+		return "", connErr.NotFound("commit not found")
+	}
+	if commit.ModuleId != module.Id {
+		return "", connErr.NotFound("commit not found")
+	}
+	return commit.CommitHash, nil
+}
+
 func (h *Handler) ListCommits(ctx context.Context, in *connect.Request[registrypbv1.ListCommitsRequest]) (*connect.Response[registrypbv1.ListCommitsResponse], error) {
 	user, _ := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 
@@ -78,27 +98,15 @@ func (h *Handler) ListCommits(ctx context.Context, in *connect.Request[registryp
 		return nil, err
 	}
 
-	pageSize := int(in.Msg.PageSize)
-	if pageSize <= 0 {
-		pageSize = 50
-	}
-	offset := 0
-	if in.Msg.PageToken != "" {
-		if n, err := strconv.Atoi(in.Msg.PageToken); err == nil {
-			offset = n
-		}
-	}
+	pageSize, offset := server.Page(in.Msg.PageSize, in.Msg.PageToken)
 
 	commits, err := h.commitDBStorage.ListByModule(ctx, modules[0].Id, pageSize, offset)
 	if err != nil {
 		h.logger.Error("failed to list commits", "error", err, "procedure", "ListCommits", "user_id", userID, "module_id", modules[0].Id)
-		return nil, connErr.FromPgx(err)
+		return nil, connErr.FromDB(err)
 	}
 
-	nextPageToken := ""
-	if len(commits) == pageSize {
-		nextPageToken = strconv.Itoa(offset + pageSize)
-	}
+	nextPageToken := server.NextPageToken(len(commits), pageSize, offset)
 
 	return &connect.Response[registrypbv1.ListCommitsResponse]{
 		Msg: &registrypbv1.ListCommitsResponse{Commits: commits, NextPageToken: nextPageToken},
@@ -206,8 +214,17 @@ func (h *Handler) ListModuleFiles(ctx context.Context, req *connect.Request[regi
 	}
 
 	repoPath := req.Msg.Owner + "/" + req.Msg.Module
-	gitEntries, err := h.gitStorage.GetTreeEntries(ctx, repoPath, "HEAD", req.Msg.Path)
+	ref, err := h.resolveRef(ctx, modules[0], req.Msg.CommitHash)
 	if err != nil {
+		return nil, err
+	}
+	gitEntries, err := h.gitStorage.GetTreeEntries(ctx, repoPath, ref, req.Msg.Path)
+	if err != nil {
+		// A path that is not in the tree is a caller error, not a server fault:
+		// reporting it as Internal made every typo look like an outage.
+		if errors.Is(err, gitstorage.ErrNotFound) {
+			return nil, connErr.NotFound("path not found")
+		}
 		h.logger.Error("GetTreeEntries failed", "error", err, "owner", req.Msg.Owner, "module", req.Msg.Module, "path", req.Msg.Path)
 		return nil, connErr.Internal("failed to list files")
 	}
@@ -247,7 +264,11 @@ func (h *Handler) GetFileContent(ctx context.Context, req *connect.Request[regis
 	}
 
 	repoPath := req.Msg.Owner + "/" + req.Msg.Module
-	content, size, err := h.gitStorage.GetFile(ctx, repoPath, "HEAD", req.Msg.Path)
+	ref, err := h.resolveRef(ctx, modules[0], req.Msg.CommitHash)
+	if err != nil {
+		return nil, err
+	}
+	content, size, err := h.gitStorage.GetFile(ctx, repoPath, ref, req.Msg.Path)
 	if err != nil {
 		h.logger.Error("GetFileContent failed", "error", err, "owner", req.Msg.Owner, "module", req.Msg.Module, "path", req.Msg.Path)
 		return nil, connErr.NotFound("file not found")

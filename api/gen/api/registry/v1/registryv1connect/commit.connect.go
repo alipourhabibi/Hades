@@ -60,7 +60,7 @@ const (
 
 // CommitServiceClient is a client for the hades.api.registry.v1.CommitService service.
 type CommitServiceClient interface {
-	// ListCommits returns all commits for the given module, ordered newest first.
+	// ListCommits returns a page of commits for the given module, newest first.
 	// Returns NOT_FOUND if the module does not exist or the caller cannot read it.
 	ListCommits(context.Context, *connect.Request[v1.ListCommitsRequest]) (*connect.Response[v1.ListCommitsResponse], error)
 	// GetCommit returns a single commit by its Git commit hash.
@@ -71,12 +71,16 @@ type CommitServiceClient interface {
 	// The initial commit is diffed against an empty tree so all files appear
 	// as additions. Returns NOT_FOUND if the commit hash does not exist.
 	GetCommitDiff(context.Context, *connect.Request[v1.GetCommitDiffRequest]) (*connect.Response[v1.GetCommitDiffResponse], error)
-	// ListModuleFiles returns the depth-1 contents of a directory inside the
-	// latest commit of a module repository.
-	// Returns NOT_FOUND if the module or path does not exist.
+	// ListModuleFiles returns the depth-1 contents of a directory in the module
+	// repository, read from commit_hash or from the default branch head when
+	// that is empty.
+	//
+	// Returns NOT_FOUND if the module or path does not exist, or if commit_hash
+	// is unknown or belongs to a different module.
 	ListModuleFiles(context.Context, *connect.Request[v1.ListModuleFilesRequest]) (*connect.Response[v1.ListModuleFilesResponse], error)
-	// GetFileContent returns the raw content of a single file by its path.
-	// Returns NOT_FOUND if the module or file path does not exist.
+	// GetFileContent returns the raw content of a single file by its path, read
+	// from commit_hash or from the default branch head when that is empty.
+	// Returns NOT_FOUND if the module, commit, or file path does not exist.
 	GetFileContent(context.Context, *connect.Request[v1.GetFileContentRequest]) (*connect.Response[v1.GetFileContentResponse], error)
 }
 
@@ -160,7 +164,7 @@ func (c *commitServiceClient) GetFileContent(ctx context.Context, req *connect.R
 
 // CommitServiceHandler is an implementation of the hades.api.registry.v1.CommitService service.
 type CommitServiceHandler interface {
-	// ListCommits returns all commits for the given module, ordered newest first.
+	// ListCommits returns a page of commits for the given module, newest first.
 	// Returns NOT_FOUND if the module does not exist or the caller cannot read it.
 	ListCommits(context.Context, *connect.Request[v1.ListCommitsRequest]) (*connect.Response[v1.ListCommitsResponse], error)
 	// GetCommit returns a single commit by its Git commit hash.
@@ -171,12 +175,16 @@ type CommitServiceHandler interface {
 	// The initial commit is diffed against an empty tree so all files appear
 	// as additions. Returns NOT_FOUND if the commit hash does not exist.
 	GetCommitDiff(context.Context, *connect.Request[v1.GetCommitDiffRequest]) (*connect.Response[v1.GetCommitDiffResponse], error)
-	// ListModuleFiles returns the depth-1 contents of a directory inside the
-	// latest commit of a module repository.
-	// Returns NOT_FOUND if the module or path does not exist.
+	// ListModuleFiles returns the depth-1 contents of a directory in the module
+	// repository, read from commit_hash or from the default branch head when
+	// that is empty.
+	//
+	// Returns NOT_FOUND if the module or path does not exist, or if commit_hash
+	// is unknown or belongs to a different module.
 	ListModuleFiles(context.Context, *connect.Request[v1.ListModuleFilesRequest]) (*connect.Response[v1.ListModuleFilesResponse], error)
-	// GetFileContent returns the raw content of a single file by its path.
-	// Returns NOT_FOUND if the module or file path does not exist.
+	// GetFileContent returns the raw content of a single file by its path, read
+	// from commit_hash or from the default branch head when that is empty.
+	// Returns NOT_FOUND if the module, commit, or file path does not exist.
 	GetFileContent(context.Context, *connect.Request[v1.GetFileContentRequest]) (*connect.Response[v1.GetFileContentResponse], error)
 }
 

@@ -33,6 +33,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/proto/lint"
 	sdkstorage "github.com/alipourhabibi/Hades/internal/sdk/storage"
 	"github.com/alipourhabibi/Hades/internal/sdk/storagefactory"
+	"github.com/alipourhabibi/Hades/utils/clientip"
 	emailutils "github.com/alipourhabibi/Hades/utils/email"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
@@ -127,7 +128,13 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 		return nil, fmt.Errorf("server: sdk artifact storage: %w", err)
 	}
 
+	trustedProxies, err := clientip.ParseTrustedProxies(c.Server.TrustedProxies)
+	if err != nil {
+		return nil, fmt.Errorf("server: server.trustedProxies: %w", err)
+	}
+
 	deps := &server.Dependencies{
+		TrustedProxies:      trustedProxies,
 		Logger:              ss.logger,
 		OPAEngine:           opaEngine,
 		Authorization:       authorizationServer,

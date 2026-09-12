@@ -27,17 +27,18 @@ func (s *SQLiteOrgStorage) q(ctx context.Context) txkeys.SQLQuerier {
 	return s.db
 }
 
-const sqliteUserCols = `id, create_time, update_time, username, email, password, type, state, description, url`
+// sqliteUserCols deliberately omits the password column. identityv1.User is
+// what every read handler returns to the caller, so a hash loaded into
+// User.Password would travel out over the wire.
+const sqliteUserCols = `id, create_time, update_time, username, email, type, state, description, url`
 
 func scanSQLiteOrgUser(row *sql.Row) (*identityv1.User, error) {
 	u := &identityv1.User{}
 	var createTime, updateTime time.Time
-	var password sql.NullString
-	err := row.Scan(&u.Id, &createTime, &updateTime, &u.Username, &u.Email, &password, &u.Type, &u.State, &u.Description, &u.Url)
+	err := row.Scan(&u.Id, &createTime, &updateTime, &u.Username, &u.Email, &u.Type, &u.State, &u.Description, &u.Url)
 	if err != nil {
 		return nil, err
 	}
-	u.Password = password.String
 	u.CreateTime = timestamppb.New(createTime)
 	u.UpdateTime = timestamppb.New(updateTime)
 	return u, nil
@@ -63,11 +64,9 @@ func scanSQLiteOrgRows(rows *sql.Rows) ([]*identityv1.User, error) {
 	for rows.Next() {
 		u := &identityv1.User{}
 		var createTime, updateTime time.Time
-		var password sql.NullString
-		if err := rows.Scan(&u.Id, &createTime, &updateTime, &u.Username, &u.Email, &password, &u.Type, &u.State, &u.Description, &u.Url); err != nil {
+		if err := rows.Scan(&u.Id, &createTime, &updateTime, &u.Username, &u.Email, &u.Type, &u.State, &u.Description, &u.Url); err != nil {
 			return nil, err
 		}
-		u.Password = password.String
 		u.CreateTime = timestamppb.New(createTime)
 		u.UpdateTime = timestamppb.New(updateTime)
 		orgs = append(orgs, u)
@@ -143,7 +142,11 @@ func (s *SQLiteOrgStorage) GetMemberRole(ctx context.Context, orgID, memberID st
 	err := s.q(ctx).QueryRowContext(ctx,
 		`SELECT role FROM org_memberships WHERE org_id=? AND member_id=?`, orgID, memberID).Scan(&role)
 	if err != nil {
-		return "", nil
+		// The error is returned, not swallowed. Reporting ("", nil) for a
+		// missing row made "not a member" indistinguishable from "found, with
+		// no role", so RemoveOrgMember's NOT_FOUND branch could never fire and
+		// a database failure looked like a definite answer.
+		return "", err
 	}
 	return role, nil
 }
@@ -163,12 +166,10 @@ ORDER BY u.username`, orgID)
 	for rows.Next() {
 		u := &identityv1.User{}
 		var createTime, updateTime time.Time
-		var password sql.NullString
 		var role string
-		if err := rows.Scan(&u.Id, &createTime, &updateTime, &u.Username, &u.Email, &password, &u.Type, &u.State, &u.Description, &u.Url, &role); err != nil {
+		if err := rows.Scan(&u.Id, &createTime, &updateTime, &u.Username, &u.Email, &u.Type, &u.State, &u.Description, &u.Url, &role); err != nil {
 			return nil, err
 		}
-		u.Password = password.String
 		u.CreateTime = timestamppb.New(createTime)
 		u.UpdateTime = timestamppb.New(updateTime)
 		members = append(members, &org.OrgMember{User: u, Role: role})

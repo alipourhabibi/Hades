@@ -31,6 +31,13 @@ func (s *NotificationStorage) q(ctx context.Context) txkeys.PgxQuerier {
 	return s.pool
 }
 
+func (s *NotificationStorage) Create(ctx context.Context, userID, notificationType, title, body, resourceID string) error {
+	_, err := s.q(ctx).Exec(ctx, `
+INSERT INTO notifications (user_id, type, title, body, resource_id)
+VALUES ($1, $2, $3, $4, $5)`, userID, notificationType, title, body, resourceID)
+	return err
+}
+
 func (s *NotificationStorage) ListForUser(ctx context.Context, userID string) ([]*identityv1.Notification, error) {
 	query := `
 SELECT id, type, title, COALESCE(body,''), COALESCE(resource_id,''), read_at, created_at

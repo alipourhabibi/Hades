@@ -44,7 +44,9 @@ type SDKJob struct {
 	Language string `protobuf:"bytes,4,opt,name=language,proto3" json:"language,omitempty"`
 	// protoc plug-in used for generation (e.g. "protoc-gen-go").
 	Plugin string `protobuf:"bytes,5,opt,name=plugin,proto3" json:"plugin,omitempty"`
-	// Job lifecycle status: "pending", "running", "succeeded", "failed", "dead".
+	// Job lifecycle status: "pending", "running", "succeeded", "failed", or
+	// "dead". A failed job is retried; "dead" means the retry budget is spent
+	// and it will not be attempted again.
 	Status string `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
 	// Storage path of the generated artifact. Set on success, empty otherwise.
 	OutputLocation string `protobuf:"bytes,7,opt,name=output_location,json=outputLocation,proto3" json:"output_location,omitempty"`
@@ -52,7 +54,8 @@ type SDKJob struct {
 	ErrorMessage string `protobuf:"bytes,8,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	// When the job was created.
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
-	// When the job last transitioned to a terminal state (succeeded or failed).
+	// When the job last reached a terminal state (succeeded, failed, or dead).
+	// Unset while the job is pending or running.
 	UpdateTime    *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

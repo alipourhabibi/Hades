@@ -9,7 +9,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/alipourhabibi/Hades/internal/hades/cache"
@@ -36,8 +35,12 @@ var policyContent string
 // The policy is compiled once at startup. Role bindings are read per subject by
 // the hybridStore, from the cache first and the database on a miss. Writing a
 // binding does not reload the policy.
+//
+// The prepared queries are built once in the constructor and never replaced, so
+// no lock guards them. rego.PreparedEvalQuery is safe to use from many
+// goroutines. Allow and BatchAllow run on the hottest path, and a mutex that is
+// never write-locked only costs time.
 type Engine struct {
-	mu         sync.RWMutex
 	query      rego.PreparedEvalQuery // single: data.hades.authz.allow
 	batchQuery rego.PreparedEvalQuery // batch:  data.hades.authz.denied_indices
 	store      *hybridStore
@@ -110,9 +113,6 @@ func newBatchQuery(ctx context.Context, s storage.Store) (rego.PreparedEvalQuery
 // action is permitted. Role bindings for policy.Subject are fetched from cache
 // (or DB on miss) by the hybridStore during evaluation.
 func (e *Engine) Allow(ctx context.Context, input constants.Policy) (bool, error) {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-
 	rs, err := e.query.Eval(ctx, rego.EvalInput(input))
 	if err != nil {
 		return false, fmt.Errorf("authorization: engine: eval: %w", err)
@@ -137,13 +137,7 @@ func (e *Engine) Allow(ctx context.Context, input constants.Policy) (bool, error
 // constants.Policy has JSON tags that match the Rego field names, so we pass it
 // straight to rego.EvalInput with no extra struct in between.
 func (e *Engine) BatchAllow(ctx context.Context, inputs []constants.Policy) ([]bool, error) {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-
 	results := make([]bool, len(inputs))
-	for i := range results {
-		results[i] = true
-	}
 	if len(inputs) == 0 {
 		return results, nil
 	}
@@ -152,24 +146,36 @@ func (e *Engine) BatchAllow(ctx context.Context, inputs []constants.Policy) ([]b
 	if err != nil {
 		return nil, fmt.Errorf("authorization: engine: batch eval: %w", err)
 	}
+	// An empty result set or an unexpected value shape means the policy did not
+	// produce a decision. That is an error, not a grant: single-policy Allow
+	// fails closed under the same conditions, and this path gates uploads.
 	if len(rs) == 0 || len(rs[0].Expressions) == 0 {
-		return results, nil
+		return nil, fmt.Errorf("authorization: engine: batch eval returned no decision")
 	}
 
 	// denied_indices is a Rego set; OPA surfaces it as []interface{} via JSON.
-	// Each element is a json.Number (OPA uses UseNumber internally).
-	// Also handle float64 defensively in case OPA version differs.
-	raw := rs[0].Expressions[0].Value
-	switch v := raw.(type) {
-	case []interface{}:
-		for _, item := range v {
-			idx, ok := toInt(item)
-			if ok && idx >= 0 && idx < len(results) {
-				results[idx] = false
-			}
-		}
+	// Each element is a json.Number (OPA uses UseNumber internally); float64 is
+	// handled defensively in case the OPA version differs.
+	denied, ok := rs[0].Expressions[0].Value.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("authorization: engine: batch eval returned %T, want a set of indices", rs[0].Expressions[0].Value)
 	}
 
+	// Only once the response shape is confirmed are the entries marked allowed,
+	// so a malformed response can never leave the slice all-true.
+	for i := range results {
+		results[i] = true
+	}
+	for _, item := range denied {
+		idx, ok := toInt(item)
+		if !ok {
+			return nil, fmt.Errorf("authorization: engine: batch eval returned a non-numeric denied index")
+		}
+		if idx < 0 || idx >= len(results) {
+			return nil, fmt.Errorf("authorization: engine: batch eval returned out-of-range denied index %d", idx)
+		}
+		results[idx] = false
+	}
 	return results, nil
 }
 

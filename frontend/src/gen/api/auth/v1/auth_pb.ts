@@ -27,7 +27,8 @@ export const file_api_auth_v1_auth: GenFile = /*@__PURE__*/
  */
 export type LoginRequest = Message<"hades.api.auth.v1.LoginRequest"> & {
   /**
-   * Username of the account to authenticate.
+   * Username of the account to authenticate. Matched case-insensitively:
+   * the server lowercases it before lookup.
    *
    * @generated from field: string username = 1;
    */
@@ -42,6 +43,7 @@ export type LoginRequest = Message<"hades.api.auth.v1.LoginRequest"> & {
 
   /**
    * Optional User-Agent string recorded in the session row for audit purposes.
+   * When empty the User-Agent request header is used instead.
    *
    * @generated from field: string user_agent = 3;
    */
@@ -63,7 +65,10 @@ export const LoginRequestSchema: GenMessage<LoginRequest> = /*@__PURE__*/
 export type LoginResponse = Message<"hades.api.auth.v1.LoginResponse"> & {
   /**
    * Bearer token to include in the Authorization header for subsequent calls.
-   * Empty when pending_totp is true.
+   *
+   * Always set. When pending_totp is true the token identifies the session for
+   * VerifyTOTP but is rejected by every other procedure until the second factor
+   * is confirmed.
    *
    * @generated from field: string token = 1;
    */
@@ -93,14 +98,21 @@ export const LoginResponseSchema: GenMessage<LoginResponse> = /*@__PURE__*/
  */
 export type RegisterRequest = Message<"hades.api.auth.v1.RegisterRequest"> & {
   /**
-   * Desired username. Must be 2–32 characters.
+   * Desired username. Must be 2-32 characters. Lowercased by the server, so
+   * usernames differing only in case are the same account. A name on the
+   * reserved list (route names such as "go" or "settings") is rejected.
    *
    * @generated from field: string username = 1;
    */
   username: string;
 
   /**
-   * Plaintext password. Must be at least 8 characters; stored as a bcrypt hash.
+   * Plaintext password, stored as a bcrypt hash.
+   *
+   * The 8-character floor below is only the wire-level minimum. The server
+   * additionally enforces auth.password.minLength from its configuration,
+   * which defaults to 12, so a password accepted by this constraint can still
+   * be rejected with INVALID_ARGUMENT.
    *
    * @generated from field: string password = 2;
    */
@@ -114,7 +126,9 @@ export type RegisterRequest = Message<"hades.api.auth.v1.RegisterRequest"> & {
   description: string;
 
   /**
-   * Email address used for verification and password reset.
+   * Email address used for verification and password reset. Lowercased by the
+   * server. Required: an account with no address could not verify its email,
+   * and Login refuses unverified accounts.
    *
    * @generated from field: string email = 4;
    */
@@ -303,15 +317,15 @@ export const ResendVerificationEmailResponseSchema: GenMessage<ResendVerificatio
   messageDesc(file_api_auth_v1_auth, 11);
 
 /**
- * RequestPasswordResetRequest initiates a password reset flow by sending a
- * reset link to the given email address.
+ * RequestPasswordResetRequest initiates a password reset flow by emailing a
+ * single-use reset token to the given address.
  *
  * @generated from message hades.api.auth.v1.RequestPasswordResetRequest
  */
 export type RequestPasswordResetRequest = Message<"hades.api.auth.v1.RequestPasswordResetRequest"> & {
   /**
-   * Email address of the account to reset. No error is returned if the address
-   * is not found, to avoid leaking account existence.
+   * Email address of the account to reset. Matched case-insensitively. No error
+   * is returned if the address is not found, to avoid leaking account existence.
    *
    * @generated from field: string email = 1;
    */
@@ -354,7 +368,9 @@ export type ResetPasswordRequest = Message<"hades.api.auth.v1.ResetPasswordReque
   token: string;
 
   /**
-   * The new plaintext password. Must be at least 8 characters.
+   * The new plaintext password. As with RegisterRequest.password, the server
+   * enforces auth.password.minLength (default 12) on top of the 8-character
+   * wire minimum below.
    *
    * @generated from field: string new_password = 2;
    */
@@ -397,7 +413,9 @@ export type ChangePasswordRequest = Message<"hades.api.auth.v1.ChangePasswordReq
   oldPassword: string;
 
   /**
-   * New plaintext password. Must be at least 8 characters.
+   * The new plaintext password. As with RegisterRequest.password, the server
+   * enforces auth.password.minLength (default 12) on top of the 8-character
+   * wire minimum below.
    *
    * @generated from field: string new_password = 2;
    */
@@ -437,9 +455,11 @@ export const ChangePasswordResponseSchema: GenMessage<ChangePasswordResponse> = 
 /**
  * AuthenticationService covers the full credential lifecycle for Hades accounts.
  *
- * Login and Register are reachable without a session. All other RPCs require a
- * valid Bearer token in the Authorization header, except VerifyEmail and the
- * password-reset pair which use single-use tokens that embed their own auth.
+ * Login, Register, and Signin are reachable without a session, as are
+ * VerifyEmail and the password-reset pair, which carry their own single-use
+ * tokens. The remaining RPCs require a valid Bearer token in the Authorization
+ * header; ChangePassword and Logout additionally require an interactive session
+ * token (hds_sess_) and reject personal API tokens.
  *
  * @generated from service hades.api.auth.v1.AuthenticationService
  */
@@ -448,6 +468,10 @@ export const AuthenticationService: GenService<{
    * Login authenticates a user with username and password and issues a session
    * token. When the account has TOTP enabled the response sets pending_totp and
    * the caller must complete VerifyTOTP before the token grants full access.
+   *
+   * Returns UNAUTHENTICATED for bad credentials, PERMISSION_DENIED when the
+   * account is locked out or its email address is not yet verified, and
+   * RESOURCE_EXHAUSTED past the per-IP rate limit.
    *
    * @generated from rpc hades.api.auth.v1.AuthenticationService.Login
    */
@@ -458,7 +482,12 @@ export const AuthenticationService: GenService<{
   },
   /**
    * Register creates a new user account and sends a verification email.
-   * Returns ALREADY_EXISTS if the username or email is taken.
+   *
+   * Returns ALREADY_EXISTS if the username or email is taken,
+   * INVALID_ARGUMENT if the username is reserved or the password is shorter
+   * than the configured minimum, and RESOURCE_EXHAUSTED past the per-IP rate
+   * limit. Registration succeeds even if the verification email cannot be sent;
+   * use ResendVerificationEmail in that case.
    *
    * @generated from rpc hades.api.auth.v1.AuthenticationService.Register
    */
@@ -470,6 +499,9 @@ export const AuthenticationService: GenService<{
   /**
    * Signin is kept for backwards compatibility. New clients must use Register.
    *
+   * Deprecated: it delegates to Register with identical behaviour and rate
+   * limits, and reports only success or failure instead of the new user id.
+   *
    * @generated from rpc hades.api.auth.v1.AuthenticationService.Signin
    */
   signin: {
@@ -479,6 +511,8 @@ export const AuthenticationService: GenService<{
   },
   /**
    * Logout revokes the session associated with the caller's Bearer token.
+   * Callable while a session is still pending TOTP verification, so a session
+   * stuck at the second-factor prompt can be ended rather than left to expire.
    *
    * @generated from rpc hades.api.auth.v1.AuthenticationService.Logout
    */
@@ -491,6 +525,9 @@ export const AuthenticationService: GenService<{
    * VerifyEmail consumes the single-use token from a verification email and
    * marks the account's email address as verified.
    *
+   * Returns NOT_FOUND if the token was never issued and INVALID_ARGUMENT if it
+   * has already been used or has expired.
+   *
    * @generated from rpc hades.api.auth.v1.AuthenticationService.VerifyEmail
    */
   verifyEmail: {
@@ -500,7 +537,11 @@ export const AuthenticationService: GenService<{
   },
   /**
    * ResendVerificationEmail sends a new verification email to the authenticated
-   * user. Can be called before email_verified_at is set.
+   * user. Callable while the account's email is still unverified, which is the
+   * only other state in which a session may act.
+   *
+   * Returns INVALID_ARGUMENT if the address is already verified and
+   * RESOURCE_EXHAUSTED past the per-user rate limit.
    *
    * @generated from rpc hades.api.auth.v1.AuthenticationService.ResendVerificationEmail
    */
@@ -510,8 +551,9 @@ export const AuthenticationService: GenService<{
     output: typeof ResendVerificationEmailResponseSchema;
   },
   /**
-   * RequestPasswordReset sends a password-reset email to the given address.
-   * Always succeeds to avoid leaking whether an address is registered.
+   * RequestPasswordReset emails a single-use reset token to the given address.
+   * Always succeeds to avoid leaking whether an address is registered, except
+   * for RESOURCE_EXHAUSTED past the per-IP rate limit.
    *
    * @generated from rpc hades.api.auth.v1.AuthenticationService.RequestPasswordReset
    */
@@ -522,7 +564,11 @@ export const AuthenticationService: GenService<{
   },
   /**
    * ResetPassword consumes a single-use reset token and replaces the password.
-   * Returns UNAUTHENTICATED if the token is expired or already used.
+   * All of the account's existing sessions are revoked, and any login lockout
+   * is cleared so the owner can sign in again immediately.
+   *
+   * Returns NOT_FOUND if the token was never issued and INVALID_ARGUMENT if it
+   * has already been used, has expired, or the new password is too short.
    *
    * @generated from rpc hades.api.auth.v1.AuthenticationService.ResetPassword
    */
@@ -534,6 +580,8 @@ export const AuthenticationService: GenService<{
   /**
    * ChangePassword updates the password for the authenticated user.
    * Optionally revokes all other active sessions.
+   *
+   * Returns UNAUTHENTICATED if old_password does not match.
    *
    * @generated from rpc hades.api.auth.v1.AuthenticationService.ChangePassword
    */

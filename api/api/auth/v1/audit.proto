@@ -2,8 +2,8 @@
 //
 // The audit log is an append-only record of security-relevant actions performed
 // by or on behalf of a user account. Events are never updated or deleted.
-// Callers can page through their own event history using the cursor-based
-// pagination provided by ListAuditLog.
+// Callers can page through their own event history with ListAuditLog, whose
+// page_token is an opaque offset into the caller's events ordered newest first.
 
 syntax = "proto3";
 
@@ -15,7 +15,9 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "gen/api/auth/v1";
 
-// AuditEventType enumerates all security-relevant events recorded by the audit log.
+// AuditEventType enumerates the security-relevant events the audit log can
+// record. Not every value is emitted yet: MODULE_CREATED and MODULE_UPDATED
+// are reserved for module writes, which do not currently write audit rows.
 enum AuditEventType {
   AUDIT_EVENT_TYPE_UNSPECIFIED            = 0;
   AUDIT_EVENT_TYPE_LOGIN_SUCCESS          = 1;
@@ -42,9 +44,10 @@ message AuditEvent {
   string id = 1;
   // Machine-readable event type.
   AuditEventType event_type = 2;
-  // IP address of the client that triggered the event.
+  // IP address of the client that triggered the event. Empty for events not
+  // raised on the authentication path, which is where the address is resolved.
   string ip_address = 3;
-  // User-Agent of the client, if available.
+  // User-Agent of the client. Empty under the same conditions as ip_address.
   string user_agent = 4;
   // Arbitrary event-specific key-value data (e.g. token ID, module name).
   google.protobuf.Struct metadata = 5;
@@ -77,8 +80,11 @@ message ListAuditLogResponse {
 //
 // Only the events belonging to the caller are accessible. Administrators
 // querying events on behalf of other users must use an out-of-band mechanism.
+//
+// Requires an interactive session token (hds_sess_); personal API tokens are
+// rejected, so a leaked token cannot read the owner's security history.
 service AuditService {
-  // ListAuditLog returns audit events for the authenticated user, newest first.
-  // Supports cursor-based pagination via page_size and page_token.
+  // ListAuditLog returns a page of audit events for the authenticated user,
+  // newest first, via page_size and page_token.
   rpc ListAuditLog(ListAuditLogRequest) returns (ListAuditLogResponse);
 }

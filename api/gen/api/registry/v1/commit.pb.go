@@ -201,13 +201,17 @@ type Commit struct {
 	UpdateTime *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
 	// UUID of the user or organization that owns the module.
 	OwnerId string `protobuf:"bytes,5,opt,name=owner_id,json=ownerId,proto3" json:"owner_id,omitempty"`
-	// Full owner record, populated in read responses.
+	// Owner record. Only username is populated; use UserService.GetUser or
+	// OrgService.GetOrg for the full profile.
 	Owner *v1.User `protobuf:"bytes,6,opt,name=owner,proto3" json:"owner,omitempty"`
 	// UUID of the module this commit belongs to.
 	ModuleId string `protobuf:"bytes,7,opt,name=module_id,json=moduleId,proto3" json:"module_id,omitempty"`
-	// Full module record, populated in read responses.
+	// Module record. Only name is populated; use ModuleService.GetModule for the
+	// full record.
 	Module *Module `protobuf:"bytes,8,opt,name=module,proto3" json:"module,omitempty"`
-	// Content digest for integrity verification.
+	// Content digest for integrity verification. The value is empty on the
+	// initial commit that CreateModuleByName seeds, which carries no uploaded
+	// files to digest.
 	Digest *Digest `protobuf:"bytes,9,opt,name=digest,proto3" json:"digest,omitempty"`
 	// UUID of the user who pushed this commit.
 	CreatedByUserId string `protobuf:"bytes,10,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"`
@@ -872,7 +876,10 @@ type ListModuleFilesRequest struct {
 	// Module name (without the owner prefix).
 	Module string `protobuf:"bytes,2,opt,name=module,proto3" json:"module,omitempty"`
 	// Directory to list. Empty string or "." means the repository root.
-	Path          string `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	Path string `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	// Commit to read the tree from. Empty means the default branch head.
+	// The commit must belong to the requested module.
+	CommitHash    string `protobuf:"bytes,4,opt,name=commit_hash,json=commitHash,proto3" json:"commit_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -924,6 +931,13 @@ func (x *ListModuleFilesRequest) GetModule() string {
 func (x *ListModuleFilesRequest) GetPath() string {
 	if x != nil {
 		return x.Path
+	}
+	return ""
+}
+
+func (x *ListModuleFilesRequest) GetCommitHash() string {
+	if x != nil {
+		return x.CommitHash
 	}
 	return ""
 }
@@ -981,7 +995,10 @@ type GetFileContentRequest struct {
 	// Module name (without the owner prefix).
 	Module string `protobuf:"bytes,2,opt,name=module,proto3" json:"module,omitempty"`
 	// Full file path from the repository root.
-	Path          string `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	Path string `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	// Commit to read the file from. Empty means the default branch head.
+	// The commit must belong to the requested module.
+	CommitHash    string `protobuf:"bytes,4,opt,name=commit_hash,json=commitHash,proto3" json:"commit_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1033,6 +1050,13 @@ func (x *GetFileContentRequest) GetModule() string {
 func (x *GetFileContentRequest) GetPath() string {
 	if x != nil {
 		return x.Path
+	}
+	return ""
+}
+
+func (x *GetFileContentRequest) GetCommitHash() string {
+	if x != nil {
+		return x.CommitHash
 	}
 	return ""
 }
@@ -1154,17 +1178,21 @@ const file_api_registry_v1_commit_proto_rawDesc = "" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x128\n" +
 	"\x04type\x18\x03 \x01(\x0e2$.hades.api.registry.v1.FileEntryTypeR\x04type\x12\x10\n" +
 	"\x03oid\x18\x04 \x01(\tR\x03oid\x12\x12\n" +
-	"\x04mode\x18\x05 \x01(\x05R\x04mode\"l\n" +
+	"\x04mode\x18\x05 \x01(\x05R\x04mode\"\x8d\x01\n" +
 	"\x16ListModuleFilesRequest\x12\x1d\n" +
 	"\x05owner\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05owner\x12\x1f\n" +
 	"\x06module\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06module\x12\x12\n" +
-	"\x04path\x18\x03 \x01(\tR\x04path\"U\n" +
+	"\x04path\x18\x03 \x01(\tR\x04path\x12\x1f\n" +
+	"\vcommit_hash\x18\x04 \x01(\tR\n" +
+	"commitHash\"U\n" +
 	"\x17ListModuleFilesResponse\x12:\n" +
-	"\aentries\x18\x01 \x03(\v2 .hades.api.registry.v1.FileEntryR\aentries\"t\n" +
+	"\aentries\x18\x01 \x03(\v2 .hades.api.registry.v1.FileEntryR\aentries\"\x95\x01\n" +
 	"\x15GetFileContentRequest\x12\x1d\n" +
 	"\x05owner\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05owner\x12\x1f\n" +
 	"\x06module\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06module\x12\x1b\n" +
-	"\x04path\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04path\"F\n" +
+	"\x04path\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04path\x12\x1f\n" +
+	"\vcommit_hash\x18\x04 \x01(\tR\n" +
+	"commitHash\"F\n" +
 	"\x16GetFileContentResponse\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\fR\acontent\x12\x12\n" +
 	"\x04size\x18\x02 \x01(\x03R\x04size*=\n" +

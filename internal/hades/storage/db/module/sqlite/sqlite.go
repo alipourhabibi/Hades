@@ -218,3 +218,65 @@ func (m *SQLiteModuleStorage) CountByOwner(ctx context.Context, ownerID string) 
 }
 
 var _ module.Storage = (*SQLiteModuleStorage)(nil)
+
+// visibilityPredicate narrows a module query to rows the caller may plausibly
+// read. See module.Storage.ListVisibleModules: this is a pre-filter, and the
+// OPA policy remains the authority.
+//
+// A module is included when it is public, when the caller owns it, or when the
+// caller holds a role binding whose domain is either the module's full name or
+// the module's owning namespace ("owner/*"). Those are exactly the domain forms
+// AddBasicRoles, AddOrgOwner and AddOrgMemberBinding write.
+const sqliteVisibilityPredicate = `(
+    modules.visibility = 1
+    OR (? <> '' AND modules.owner_id = ?)
+    OR (? <> '' AND EXISTS (
+        SELECT 1 FROM opa_role_bindings b
+        WHERE b.subject = ?
+          AND (b.domain = modules.name
+               OR b.domain = substr(modules.name, 1, instr(modules.name, '/')) || '*')
+    ))
+)`
+
+// ListVisibleModules implements module.Storage.
+func (m *SQLiteModuleStorage) ListVisibleModules(ctx context.Context, ownerUsername, subject, subjectID string, limit, offset int) ([]*registryv1.Module, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// The predicate names each parameter twice, so every value is bound twice.
+	args := []interface{}{subjectID, subjectID, subject, subject}
+
+	var query string
+	if ownerUsername == "" {
+		query = `SELECT ` + sqliteModuleCols + ` FROM modules WHERE ` + sqliteVisibilityPredicate +
+			` ORDER BY modules.create_time DESC LIMIT ? OFFSET ?`
+	} else {
+		query = `SELECT ` + sqliteModuleCols + `
+FROM modules
+JOIN users ON users.id = modules.owner_id
+WHERE users.username = ? AND ` + sqliteVisibilityPredicate + `
+ORDER BY modules.create_time DESC LIMIT ? OFFSET ?`
+		args = append([]interface{}{ownerUsername}, args...)
+	}
+	args = append(args, limit, offset)
+
+	rows, err := m.q(ctx).QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var modules []*registryv1.Module
+	for rows.Next() {
+		mod, err := scanSQLiteModuleRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		modules = append(modules, mod)
+	}
+	return modules, rows.Err()
+}

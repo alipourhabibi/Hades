@@ -25,7 +25,10 @@ type DiskStorage struct {
 // New creates a DiskStorage rooted at root.
 func New(root string) *DiskStorage {
 	if root == "" {
-		root = "./data/artifacts"
+		// Underscore-prefixed so the go tool ignores the tree: generated SDKs are
+		// Go source, and two of them in one directory can declare conflicting
+		// package names, which breaks `go build ./...` for the whole module.
+		root = "./_data/artifacts"
 	}
 	return &DiskStorage{root: root}
 }
@@ -94,6 +97,30 @@ func (d *DiskStorage) Download(_ context.Context, key string) ([]*sdkstorage.Fil
 		return nil
 	})
 	return files, err
+}
+
+// ListFiles returns the relative paths of every file stored under keyPrefix.
+func (d *DiskStorage) ListFiles(_ context.Context, keyPrefix string) ([]string, error) {
+	dir := d.keyDir(keyPrefix)
+	var paths []string
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		paths = append(paths, filepath.ToSlash(rel))
+		return nil
+	})
+	return paths, err
 }
 
 // GetFile streams a single artifact identified by its exact key path.

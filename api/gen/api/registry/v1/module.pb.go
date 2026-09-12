@@ -202,7 +202,7 @@ type Module struct {
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	// When the module metadata was last updated.
 	UpdateTime *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
-	// Fully qualified module name in the form "{owner}/{module}".
+	// Fully qualified module name in the form "{owner}/{module}", lowercase.
 	// Unique across the registry.
 	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	// UUID of the user or organization that owns this module.
@@ -412,12 +412,20 @@ func (x *ModuleRef) GetModule() string {
 	return ""
 }
 
-// CreateModuleByNameRequest creates a new module owned by the authenticated user.
+// CreateModuleByNameRequest creates a new module in the caller's namespace or
+// in an organisation they may write to.
 type CreateModuleByNameRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Short module name. Must be unique within the owner's namespace.
+	// Short module name, lowercased by the server. Must be unique within the
+	// owner's namespace.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// Visibility for the new module. Defaults to PUBLIC when unspecified.
+	// Namespace to create the module in: either the caller's own username or an
+	// organisation the caller may create modules in. Lowercased and trimmed;
+	// empty means the caller's own namespace.
+	Owner string `protobuf:"bytes,7,opt,name=owner,proto3" json:"owner,omitempty"`
+	// Visibility for the new module. Stored as given: leaving it UNSPECIFIED
+	// records UNSPECIFIED, which no read path treats as public. Set it
+	// explicitly.
 	Visibility ModuleVisibility `protobuf:"varint,2,opt,name=visibility,proto3,enum=hades.api.registry.v1.ModuleVisibility" json:"visibility,omitempty"`
 	// Optional human-readable description.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
@@ -425,7 +433,9 @@ type CreateModuleByNameRequest struct {
 	DefaultBranch string `protobuf:"bytes,4,opt,name=default_branch,json=defaultBranch,proto3" json:"default_branch,omitempty"`
 	// Lint rule set to enforce on upload. Defaults to DEFAULT when unspecified.
 	LintPreset LintPreset `protobuf:"varint,5,opt,name=lint_preset,json=lintPreset,proto3,enum=hades.api.registry.v1.LintPreset" json:"lint_preset,omitempty"`
-	// Whether backward-compatibility checks are enforced on upload. Defaults to true.
+	// Whether backward-compatibility checks are enforced on upload. Defaults to
+	// false, since an unset proto3 bool is indistinguishable from an explicit
+	// false; send true to enable them.
 	BreakingEnabled bool `protobuf:"varint,6,opt,name=breaking_enabled,json=breakingEnabled,proto3" json:"breaking_enabled,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -464,6 +474,13 @@ func (*CreateModuleByNameRequest) Descriptor() ([]byte, []int) {
 func (x *CreateModuleByNameRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateModuleByNameRequest) GetOwner() string {
+	if x != nil {
+		return x.Owner
 	}
 	return ""
 }
@@ -933,9 +950,10 @@ const file_api_registry_v1_module_proto_rawDesc = "" +
 	"\tModuleRef\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05owner\x18\x02 \x01(\tR\x05owner\x12\x16\n" +
-	"\x06module\x18\x03 \x01(\tR\x06module\"\xb8\x02\n" +
+	"\x06module\x18\x03 \x01(\tR\x06module\"\xce\x02\n" +
 	"\x19CreateModuleByNameRequest\x12\x1a\n" +
-	"\x04name\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x04name\x12G\n" +
+	"\x04name\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x04name\x12\x14\n" +
+	"\x05owner\x18\a \x01(\tR\x05owner\x12G\n" +
 	"\n" +
 	"visibility\x18\x02 \x01(\x0e2'.hades.api.registry.v1.ModuleVisibilityR\n" +
 	"visibility\x12 \n" +

@@ -65,7 +65,9 @@ export type SDKJob = Message<"hades.api.registry.v1.SDKJob"> & {
   plugin: string;
 
   /**
-   * Job lifecycle status: "pending", "running", "succeeded", "failed", "dead".
+   * Job lifecycle status: "pending", "running", "succeeded", "failed", or
+   * "dead". A failed job is retried; "dead" means the retry budget is spent
+   * and it will not be attempted again.
    *
    * @generated from field: string status = 6;
    */
@@ -93,7 +95,8 @@ export type SDKJob = Message<"hades.api.registry.v1.SDKJob"> & {
   createTime?: Timestamp;
 
   /**
-   * When the job last transitioned to a terminal state (succeeded or failed).
+   * When the job last reached a terminal state (succeeded, failed, or dead).
+   * Unset while the job is pending or running.
    *
    * @generated from field: google.protobuf.Timestamp update_time = 10;
    */
@@ -160,16 +163,23 @@ export const ListSDKsResponseSchema: GenMessage<ListSDKsResponse> = /*@__PURE__*
  * SDKService exposes SDK generation job status for schema modules.
  *
  * Jobs are created automatically on each module push; there is no RPC to
- * create them manually. Poll ListSDKs to wait for a job to reach a terminal
- * state before downloading the artifact.
+ * create them manually, and none to fetch an artifact: generated SDKs are
+ * served over the Go module proxy endpoint, not through this service. Poll
+ * ListSDKs to wait for a job to reach a terminal state first.
+ *
+ * Readable anonymously, subject to the same per-module read check as the rest
+ * of the registry: a private module the caller cannot read is reported as
+ * NOT_FOUND.
  *
  * @generated from service hades.api.registry.v1.SDKService
  */
 export const SDKService: GenService<{
   /**
-   * ListSDKs returns all SDK generation jobs for the given module, ordered
-   * newest first. Returns NOT_FOUND if the module does not exist or the
-   * caller cannot read it.
+   * ListSDKs returns every SDK generation job for the given module, ordered
+   * newest first, including jobs that are still pending or have failed. There
+   * is no pagination.
+   *
+   * Returns NOT_FOUND if the module does not exist or the caller cannot read it.
    *
    * @generated from rpc hades.api.registry.v1.SDKService.ListSDKs
    */

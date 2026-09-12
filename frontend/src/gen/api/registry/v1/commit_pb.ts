@@ -26,7 +26,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file api/registry/v1/commit.proto.
  */
 export const file_api_registry_v1_commit: GenFile = /*@__PURE__*/
-  fileDesc("ChxhcGkvcmVnaXN0cnkvdjEvY29tbWl0LnByb3RvEhVoYWRlcy5hcGkucmVnaXN0cnkudjEiSAoGRGlnZXN0Ei8KBHR5cGUYASABKA4yIS5oYWRlcy5hcGkucmVnaXN0cnkudjEuRGlnZXN0VHlwZRINCgV2YWx1ZRgCIAEoDCLyAgoGQ29tbWl0EgoKAmlkGAEgASgJEhMKC2NvbW1pdF9oYXNoGAIgASgJEi8KC2NyZWF0ZV90aW1lGAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIvCgt1cGRhdGVfdGltZRgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEAoIb3duZXJfaWQYBSABKAkSKgoFb3duZXIYBiABKAsyGy5oYWRlcy5hcGkuaWRlbnRpdHkudjEuVXNlchIRCgltb2R1bGVfaWQYByABKAkSLQoGbW9kdWxlGAggASgLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZRItCgZkaWdlc3QYCSABKAsyHS5oYWRlcy5hcGkucmVnaXN0cnkudjEuRGlnZXN0EhoKEmNyZWF0ZWRfYnlfdXNlcl9pZBgKIAEoCRIaChJzb3VyY2VfY29udHJvbF91cmwYCyABKAkiagoSTGlzdENvbW1pdHNSZXF1ZXN0EhUKBW93bmVyGAEgASgJQga6SAPIAQESFgoGbW9kdWxlGAIgASgJQga6SAPIAQESEQoJcGFnZV9zaXplGAMgASgFEhIKCnBhZ2VfdG9rZW4YBCABKAkiXgoTTGlzdENvbW1pdHNSZXNwb25zZRIuCgdjb21taXRzGAEgAygLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkNvbW1pdBIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkiLwoQR2V0Q29tbWl0UmVxdWVzdBIbCgtjb21taXRfaGFzaBgBIAEoCUIGukgDyAEBIkIKEUdldENvbW1pdFJlc3BvbnNlEi0KBmNvbW1pdBgBIAEoCzIdLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Db21taXQizQEKCEZpbGVEaWZmEhEKCWZyb21fcGF0aBgBIAEoCRIPCgd0b19wYXRoGAIgASgJEhMKC2lzX25ld19maWxlGAMgASgIEhcKD2lzX2RlbGV0ZWRfZmlsZRgEIAEoCBIXCg9pc19yZW5hbWVkX2ZpbGUYBSABKAgSEQoJYWRkaXRpb25zGAYgASgFEhEKCWRlbGV0aW9ucxgHIAEoBRINCgVwYXRjaBgIIAEoCRIOCgZiaW5hcnkYCSABKAgSEQoJdG9vX2xhcmdlGAogASgIIjQKFEdldENvbW1pdERpZmZSZXF1ZXN0EhwKC2NvbW1pdF9oYXNoGAEgASgJQge6SARyAhABInkKFUdldENvbW1pdERpZmZSZXNwb25zZRIuCgVkaWZmcxgBIAMoCzIfLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5GaWxlRGlmZhIXCg90b3RhbF9hZGRpdGlvbnMYAiABKAUSFwoPdG90YWxfZGVsZXRpb25zGAMgASgFInYKCUZpbGVFbnRyeRIMCgRuYW1lGAEgASgJEgwKBHBhdGgYAiABKAkSMgoEdHlwZRgDIAEoDjIkLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5GaWxlRW50cnlUeXBlEgsKA29pZBgEIAEoCRIMCgRtb2RlGAUgASgFIlcKFkxpc3RNb2R1bGVGaWxlc1JlcXVlc3QSFgoFb3duZXIYASABKAlCB7pIBHICEAESFwoGbW9kdWxlGAIgASgJQge6SARyAhABEgwKBHBhdGgYAyABKAkiTAoXTGlzdE1vZHVsZUZpbGVzUmVzcG9uc2USMQoHZW50cmllcxgBIAMoCzIgLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5GaWxlRW50cnkiXwoVR2V0RmlsZUNvbnRlbnRSZXF1ZXN0EhYKBW93bmVyGAEgASgJQge6SARyAhABEhcKBm1vZHVsZRgCIAEoCUIHukgEcgIQARIVCgRwYXRoGAMgASgJQge6SARyAhABIjcKFkdldEZpbGVDb250ZW50UmVzcG9uc2USDwoHY29udGVudBgBIAEoDBIMCgRzaXplGAIgASgDKj0KCkRpZ2VzdFR5cGUSGwoXRElHRVNUX1RZUEVfVU5TUEVDSUZJRUQQABISCg5ESUdFU1RfVFlQRV9CNRABKmMKDUZpbGVFbnRyeVR5cGUSHwobRklMRV9FTlRSWV9UWVBFX1VOU1BFQ0lGSUVEEAASGAoURklMRV9FTlRSWV9UWVBFX0ZJTEUQARIXChNGSUxFX0VOVFJZX1RZUEVfRElSEAIyogQKDUNvbW1pdFNlcnZpY2USZAoLTGlzdENvbW1pdHMSKS5oYWRlcy5hcGkucmVnaXN0cnkudjEuTGlzdENvbW1pdHNSZXF1ZXN0GiouaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkxpc3RDb21taXRzUmVzcG9uc2USXgoJR2V0Q29tbWl0EicuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkdldENvbW1pdFJlcXVlc3QaKC5oYWRlcy5hcGkucmVnaXN0cnkudjEuR2V0Q29tbWl0UmVzcG9uc2USagoNR2V0Q29tbWl0RGlmZhIrLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5HZXRDb21taXREaWZmUmVxdWVzdBosLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5HZXRDb21taXREaWZmUmVzcG9uc2UScAoPTGlzdE1vZHVsZUZpbGVzEi0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkxpc3RNb2R1bGVGaWxlc1JlcXVlc3QaLi5oYWRlcy5hcGkucmVnaXN0cnkudjEuTGlzdE1vZHVsZUZpbGVzUmVzcG9uc2USbQoOR2V0RmlsZUNvbnRlbnQSLC5oYWRlcy5hcGkucmVnaXN0cnkudjEuR2V0RmlsZUNvbnRlbnRSZXF1ZXN0Gi0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkdldEZpbGVDb250ZW50UmVzcG9uc2VC4gEKGWNvbS5oYWRlcy5hcGkucmVnaXN0cnkudjFCC0NvbW1pdFByb3RvUAFaQWdpdGh1Yi5jb20vYWxpcG91cmhhYmliaS9IYWRlcy9hcGkvZ2VuL2FwaS9yZWdpc3RyeS92MTtyZWdpc3RyeXYxogIDSEFSqgIVSGFkZXMuQXBpLlJlZ2lzdHJ5LlYxygIVSGFkZXNcQXBpXFJlZ2lzdHJ5XFYx4gIhSGFkZXNcQXBpXFJlZ2lzdHJ5XFYxXEdQQk1ldGFkYXRh6gIYSGFkZXM6OkFwaTo6UmVnaXN0cnk6OlYxYgZwcm90bzM", [file_api_identity_v1_user, file_api_registry_v1_module, file_buf_validate_validate, file_google_protobuf_timestamp]);
+  fileDesc("ChxhcGkvcmVnaXN0cnkvdjEvY29tbWl0LnByb3RvEhVoYWRlcy5hcGkucmVnaXN0cnkudjEiSAoGRGlnZXN0Ei8KBHR5cGUYASABKA4yIS5oYWRlcy5hcGkucmVnaXN0cnkudjEuRGlnZXN0VHlwZRINCgV2YWx1ZRgCIAEoDCLyAgoGQ29tbWl0EgoKAmlkGAEgASgJEhMKC2NvbW1pdF9oYXNoGAIgASgJEi8KC2NyZWF0ZV90aW1lGAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIvCgt1cGRhdGVfdGltZRgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEAoIb3duZXJfaWQYBSABKAkSKgoFb3duZXIYBiABKAsyGy5oYWRlcy5hcGkuaWRlbnRpdHkudjEuVXNlchIRCgltb2R1bGVfaWQYByABKAkSLQoGbW9kdWxlGAggASgLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLk1vZHVsZRItCgZkaWdlc3QYCSABKAsyHS5oYWRlcy5hcGkucmVnaXN0cnkudjEuRGlnZXN0EhoKEmNyZWF0ZWRfYnlfdXNlcl9pZBgKIAEoCRIaChJzb3VyY2VfY29udHJvbF91cmwYCyABKAkiagoSTGlzdENvbW1pdHNSZXF1ZXN0EhUKBW93bmVyGAEgASgJQga6SAPIAQESFgoGbW9kdWxlGAIgASgJQga6SAPIAQESEQoJcGFnZV9zaXplGAMgASgFEhIKCnBhZ2VfdG9rZW4YBCABKAkiXgoTTGlzdENvbW1pdHNSZXNwb25zZRIuCgdjb21taXRzGAEgAygLMh0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkNvbW1pdBIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkiLwoQR2V0Q29tbWl0UmVxdWVzdBIbCgtjb21taXRfaGFzaBgBIAEoCUIGukgDyAEBIkIKEUdldENvbW1pdFJlc3BvbnNlEi0KBmNvbW1pdBgBIAEoCzIdLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5Db21taXQizQEKCEZpbGVEaWZmEhEKCWZyb21fcGF0aBgBIAEoCRIPCgd0b19wYXRoGAIgASgJEhMKC2lzX25ld19maWxlGAMgASgIEhcKD2lzX2RlbGV0ZWRfZmlsZRgEIAEoCBIXCg9pc19yZW5hbWVkX2ZpbGUYBSABKAgSEQoJYWRkaXRpb25zGAYgASgFEhEKCWRlbGV0aW9ucxgHIAEoBRINCgVwYXRjaBgIIAEoCRIOCgZiaW5hcnkYCSABKAgSEQoJdG9vX2xhcmdlGAogASgIIjQKFEdldENvbW1pdERpZmZSZXF1ZXN0EhwKC2NvbW1pdF9oYXNoGAEgASgJQge6SARyAhABInkKFUdldENvbW1pdERpZmZSZXNwb25zZRIuCgVkaWZmcxgBIAMoCzIfLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5GaWxlRGlmZhIXCg90b3RhbF9hZGRpdGlvbnMYAiABKAUSFwoPdG90YWxfZGVsZXRpb25zGAMgASgFInYKCUZpbGVFbnRyeRIMCgRuYW1lGAEgASgJEgwKBHBhdGgYAiABKAkSMgoEdHlwZRgDIAEoDjIkLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5GaWxlRW50cnlUeXBlEgsKA29pZBgEIAEoCRIMCgRtb2RlGAUgASgFImwKFkxpc3RNb2R1bGVGaWxlc1JlcXVlc3QSFgoFb3duZXIYASABKAlCB7pIBHICEAESFwoGbW9kdWxlGAIgASgJQge6SARyAhABEgwKBHBhdGgYAyABKAkSEwoLY29tbWl0X2hhc2gYBCABKAkiTAoXTGlzdE1vZHVsZUZpbGVzUmVzcG9uc2USMQoHZW50cmllcxgBIAMoCzIgLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5GaWxlRW50cnkidAoVR2V0RmlsZUNvbnRlbnRSZXF1ZXN0EhYKBW93bmVyGAEgASgJQge6SARyAhABEhcKBm1vZHVsZRgCIAEoCUIHukgEcgIQARIVCgRwYXRoGAMgASgJQge6SARyAhABEhMKC2NvbW1pdF9oYXNoGAQgASgJIjcKFkdldEZpbGVDb250ZW50UmVzcG9uc2USDwoHY29udGVudBgBIAEoDBIMCgRzaXplGAIgASgDKj0KCkRpZ2VzdFR5cGUSGwoXRElHRVNUX1RZUEVfVU5TUEVDSUZJRUQQABISCg5ESUdFU1RfVFlQRV9CNRABKmMKDUZpbGVFbnRyeVR5cGUSHwobRklMRV9FTlRSWV9UWVBFX1VOU1BFQ0lGSUVEEAASGAoURklMRV9FTlRSWV9UWVBFX0ZJTEUQARIXChNGSUxFX0VOVFJZX1RZUEVfRElSEAIyogQKDUNvbW1pdFNlcnZpY2USZAoLTGlzdENvbW1pdHMSKS5oYWRlcy5hcGkucmVnaXN0cnkudjEuTGlzdENvbW1pdHNSZXF1ZXN0GiouaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkxpc3RDb21taXRzUmVzcG9uc2USXgoJR2V0Q29tbWl0EicuaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkdldENvbW1pdFJlcXVlc3QaKC5oYWRlcy5hcGkucmVnaXN0cnkudjEuR2V0Q29tbWl0UmVzcG9uc2USagoNR2V0Q29tbWl0RGlmZhIrLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5HZXRDb21taXREaWZmUmVxdWVzdBosLmhhZGVzLmFwaS5yZWdpc3RyeS52MS5HZXRDb21taXREaWZmUmVzcG9uc2UScAoPTGlzdE1vZHVsZUZpbGVzEi0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkxpc3RNb2R1bGVGaWxlc1JlcXVlc3QaLi5oYWRlcy5hcGkucmVnaXN0cnkudjEuTGlzdE1vZHVsZUZpbGVzUmVzcG9uc2USbQoOR2V0RmlsZUNvbnRlbnQSLC5oYWRlcy5hcGkucmVnaXN0cnkudjEuR2V0RmlsZUNvbnRlbnRSZXF1ZXN0Gi0uaGFkZXMuYXBpLnJlZ2lzdHJ5LnYxLkdldEZpbGVDb250ZW50UmVzcG9uc2VC4gEKGWNvbS5oYWRlcy5hcGkucmVnaXN0cnkudjFCC0NvbW1pdFByb3RvUAFaQWdpdGh1Yi5jb20vYWxpcG91cmhhYmliaS9IYWRlcy9hcGkvZ2VuL2FwaS9yZWdpc3RyeS92MTtyZWdpc3RyeXYxogIDSEFSqgIVSGFkZXMuQXBpLlJlZ2lzdHJ5LlYxygIVSGFkZXNcQXBpXFJlZ2lzdHJ5XFYx4gIhSGFkZXNcQXBpXFJlZ2lzdHJ5XFYxXEdQQk1ldGFkYXRh6gIYSGFkZXM6OkFwaTo6UmVnaXN0cnk6OlYxYgZwcm90bzM", [file_api_identity_v1_user, file_api_registry_v1_module, file_buf_validate_validate, file_google_protobuf_timestamp]);
 
 /**
  * Digest is a content-addressed identifier for a set of .proto files.
@@ -98,7 +98,8 @@ export type Commit = Message<"hades.api.registry.v1.Commit"> & {
   ownerId: string;
 
   /**
-   * Full owner record, populated in read responses.
+   * Owner record. Only username is populated; use UserService.GetUser or
+   * OrgService.GetOrg for the full profile.
    *
    * @generated from field: hades.api.identity.v1.User owner = 6;
    */
@@ -112,14 +113,17 @@ export type Commit = Message<"hades.api.registry.v1.Commit"> & {
   moduleId: string;
 
   /**
-   * Full module record, populated in read responses.
+   * Module record. Only name is populated; use ModuleService.GetModule for the
+   * full record.
    *
    * @generated from field: hades.api.registry.v1.Module module = 8;
    */
   module?: Module;
 
   /**
-   * Content digest for integrity verification.
+   * Content digest for integrity verification. The value is empty on the
+   * initial commit that CreateModuleByName seeds, which carries no uploaded
+   * files to digest.
    *
    * @generated from field: hades.api.registry.v1.Digest digest = 9;
    */
@@ -474,6 +478,14 @@ export type ListModuleFilesRequest = Message<"hades.api.registry.v1.ListModuleFi
    * @generated from field: string path = 3;
    */
   path: string;
+
+  /**
+   * Commit to read the tree from. Empty means the default branch head.
+   * The commit must belong to the requested module.
+   *
+   * @generated from field: string commit_hash = 4;
+   */
+  commitHash: string;
 };
 
 /**
@@ -528,6 +540,14 @@ export type GetFileContentRequest = Message<"hades.api.registry.v1.GetFileConten
    * @generated from field: string path = 3;
    */
   path: string;
+
+  /**
+   * Commit to read the file from. Empty means the default branch head.
+   * The commit must belong to the requested module.
+   *
+   * @generated from field: string commit_hash = 4;
+   */
+  commitHash: string;
 };
 
 /**
@@ -628,11 +648,16 @@ export const FileEntryTypeSchema: GenEnum<FileEntryType> = /*@__PURE__*/
  * Commits are immutable once created. The digest field allows clients to
  * verify content integrity independent of the transport layer.
  *
+ * Every RPC here is readable anonymously and enforces read access per module,
+ * so a private module a caller cannot read is reported as NOT_FOUND rather
+ * than PERMISSION_DENIED. Commit hashes are unique registry-wide, so any RPC
+ * taking one also checks that the commit belongs to the named module.
+ *
  * @generated from service hades.api.registry.v1.CommitService
  */
 export const CommitService: GenService<{
   /**
-   * ListCommits returns all commits for the given module, ordered newest first.
+   * ListCommits returns a page of commits for the given module, newest first.
    * Returns NOT_FOUND if the module does not exist or the caller cannot read it.
    *
    * @generated from rpc hades.api.registry.v1.CommitService.ListCommits
@@ -667,9 +692,12 @@ export const CommitService: GenService<{
     output: typeof GetCommitDiffResponseSchema;
   },
   /**
-   * ListModuleFiles returns the depth-1 contents of a directory inside the
-   * latest commit of a module repository.
-   * Returns NOT_FOUND if the module or path does not exist.
+   * ListModuleFiles returns the depth-1 contents of a directory in the module
+   * repository, read from commit_hash or from the default branch head when
+   * that is empty.
+   *
+   * Returns NOT_FOUND if the module or path does not exist, or if commit_hash
+   * is unknown or belongs to a different module.
    *
    * @generated from rpc hades.api.registry.v1.CommitService.ListModuleFiles
    */
@@ -679,8 +707,9 @@ export const CommitService: GenService<{
     output: typeof ListModuleFilesResponseSchema;
   },
   /**
-   * GetFileContent returns the raw content of a single file by its path.
-   * Returns NOT_FOUND if the module or file path does not exist.
+   * GetFileContent returns the raw content of a single file by its path, read
+   * from commit_hash or from the default branch head when that is empty.
+   * Returns NOT_FOUND if the module, commit, or file path does not exist.
    *
    * @generated from rpc hades.api.registry.v1.CommitService.GetFileContent
    */
