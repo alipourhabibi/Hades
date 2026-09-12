@@ -2,12 +2,33 @@
 .env
 .env.local
 .env.*.local
-config/prod.yaml
 .git
+.github/
 Dockerfile
+Dockerfile.migrate
 .dockerignore
 frontend/
 development/
 *.log
 hades
 tmp/
+
+# Configuration carrying credentials. The Dockerfile does `COPY . /app`, so
+# anything not excluded here lands in the builder layer and stays recoverable
+# from the image history even if a later stage does not copy it forward.
+config/prod.yaml
+config/dev.yaml
+config/*.pem
+config/*-key.pem
+
+# The development SQLite database. It holds user rows, session token hashes and
+# API token hashes; there is no version of "ship it in the image" that is fine.
+hades.db
+hades.db-shm
+hades.db-wal
+*.db
+*.db-shm
+*.db-wal
+
+# Local git repositories and generated SDK artifacts.
+_data/

@@ -1,0 +1,45 @@
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      otel:
+        patterns:
+          - "go.opentelemetry.io/*"
+      grpc-protobuf:
+        patterns:
+          - "google.golang.org/grpc*"
+          - "google.golang.org/protobuf"
+          - "connectrpc.com/*"
+      all-others:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "go.opentelemetry.io/*"
+          - "google.golang.org/grpc*"
+          - "google.golang.org/protobuf"
+          - "connectrpc.com/*"
+
+  - package-ecosystem: npm
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      all:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: monthly

@@ -1,5 +1,6 @@
 ---
-name: Build and Test on PR
+name: CI
+
 on:
   pull_request:
     branches:
@@ -8,31 +9,147 @@ on:
     branches:
       - main
 
+# Least privilege by default.
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25"
+
 jobs:
-  pr-check:
+  build-test:
+    name: Build and test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hades
+          POSTGRES_PASSWORD: hades
+          POSTGRES_DB: hades_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hades"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v7
         with:
-          go-version: 1.25
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
 
       # internal/proto/breaking and internal/proto/lint shell out to the buf
-      # CLI. Without it the tests still run, and they lie: the checker reports
-      # "cannot run buf" the same way it reports "this change is breaking", so
-      # the test that wants an error passes and the test that wants none fails.
+      # CLI. Without it they do not fail cleanly: the checker cannot tell
+      # "buf did not run" from "this change is breaking", so the test that
+      # wants an error passes on the wrong one.
       - name: Set up buf
         uses: bufbuild/buf-setup-action@v1
 
-      - name: Install dependencies
-        run: go mod tidy
+      - name: Check go.mod is tidy
+        run: go mod tidy -diff
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l $(git ls-files '*.go' | grep -v '^api/gen/'))"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
 
       - name: Run tests
-        run: go test ./... -v
+        env:
+          HADES_TEST_POSTGRES_DSN: postgres://hades:hades@localhost:5432/hades_test?sslmode=disable
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Report coverage
+        run: go tool cover -func=coverage.out | tail -1
 
       - name: Build application
         run: go build -o hades ./cmd/hades
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          args: --timeout=10m
+
+  govulncheck:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: govulncheck ./...
+
+  proto:
+    name: Protobuf lint and breaking check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # buf breaking compares against the merge base, which needs history.
+          fetch-depth: 0
+      - uses: bufbuild/buf-setup-action@v1
+      - name: buf lint
+        run: buf lint
+        working-directory: api
+      - name: buf breaking
+        if: github.event_name == 'pull_request'
+        run: buf breaking --against "https://github.com/${{ github.repository }}.git#branch=main,subdir=api"
+        working-directory: api
+
+  opa:
+    name: Authorization policy tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install OPA
+        run: |
+          curl -sSfL -o /usr/local/bin/opa \
+            https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+      - name: Run policy tests
+        run: make test-opa
+
+  frontend:
+    name: Frontend type check and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_DOMAIN: example.com
