@@ -69,16 +69,6 @@ func (s *SQLiteUserStorage) GetByEmail(ctx context.Context, email string) (*iden
 		`SELECT `+sqliteUserColumns+` FROM users WHERE email = ?`, email))
 }
 
-func (s *SQLiteUserStorage) GetBySessionId(ctx context.Context, sessionId string) (*identityv1.User, error) {
-	return scanSQLiteUser(s.q(ctx).QueryRowContext(ctx, `
-SELECT `+sqliteUserColumns+`
-FROM users
-WHERE id = (
-  SELECT user_id FROM sessions
-  WHERE token_hash = ? AND expires_at > datetime('now')
-)`, sessionId))
-}
-
 func (s *SQLiteUserStorage) GetAuthFieldsByUsername(ctx context.Context, username string) (*user.AuthFields, error) {
 	af := &user.AuthFields{}
 	var emailVerifiedAt, lockedUntil sqltypes.NullTime

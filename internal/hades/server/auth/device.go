@@ -24,6 +24,16 @@ const (
 	verificationURL     = "http://localhost:50051/device"
 )
 
+// deviceTokenScopes are the scopes granted to a PAT minted by the device flow.
+// An empty scope list means unrestricted, which is too much for a credential
+// created by typing a code into a browser, so the token is limited to what the
+// buf CLI actually needs: reading modules and pushing to existing ones.
+// Creating or updating modules stays an interactive operation.
+var deviceTokenScopes = []string{
+	string(constants.ResourceModule) + ":" + string(constants.ActionRead),
+	string(constants.ResourceModule) + ":" + string(constants.ActionPush),
+}
+
 func generateUserCode() (string, error) {
 	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, 8)
@@ -41,7 +51,7 @@ func generateUserCode() (string, error) {
 }
 
 func (s *Server) RequestDeviceCode(ctx context.Context, in *connect.Request[v1.RequestDeviceCodeRequest]) (*connect.Response[v1.RequestDeviceCodeResponse], error) {
-	rawDevice, deviceHash, err := utilscrypto.GenerateToken()
+	rawDevice, deviceHash, err := utilscrypto.GenerateToken("")
 	if err != nil {
 		s.logger.Error("failed to generate device code", "error", err, "procedure", "RequestDeviceCode")
 		return nil, connErr.Internal("failed to generate device code")
@@ -99,14 +109,12 @@ func (s *Server) PollDeviceToken(ctx context.Context, in *connect.Request[v1.Pol
 			Msg: &v1.PollDeviceTokenResponse{Token: "already_issued"},
 		}, nil
 	}
-	raw, hash, err := utilscrypto.GenerateToken()
+	fullToken, prefix, tokenHash, err := utilscrypto.GenerateAPIToken()
 	if err != nil {
 		s.logger.Error("failed to generate token", "error", err, "procedure", "PollDeviceToken")
 		return nil, connErr.Internal("failed to generate token")
 	}
-	prefix := fmt.Sprintf("hades1_%s", raw[:8])
-	fullToken := prefix + "_" + raw
-	tokenRow, err := s.apiTokenDB.Create(ctx, *grant.UserID, "device-flow", prefix, hash, nil, nil)
+	tokenRow, err := s.apiTokenDB.Create(ctx, *grant.UserID, "device-flow", prefix, tokenHash, deviceTokenScopes, nil)
 	if err != nil {
 		s.logger.Error("failed to create API token for device flow", "error", err, "procedure", "PollDeviceToken")
 		return nil, connErr.FromPgx(err)

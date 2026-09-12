@@ -1,6 +1,8 @@
 server:
   listenPort: 50051
   registryHost: "example.com" # CHANGE: set to your domain
+  # Serves the unauthenticated gRPC reflection API. Keep off in production.
+  enableReflection: false
 
 backends:
   database: postgres

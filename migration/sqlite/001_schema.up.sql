@@ -28,8 +28,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     auth_module          TEXT NOT NULL DEFAULT '',
     expires_at           DATETIME NOT NULL,
     token_hash           TEXT,
-    old_token_hash       TEXT,
-    old_token_expires_at DATETIME,
     ip_address           TEXT,
     user_agent           TEXT,
     last_activity_at     DATETIME,

@@ -109,7 +109,7 @@ func (s *Server) OAuthCallback(ctx context.Context, in *connect.Request[v1.OAuth
 		userID = identity.UserID
 	}
 
-	raw, hash, err := utilscrypto.GenerateToken()
+	fullToken, tokenHash, err := utilscrypto.GenerateToken(utilscrypto.SessionTokenPrefix)
 	if err != nil {
 		s.logger.Error("failed to generate session token", "error", err, "procedure", "OAuthCallback")
 		return nil, connErr.Internal("failed to generate session token")
@@ -122,7 +122,7 @@ func (s *Server) OAuthCallback(ctx context.Context, in *connect.Request[v1.OAuth
 	if absDays == 0 {
 		absDays = 14
 	}
-	_, err = s.sessionStorage.CreateWithToken(ctx, userID, "oauth:"+pName, hash, "", "", time.Now().Add(time.Duration(idleDays)*24*time.Hour), time.Now().Add(time.Duration(absDays)*24*time.Hour))
+	_, err = s.sessionStorage.CreateWithToken(ctx, userID, "oauth:"+pName, tokenHash, "", "", time.Now().Add(time.Duration(idleDays)*24*time.Hour), time.Now().Add(time.Duration(absDays)*24*time.Hour))
 	if err != nil {
 		s.logger.Error("failed to create session", "error", err, "procedure", "OAuthCallback", "user_id", userID)
 		return nil, connErr.FromPgx(err)
@@ -130,7 +130,7 @@ func (s *Server) OAuthCallback(ctx context.Context, in *connect.Request[v1.OAuth
 
 	return &connect.Response[v1.OAuthCallbackResponse]{
 		Msg: &v1.OAuthCallbackResponse{
-			Login: &v1.LoginResponse{Token: raw},
+			Login: &v1.LoginResponse{Token: fullToken},
 		},
 	}, nil
 }

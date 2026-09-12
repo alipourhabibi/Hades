@@ -42,7 +42,6 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 		[]connect.Interceptor{s.serverSet.AuthorizationServer.NewAuthorizationInterceptor()},
 		base...,
 	)...)
-	noAuth := connect.WithInterceptors(base...)
 
 	reflector := grpcreflect.NewStaticReflector(
 		authv1connect.AuthenticationServiceName,
@@ -68,9 +67,16 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 	// Auth-domain handlers - all served by the single *auth.Server
 	mux.Handle(authv1connect.NewAuthenticationServiceHandler(s.serverSet.AuthServer, withAuth))
 	mux.Handle(authv1connect.NewSessionServiceHandler(s.serverSet.AuthServer, withAuth))
-	mux.Handle(authv1connect.NewOAuthServiceHandler(s.serverSet.AuthServer, noAuth))
+	// OAuth and Device services carry both pre-session procedures (GetOAuthURL,
+	// OAuthCallback, RequestDeviceCode, PollDeviceToken) and procedures that
+	// need an authenticated user (ApproveDeviceGrant, UnlinkProvider,
+	// ListLinkedProviders). They are mounted with the auth interceptor; the
+	// pre-session procedures are exempted by noAuthProcedures in the
+	// interceptor itself. Mounting them without it left the authenticated
+	// procedures permanently unable to see a user.
+	mux.Handle(authv1connect.NewOAuthServiceHandler(s.serverSet.AuthServer, withAuth))
 	mux.Handle(authv1connect.NewAPITokenServiceHandler(s.serverSet.AuthServer, withAuth))
-	mux.Handle(authv1connect.NewDeviceServiceHandler(s.serverSet.AuthServer, noAuth))
+	mux.Handle(authv1connect.NewDeviceServiceHandler(s.serverSet.AuthServer, withAuth))
 	mux.Handle(authv1connect.NewTOTPServiceHandler(s.serverSet.AuthServer, withAuth))
 	mux.Handle(authv1connect.NewAuditServiceHandler(s.serverSet.AuthServer, withAuth))
 
@@ -96,7 +102,11 @@ func (s *SchemaRegistryServer) newServerMux() (*http.ServeMux, error) {
 		mux.Handle("/gen/go/", s.serverSet.GoProxyHandler.GoImportHandler())
 	}
 
-	mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector))
+	// gRPC reflection publishes the full service and method schema to anyone who
+	// can reach the port, so it is opt-in via server.enableReflection.
+	if s.config != nil && s.config.Server.EnableReflection {
+		mux.Handle(grpcreflect.NewHandlerV1Alpha(reflector))
+	}
 
 	return mux, nil
 }

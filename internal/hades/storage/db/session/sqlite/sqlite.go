@@ -7,9 +7,9 @@ import (
 
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/session"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/google/uuid"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 )
 
 // SQLiteSessionStorage implements session.Storage using database/sql with SQLite.
@@ -56,14 +56,13 @@ COALESCE(token_hash,''), COALESCE(ip_address,''), COALESCE(user_agent,''),
 create_time, COALESCE(last_activity_at, create_time),
 COALESCE(absolute_expires_at, expires_at), expires_at,
 revoked_at,
-COALESCE(totp_verified, 0),
-COALESCE(old_token_hash,''), old_token_expires_at
+COALESCE(totp_verified, 0)
 FROM sessions`
 
 func scanSQLiteSession(row *sql.Row) (*session.SessionRow, error) {
 	r := &session.SessionRow{}
 	var createdAt, lastActivityAt, absExpiresAt, idleExpiresAt sqltypes.Time
-	var revokedAt, oldTokenExpiresAt sqltypes.NullTime
+	var revokedAt sqltypes.NullTime
 	var totpVerified int
 	err := row.Scan(
 		&r.ID, &r.UserID, &r.AuthModule,
@@ -71,7 +70,6 @@ func scanSQLiteSession(row *sql.Row) (*session.SessionRow, error) {
 		&createdAt, &lastActivityAt,
 		&absExpiresAt, &idleExpiresAt,
 		&revokedAt, &totpVerified,
-		&r.OldTokenHash, &oldTokenExpiresAt,
 	)
 	if err != nil {
 		return nil, err
@@ -82,7 +80,6 @@ func scanSQLiteSession(row *sql.Row) (*session.SessionRow, error) {
 	r.IdleExpiresAt = idleExpiresAt.V
 	r.RevokedAt = revokedAt.Ptr()
 	r.TOTPVerified = totpVerified != 0
-	r.OldTokenExpiresAt = oldTokenExpiresAt.Ptr()
 	return r, nil
 }
 
@@ -90,23 +87,14 @@ func (s *SQLiteSessionStorage) GetByTokenHash(ctx context.Context, hash string) 
 	return scanSQLiteSession(s.q(ctx).QueryRowContext(ctx, `SELECT `+sqliteSessionCols+` WHERE token_hash = ?`, hash))
 }
 
-func (s *SQLiteSessionStorage) GetByOldTokenHash(ctx context.Context, hash string) (*session.SessionRow, error) {
-	return scanSQLiteSession(s.q(ctx).QueryRowContext(ctx, `SELECT `+sqliteSessionCols+` WHERE old_token_hash = ? AND old_token_expires_at > datetime('now')`, hash))
-}
-
 func (s *SQLiteSessionStorage) GetByID(ctx context.Context, id uuid.UUID) (*session.SessionRow, error) {
 	return scanSQLiteSession(s.q(ctx).QueryRowContext(ctx, `SELECT `+sqliteSessionCols+` WHERE id = ?`, sqlutil.UUID(id)))
 }
 
-func (s *SQLiteSessionStorage) UpdateActivity(ctx context.Context, id, newTokenHash, oldTokenHash string, oldTokenExpires, newIdleExpires time.Time) error {
-	_, err := s.q(ctx).ExecContext(ctx, `
-UPDATE sessions SET
-  token_hash           = ?,
-  old_token_hash       = ?,
-  old_token_expires_at = ?,
-  last_activity_at     = datetime('now'),
-  expires_at           = ?
-WHERE id = ?`, newTokenHash, oldTokenHash, oldTokenExpires, newIdleExpires, id)
+func (s *SQLiteSessionStorage) Touch(ctx context.Context, id string, idleExpires time.Time) error {
+	_, err := s.q(ctx).ExecContext(ctx,
+		`UPDATE sessions SET last_activity_at = datetime('now'), expires_at = ? WHERE id = ? AND revoked_at IS NULL`,
+		idleExpires, id)
 	return err
 }
 
@@ -132,7 +120,7 @@ func (s *SQLiteSessionStorage) ListByUserID(ctx context.Context, userID string) 
 	for rows.Next() {
 		r := &session.SessionRow{}
 		var createdAt, lastActivityAt, absExpiresAt, idleExpiresAt sqltypes.Time
-		var revokedAt, oldTokenExpiresAt sqltypes.NullTime
+		var revokedAt sqltypes.NullTime
 		var totpVerified int
 		if err := rows.Scan(
 			&r.ID, &r.UserID, &r.AuthModule,
@@ -140,7 +128,6 @@ func (s *SQLiteSessionStorage) ListByUserID(ctx context.Context, userID string) 
 			&createdAt, &lastActivityAt,
 			&absExpiresAt, &idleExpiresAt,
 			&revokedAt, &totpVerified,
-			&r.OldTokenHash, &oldTokenExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -150,7 +137,6 @@ func (s *SQLiteSessionStorage) ListByUserID(ctx context.Context, userID string) 
 		r.IdleExpiresAt = idleExpiresAt.V
 		r.RevokedAt = revokedAt.Ptr()
 		r.TOTPVerified = totpVerified != 0
-		r.OldTokenExpiresAt = oldTokenExpiresAt.Ptr()
 		result = append(result, r)
 	}
 	return result, rows.Err()
