@@ -11,7 +11,6 @@ import (
 	"github.com/alipourhabibi/Hades/config"
 	pb "gitlab.com/gitlab-org/gitaly/v16/proto/go/gitalypb"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // ErrTreeNotFound is returned when a requested path or revision is absent from
@@ -26,16 +25,12 @@ type TreeService struct {
 	defaultStorageName string
 }
 
-func newTreeService(c config.Gitaly) (*TreeService, error) {
-	conn, err := grpc.NewClient(gitalyAddr(c), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, err
-	}
+func newTreeService(conn *grpc.ClientConn, c config.Gitaly) *TreeService {
 	return &TreeService{
 		commitClient:       pb.NewCommitServiceClient(conn),
 		blobClient:         pb.NewBlobServiceClient(conn),
 		defaultStorageName: c.DefaultStorageName,
-	}, nil
+	}
 }
 
 // revisionOrHead returns the git revision to read, defaulting to HEAD.
@@ -79,7 +74,7 @@ func (s *TreeService) GetFileContent(ctx context.Context, owner, module, ref, fi
 	var oid string
 	for {
 		resp, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -113,7 +108,7 @@ func (s *TreeService) GetFileContent(ctx context.Context, owner, module, ref, fi
 	var size int64
 	for {
 		msg, err := blobStream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -156,7 +151,7 @@ func (s *TreeService) GetTreeEntries(ctx context.Context, owner, module, ref, di
 	var entries []*registryv1.FileEntry
 	for {
 		resp, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {

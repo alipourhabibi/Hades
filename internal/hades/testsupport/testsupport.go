@@ -71,7 +71,7 @@ func NewEnv(t *testing.T) *Env {
 	}
 
 	repoRoot := filepath.Join(dir, "repos")
-	if err := os.MkdirAll(repoRoot, 0o755); err != nil {
+	if err := os.MkdirAll(repoRoot, 0o750); err != nil {
 		t.Fatalf("testsupport: repo root: %v", err)
 	}
 
@@ -140,8 +140,24 @@ func (e *Env) Commit(t *testing.T, module *registryv1.Module, author *identityv1
 		gitFiles = append(gitFiles, &gitstorage.File{Path: path, Content: []byte(content)})
 	}
 
-	hash, err := e.Git.PutFiles(ctx, module.Name, module.DefaultBranch, gitFiles,
-		author.Username, author.Email, message, nil)
+	// ExpectedHead is read from the branch rather than passed in: this helper
+	// exists to seed fixtures, not to exercise the compare-and-swap.
+	var expectedHead string
+	if commits, err := e.Git.ListCommits(ctx, module.Name, module.DefaultBranch, 1); err == nil && len(commits) > 0 {
+		expectedHead = commits[0].SHA
+	}
+	existing, _ := e.Git.ListFiles(ctx, module.Name, module.DefaultBranch)
+
+	hash, err := e.Git.PutFiles(ctx, gitstorage.PutFilesRequest{
+		RepoPath:      module.Name,
+		Branch:        module.DefaultBranch,
+		Files:         gitFiles,
+		ExistingPaths: existing,
+		AuthorName:    author.Username,
+		AuthorEmail:   author.Email,
+		Message:       message,
+		ExpectedHead:  expectedHead,
+	})
 	if err != nil {
 		t.Fatalf("testsupport: put files in %q: %v", module.Name, err)
 	}

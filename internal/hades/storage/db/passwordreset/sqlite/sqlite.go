@@ -7,9 +7,9 @@ import (
 
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/passwordreset"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/google/uuid"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 )
 
 // SQLitePasswordResetStorage implements passwordreset.Storage using database/sql with SQLite.
@@ -29,6 +29,8 @@ func (s *SQLitePasswordResetStorage) q(ctx context.Context) txkeys.SQLQuerier {
 }
 
 func (s *SQLitePasswordResetStorage) Create(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	_, err := s.q(ctx).ExecContext(ctx,
 		`INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?, ?, ?)`,
 		userID, tokenHash, expiresAt)
@@ -46,8 +48,17 @@ func (s *SQLitePasswordResetStorage) GetByTokenHash(ctx context.Context, tokenHa
 		return nil, err
 	}
 	row.ExpiresAt = expiresAt.V
+	row.UserID = sqlutil.Canonical(row.UserID)
 	row.UsedAt = usedAt.Ptr()
 	return row, nil
+}
+
+// InvalidateForUser retires every outstanding reset token for the user.
+func (s *SQLitePasswordResetStorage) InvalidateForUser(ctx context.Context, userID string) error {
+	_, err := s.q(ctx).ExecContext(ctx,
+		`UPDATE password_resets SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL`,
+		sqlutil.ID(userID))
+	return err
 }
 
 func (s *SQLitePasswordResetStorage) MarkUsed(ctx context.Context, id uuid.UUID) error {

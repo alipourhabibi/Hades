@@ -1,0 +1,12 @@
+-- Record whether the breaking-change comparison actually ran.
+--
+-- Every row was written as (lint_passed, breaking_passed) = (true, true)
+-- regardless of whether a comparison happened, so a commit whose breaking check
+-- was skipped, because the module has them disabled, or the deployment does, or
+-- the commit has no predecessor, was indistinguishable from one that was
+-- compared and came back clean.
+--
+-- Existing rows default to false: nothing recorded whether they ran, and
+-- claiming they did would be inventing the answer this column exists to stop
+-- inventing.
+ALTER TABLE ci_runs ADD COLUMN IF NOT EXISTS breaking_ran BOOLEAN NOT NULL DEFAULT false;

@@ -3,12 +3,19 @@ package hades.authz_test
 import rego.v1
 
 # Shared bindings used across role-based tests.
-role_bindings := [
-	{"subject": "alice", "role": "owner", "domain": "alice/*"},
-	{"subject": "bob", "role": "admin", "domain": "alice/foo"},
-	{"subject": "carol", "role": "contributor", "domain": "alice/foo"},
-	{"subject": "dave", "role": "reader", "domain": "alice/foo"},
-]
+#
+# The shape matters and was wrong: data.role_bindings is a map keyed by
+# subject, because hybridStore serves data.role_bindings[subject] per subject
+# from the cache. The fixture was a flat array with a "subject" field in each
+# entry, which the policy's `data.role_bindings[policy.subject]` never matched,
+# so every positive assertion here failed. Nothing noticed, because no workflow
+# ran these tests: see REVIEW.md R6.6.
+role_bindings := {
+	"alice": [{"role": "owner", "domain": "alice/*"}],
+	"bob": [{"role": "admin", "domain": "alice/foo"}],
+	"carol": [{"role": "contributor", "domain": "alice/foo"}],
+	"dave": [{"role": "reader", "domain": "alice/foo"}],
+}
 
 # ---------------------------------------------------------------------------
 # Superadmin bypass
@@ -23,7 +30,7 @@ test_superadmin_allowed if {
 		"visibility": "private",
 	}
 		with data.superadmins as ["superadmin"]
-		with data.role_bindings as []
+		with data.role_bindings as {}
 }
 
 test_non_superadmin_not_bypassed if {
@@ -51,7 +58,7 @@ test_public_read_allowed_no_binding if {
 		"visibility": "public",
 	}
 		with data.superadmins as []
-		with data.role_bindings as []
+		with data.role_bindings as {}
 }
 
 test_public_list_allowed_no_binding if {
@@ -63,7 +70,7 @@ test_public_list_allowed_no_binding if {
 		"visibility": "public",
 	}
 		with data.superadmins as []
-		with data.role_bindings as []
+		with data.role_bindings as {}
 }
 
 test_public_delete_denied_no_binding if {
@@ -75,7 +82,7 @@ test_public_delete_denied_no_binding if {
 		"visibility": "public",
 	}
 		with data.superadmins as []
-		with data.role_bindings as []
+		with data.role_bindings as {}
 }
 
 # ---------------------------------------------------------------------------
@@ -106,12 +113,24 @@ test_owner_can_transfer if {
 		with data.role_bindings as role_bindings
 }
 
-test_owner_can_manage_labels if {
+test_owner_can_administer_their_org if {
 	data.hades.authz.allow with input as {
 		"subject": "alice",
 		"domain": "alice/foo",
-		"resource_type": "label",
-		"action": "delete",
+		"resource_type": "org",
+		"action": "admin",
+		"visibility": "private",
+	}
+		with data.superadmins as []
+		with data.role_bindings as role_bindings
+}
+
+test_owner_can_publish if {
+	data.hades.authz.allow with input as {
+		"subject": "alice",
+		"domain": "alice/foo",
+		"resource_type": "module",
+		"action": "publish",
 		"visibility": "private",
 	}
 		with data.superadmins as []
@@ -186,11 +205,11 @@ test_contributor_cannot_delete if {
 		with data.role_bindings as role_bindings
 }
 
-test_contributor_can_read_commits if {
+test_contributor_can_read_the_org if {
 	data.hades.authz.allow with input as {
 		"subject": "carol",
 		"domain": "alice/foo",
-		"resource_type": "commit",
+		"resource_type": "org",
 		"action": "read",
 		"visibility": "private",
 	}
@@ -198,12 +217,26 @@ test_contributor_can_read_commits if {
 		with data.role_bindings as role_bindings
 }
 
-test_contributor_cannot_write_labels if {
+# A contributor may push, but publishing a private module to the world is a
+# different decision and a different action.
+test_contributor_cannot_publish if {
 	not data.hades.authz.allow with input as {
 		"subject": "carol",
 		"domain": "alice/foo",
-		"resource_type": "label",
-		"action": "create",
+		"resource_type": "module",
+		"action": "publish",
+		"visibility": "private",
+	}
+		with data.superadmins as []
+		with data.role_bindings as role_bindings
+}
+
+test_contributor_cannot_administer_the_org if {
+	not data.hades.authz.allow with input as {
+		"subject": "carol",
+		"domain": "alice/foo",
+		"resource_type": "org",
+		"action": "admin",
 		"visibility": "private",
 	}
 		with data.superadmins as []
@@ -238,12 +271,12 @@ test_reader_cannot_push if {
 		with data.role_bindings as role_bindings
 }
 
-test_reader_cannot_create_labels if {
+test_reader_cannot_update_the_org if {
 	not data.hades.authz.allow with input as {
 		"subject": "dave",
 		"domain": "alice/foo",
-		"resource_type": "label",
-		"action": "create",
+		"resource_type": "org",
+		"action": "update",
 		"visibility": "private",
 	}
 		with data.superadmins as []
@@ -332,4 +365,49 @@ test_no_binding_denied if {
 	}
 		with data.superadmins as []
 		with data.role_bindings as role_bindings
+}
+
+# ---------------------------------------------------------------------------
+# Superadmin bypass
+#
+# The clause reads data.superadmins, which is seeded from opa.superAdmins in
+# configuration. These tests exist because it was seeded by nothing at all, so
+# it could never fire: granting the role looked like granting access and
+# granted none.
+# ---------------------------------------------------------------------------
+
+test_superadmin_bypasses_every_check if {
+	data.hades.authz.allow with input as {
+		"subject": "root",
+		"domain": "someone-else/private",
+		"resource_type": "module",
+		"action": "delete",
+		"visibility": "private",
+	}
+		with data.superadmins as ["root"]
+		with data.role_bindings as {}
+}
+
+test_a_non_superadmin_is_still_refused if {
+	not data.hades.authz.allow with input as {
+		"subject": "mallory",
+		"domain": "someone-else/private",
+		"resource_type": "module",
+		"action": "delete",
+		"visibility": "private",
+	}
+		with data.superadmins as ["root"]
+		with data.role_bindings as {}
+}
+
+test_an_empty_superadmin_list_grants_nothing if {
+	not data.hades.authz.allow with input as {
+		"subject": "root",
+		"domain": "someone-else/private",
+		"resource_type": "module",
+		"action": "delete",
+		"visibility": "private",
+	}
+		with data.superadmins as []
+		with data.role_bindings as {}
 }

@@ -63,7 +63,7 @@ func (uow *PGUnitOfWork) Do(ctx context.Context, fn TransactionFN, timeout time.
 		rollbackCtx, cancelRollback := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
 		defer cancelRollback()
 		if rollbackErr := tx.Rollback(rollbackCtx); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
-			return nil, fmt.Errorf("%w (rollback also failed: %v)", err, rollbackErr)
+			return nil, fmt.Errorf("%w (rollback also failed: %w)", err, rollbackErr)
 		}
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (uow *SQLiteUnitOfWork) Do(ctx context.Context, fn TransactionFN, timeout t
 		// reported alongside it rather than replacing it. sql.ErrTxDone means the
 		// transaction already ended, which is not a failure worth surfacing.
 		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			return nil, fmt.Errorf("%w (rollback also failed: %v)", err, rollbackErr)
+			return nil, fmt.Errorf("%w (rollback also failed: %w)", err, rollbackErr)
 		}
 		return nil, err
 	}

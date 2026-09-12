@@ -130,7 +130,7 @@ func scanJobs(rows pgx.Rows) ([]*sdkjob.SDKJob, error) {
 
 func (s *SDKJobStorage) ListByModule(ctx context.Context, moduleID string) ([]*sdkjob.SDKJob, error) {
 	rows, err := s.q(ctx).Query(ctx,
-		`SELECT `+sdkJobColumns+` FROM sdk_jobs WHERE module_id = $1 ORDER BY created_at DESC`,
+		`SELECT `+sdkJobColumns+` FROM sdk_jobs WHERE module_id = $1 ORDER BY created_at DESC LIMIT 1000`,
 		moduleID,
 	)
 	if err != nil {
@@ -142,7 +142,7 @@ func (s *SDKJobStorage) ListByModule(ctx context.Context, moduleID string) ([]*s
 
 func (s *SDKJobStorage) ListSucceededByModuleAndLang(ctx context.Context, moduleID, language string) ([]*sdkjob.SDKJob, error) {
 	rows, err := s.q(ctx).Query(ctx,
-		`SELECT `+sdkJobColumns+` FROM sdk_jobs WHERE module_id = $1 AND language = $2 AND status = 'succeeded' ORDER BY created_at DESC`,
+		`SELECT `+sdkJobColumns+` FROM sdk_jobs WHERE module_id = $1 AND language = $2 AND status = 'succeeded' ORDER BY created_at DESC LIMIT 1000`,
 		moduleID, language,
 	)
 	if err != nil {

@@ -12,5 +12,14 @@ type TelemetryConfig struct {
 	// process memory, so exposing them on a public interface has to be an
 	// explicit choice.
 	BindAddr      string  `yaml:"bindAddr"`
-	SamplingRatio float64 `yaml:"samplingRatio"` // fraction of traces to sample (0.0–1.0)
+	SamplingRatio float64 `yaml:"samplingRatio"` // fraction of traces to sample (0.0-1.0)
+
+	// AllowPublicDiagnostics must be set before the Prometheus or pprof
+	// listener will bind to anything other than loopback.
+	//
+	// A pprof heap dump from a running registry contains live session tokens
+	// and personal access tokens, and neither listener authenticates. Setting
+	// bindAddr alone used to be enough to publish that; it now takes a second,
+	// separately named decision.
+	AllowPublicDiagnostics bool `yaml:"allowPublicDiagnostics"`
 }

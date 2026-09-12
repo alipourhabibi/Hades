@@ -7,6 +7,7 @@ import (
 
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/opabinding"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 )
 
@@ -48,27 +49,9 @@ func (s *SQLiteOPABindingStorage) CreateBatch(ctx context.Context, bindings []op
 	return nil
 }
 
-func (s *SQLiteOPABindingStorage) ListAll(ctx context.Context) ([]opabinding.RoleBinding, error) {
-	rows, err := s.q(ctx).QueryContext(ctx,
-		`SELECT id, subject, role, domain, created_at FROM opa_role_bindings ORDER BY created_at`)
-	if err != nil {
-		return nil, fmt.Errorf("opabinding: list all: %w", err)
-	}
-	defer rows.Close()
-	var out []opabinding.RoleBinding
-	for rows.Next() {
-		var b opabinding.RoleBinding
-		var createdAt sqltypes.Time
-		if err := rows.Scan(&b.ID, &b.Subject, &b.Role, &b.Domain, &createdAt); err != nil {
-			return nil, fmt.Errorf("opabinding: list all scan: %w", err)
-		}
-		b.CreatedAt = createdAt.V
-		out = append(out, b)
-	}
-	return out, rows.Err()
-}
-
 func (s *SQLiteOPABindingStorage) Delete(ctx context.Context, id string) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	id = sqlutil.ID(id)
 	_, err := s.q(ctx).ExecContext(ctx, `DELETE FROM opa_role_bindings WHERE id = ?`, id)
 	return err
 }

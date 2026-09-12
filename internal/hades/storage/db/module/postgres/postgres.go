@@ -9,7 +9,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -100,13 +100,25 @@ func (m *ModuleStorage) Update(ctx context.Context, req *registryv1.UpdateModule
 		v := int32(*req.LintPreset)
 		lint = &v
 	}
+	// Every column in the SET list is qualified with modules.
+	//
+	// The FROM clause brings users into scope, and users has a description
+	// column too (migration/001_create_users), so an unqualified
+	// "COALESCE($3, description)" is ambiguous and PostgreSQL rejects the whole
+	// statement with SQLSTATE 42702. UpdateModule therefore failed on every
+	// call: description edits and visibility flips were both impossible on
+	// PostgreSQL, while SQLite, which has no such join here, was unaffected.
+	//
+	// The other three assignments were correct only by accident, because those
+	// names happen to exist on modules alone today. Qualifying all of them
+	// keeps that from becoming the next defect.
 	query := `
 UPDATE modules
 SET
-  description     = COALESCE($3, description),
-  visibility      = COALESCE($4, visibility),
-  lint_preset     = COALESCE($5, lint_preset),
-  breaking_enabled = COALESCE($6, breaking_enabled),
+  description     = COALESCE($3, modules.description),
+  visibility      = COALESCE($4, modules.visibility),
+  lint_preset     = COALESCE($5, modules.lint_preset),
+  breaking_enabled = COALESCE($6, modules.breaking_enabled),
   update_time     = now()
 FROM users
 WHERE users.id = modules.owner_id AND users.username = $1 AND modules.name = $2
@@ -167,7 +179,7 @@ WHERE users.username = $1 AND modules.name = $2`
 	defer rows.Close()
 
 	if !rows.Next() {
-		return nil, connErr.NotFound("module not found")
+		return nil, connerr.NotFound("module not found")
 	}
 	return scanModuleRow(rows)
 }
@@ -185,7 +197,7 @@ func (m *ModuleStorage) GetModulesByRefs(ctx context.Context, refs ...*registryv
 		}
 		mod, err := scanModuleRow(row)
 		if err != nil {
-			return nil, connErr.FromDB(err)
+			return nil, connerr.FromDB(err)
 		}
 		modules = append(modules, mod)
 	}

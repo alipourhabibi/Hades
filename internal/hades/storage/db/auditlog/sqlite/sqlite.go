@@ -8,6 +8,7 @@ import (
 	authv1 "github.com/alipourhabibi/Hades/api/gen/api/auth/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/auditlog"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 )
 
@@ -36,15 +37,29 @@ func (s *SQLiteAuditLogStorage) Create(ctx context.Context, userID *string, even
 			return err
 		}
 	}
+	// The pointer is normalised through its value; see sqlutil.ID. A nil user
+	// is a real case here (an audit entry for an unauthenticated attempt), so
+	// the nil-ness is preserved rather than flattened to an empty string.
+	var storedUser any
+	if userID != nil {
+		storedUser = sqlutil.ID(*userID)
+	}
 	_, err := s.q(ctx).ExecContext(ctx,
 		`INSERT INTO audit_log (user_id, event, ip_address, user_agent, metadata) VALUES (?, ?, ?, ?, ?)`,
-		userID, event.String(), ipAddress, userAgent, metaJSON)
+		storedUser, event.String(), ipAddress, userAgent, metaJSON)
 	return err
 }
 
 func (s *SQLiteAuditLogStorage) List(ctx context.Context, userID string, pageSize, offset int) ([]*auditlog.Row, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	if pageSize <= 0 {
-		pageSize = 50
+		pageSize = auditlog.DefaultPageSize
+	}
+	if pageSize > auditlog.MaxPageSize {
+		// Every other paginated method clamps at 100; this one did not, so a
+		// caller could ask for an arbitrary page size of security-event rows.
+		pageSize = auditlog.MaxPageSize
 	}
 	rows, err := s.q(ctx).QueryContext(ctx,
 		`SELECT id, user_id, event, COALESCE(ip_address,''), COALESCE(user_agent,''), metadata, create_time
@@ -65,6 +80,10 @@ func (s *SQLiteAuditLogStorage) List(ctx context.Context, userID string, pageSiz
 			return nil, err
 		}
 		row.EventType = authv1.AuditEventType(authv1.AuditEventType_value[eventStr])
+		if row.UserID != nil {
+			canonical := sqlutil.Canonical(*row.UserID)
+			row.UserID = &canonical
+		}
 		row.CreatedAt = createdAt.V
 		if metaJSON != nil {
 			_ = json.Unmarshal(metaJSON, &row.Metadata)
@@ -75,6 +94,8 @@ func (s *SQLiteAuditLogStorage) List(ctx context.Context, userID string, pageSiz
 }
 
 func (s *SQLiteAuditLogStorage) RecentIPsForUser(ctx context.Context, userID string, n int) ([]string, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	rows, err := s.q(ctx).QueryContext(ctx,
 		`SELECT ip_address FROM audit_log
 		 WHERE user_id = ? AND ip_address IS NOT NULL AND ip_address != ''

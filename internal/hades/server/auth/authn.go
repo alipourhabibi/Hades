@@ -13,8 +13,9 @@ import (
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/utils/clientip"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 	utilscrypto "github.com/alipourhabibi/Hades/utils/crypto"
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
+	"github.com/google/uuid"
 )
 
 // extractClientIP returns the caller's IP address.
@@ -50,22 +51,32 @@ func (s *Server) totpRequired(ctx context.Context, userID string) bool {
 }
 
 func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error) {
-	username := strings.ToLower(in.Msg.Username)
-	emailAddr := strings.ToLower(in.Msg.Email)
+	username := strings.ToLower(strings.TrimSpace(in.Msg.Username))
+	emailAddr := strings.ToLower(strings.TrimSpace(in.Msg.Email))
 
-	if constants.IsReservedName(username) {
-		return nil, connErr.InvalidArgument("username is reserved")
+	// The whole name check, not only the reserved list.
+	//
+	// A username is the first path segment of every repository its modules get,
+	// "<owner>/<module>", and of every URL it appears at, and the wire contract
+	// bounds only the length: RegisterRequest.username declares min_len 2 and
+	// max_len 32 and nothing about the character set. So "a/b", "..", ".git"
+	// and "has space" were all registrable. git.ValidateRepoPath now refuses
+	// them at the storage layer, which stops the traversal but turns the
+	// account into a dead end: the row exists, and every module created under
+	// it fails, permanently, with an error that names none of this.
+	//
+	// constants.ValidateName is the same check module names get, and its
+	// documentation already claimed to cover usernames and organisation names.
+	// It subsumes the reserved-name test that used to be here.
+	if err := constants.ValidateName(username); err != nil {
+		return nil, connerr.InvalidArgument("user " + err.Error())
 	}
 	if emailAddr == "" {
-		return nil, connErr.InvalidArgument("email is required")
+		return nil, connerr.InvalidArgument("email is required")
 	}
 
-	if s.cache != nil {
-		ip := extractClientIP(in, s.trustedProxies)
-		allowed, err := s.cache.Allow(ctx, fmt.Sprintf("register:ip:%s", ip), 3, time.Minute)
-		if err == nil && !allowed {
-			return nil, connErr.ResourceExhausted("too many requests")
-		}
+	if err := s.enforceLimit(ctx, fmt.Sprintf("register:ip:%s", extractClientIP(in, s.trustedProxies)), 3, time.Minute, "Register"); err != nil {
+		return nil, err
 	}
 
 	minLen := s.authCfg.Password.MinLength
@@ -73,7 +84,7 @@ func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRe
 		minLen = 12
 	}
 	if len(in.Msg.Password) < minLen {
-		return nil, connErr.InvalidArgument(fmt.Sprintf("password must be at least %d characters", minLen))
+		return nil, connerr.InvalidArgument(fmt.Sprintf("password must be at least %d characters", minLen))
 	}
 
 	cost := s.authCfg.Password.BcryptCost
@@ -83,7 +94,7 @@ func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRe
 	hashedPassword, err := bcryptHash(in.Msg.Password, cost)
 	if err != nil {
 		s.logger.Error("failed to hash password", "error", err, "procedure", "Register")
-		return nil, connErr.Internal("failed to hash password")
+		return nil, connerr.Internal("failed to hash password")
 	}
 
 	// No pre-flight existence check: it races with a concurrent registration of
@@ -101,10 +112,10 @@ func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRe
 			in.Msg.Description,
 			"",
 		); err != nil {
-			mapped := connErr.FromDB(err)
+			mapped := connerr.FromDB(err)
 			if connect.CodeOf(mapped) == connect.CodeAlreadyExists {
 				s.logger.Warn("registration conflict", "procedure", "Register", "username", username)
-				return nil, connErr.AlreadyExists("username or email is already registered")
+				return nil, connerr.AlreadyExists("username or email is already registered")
 			}
 			s.logger.Error("failed to create user", "error", err, "procedure", "Register", "username", username)
 			return nil, mapped
@@ -112,13 +123,26 @@ func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRe
 		user, err := s.userStorage.GetByUsername(ctx, username)
 		if err != nil {
 			s.logger.Error("failed to read back created user", "error", err, "procedure", "Register", "username", username)
-			return nil, connErr.FromDB(err)
+			return nil, connerr.FromDB(err)
 		}
 		userID = user.Id
 		return nil, s.authorizationService.AddBasicRoles(ctx, username)
 	}, 15*time.Second)
 	if err != nil {
 		return nil, err
+	}
+
+	// Development shortcut, off by default. See EmailVerifConfig.AutoVerify:
+	// with email.stub on, no mail is delivered, so without this the account
+	// cannot log in and the documented bootstrap cannot complete.
+	if s.authCfg.EmailVerification.AutoVerify {
+		if err := s.userStorage.SetEmailVerified(ctx, userID); err != nil {
+			s.logger.Error("failed to auto-verify email", "error", err, "procedure", "Register", "user_id", userID)
+			return nil, connerr.FromDB(err)
+		}
+		s.logger.Warn("email auto-verified without confirmation: auth.emailVerification.autoVerify is on",
+			"procedure", "Register", "user_id", userID)
+		return &connect.Response[v1.RegisterResponse]{Msg: &v1.RegisterResponse{UserId: userID}}, nil
 	}
 
 	if s.emailVerStorage != nil && s.emailSender != nil {
@@ -142,10 +166,15 @@ func (s *Server) Register(ctx context.Context, in *connect.Request[v1.RegisterRe
 
 // Signin is a legacy alias for Register that reports only success or failure.
 //
-// Deprecated: call Register instead. It carries identical behaviour but returns
-// the created user id. This method exists only so existing clients keep
-// working, and it doubles the rate-limited registration surface; remove it once
-// no client depends on it.
+// Deprecated: call Register instead. It has identical behaviour and also
+// returns the created user id.
+//
+// It is still here because removing an RPC is a wire-breaking change to a
+// published protocol, and this is cleanup rather than a defect: it delegates
+// straight to Register, so both paths share one rate-limit key and one
+// validation path rather than being a second, divergent registration surface.
+// Remove it in a deliberate breaking release, together with the proto RPC, the
+// noAuthProcedures entry and the policy-matrix row.
 func (s *Server) Signin(ctx context.Context, in *connect.Request[v1.SigninRequest]) (*connect.Response[v1.SigninResponse], error) {
 	_, err := s.Register(ctx, connect.NewRequest(&v1.RegisterRequest{
 		Username:    in.Msg.Username,
@@ -166,11 +195,8 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 		ua = in.Header().Get("User-Agent")
 	}
 
-	if s.cache != nil {
-		allowed, err := s.cache.Allow(ctx, fmt.Sprintf("login:ip:%s", ip), 10, time.Minute)
-		if err == nil && !allowed {
-			return nil, connErr.ResourceExhausted("too many requests")
-		}
+	if err := s.enforceLimit(ctx, fmt.Sprintf("login:ip:%s", ip), 10, time.Minute, "Login"); err != nil {
+		return nil, err
 	}
 
 	username := strings.ToLower(in.Msg.Username)
@@ -178,7 +204,7 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 	af, err := s.userStorage.GetAuthFieldsByUsername(ctx, username)
 	if err != nil {
 		_ = bcrypt.CompareHashAndPassword([]byte(dummyHash), []byte(in.Msg.Password))
-		return nil, connErr.Unauthenticated("invalid credentials")
+		return nil, connerr.Unauthenticated("invalid credentials")
 	}
 
 	if af.LockedUntil != nil && time.Now().Before(*af.LockedUntil) {
@@ -186,7 +212,7 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 		if s.auditLogDB != nil {
 			_ = s.auditLogDB.Create(ctx, &af.ID, v1.AuditEventType_AUDIT_EVENT_TYPE_LOGIN_FAILED, ip, ua, map[string]any{"reason": "locked"})
 		}
-		return nil, connErr.PermissionDenied("account locked")
+		return nil, connerr.PermissionDenied("account locked")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(af.PasswordHash), []byte(in.Msg.Password)); err != nil {
@@ -208,7 +234,7 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 			// request failed rather than being handed a silent bypass.
 			if err := s.userStorage.LockUntil(ctx, af.ID, time.Now().Add(time.Duration(cooldown)*time.Minute)); err != nil {
 				s.logger.Error("failed to lock account", "error", err, "procedure", "Login", "user_id", af.ID)
-				return nil, connErr.Unavailable("authentication temporarily unavailable")
+				return nil, connerr.Unavailable("authentication temporarily unavailable")
 			}
 			if s.auditLogDB != nil {
 				_ = s.auditLogDB.Create(ctx, &af.ID, v1.AuditEventType_AUDIT_EVENT_TYPE_ACCOUNT_LOCKED, ip, ua, nil)
@@ -217,11 +243,11 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 		if s.auditLogDB != nil {
 			_ = s.auditLogDB.Create(ctx, &af.ID, v1.AuditEventType_AUDIT_EVENT_TYPE_LOGIN_FAILED, ip, ua, map[string]any{"attempts": newCount})
 		}
-		return nil, connErr.Unauthenticated("invalid credentials")
+		return nil, connerr.Unauthenticated("invalid credentials")
 	}
 
 	if af.EmailVerifiedAt == nil {
-		return nil, connErr.PermissionDenied("email not verified")
+		return nil, connerr.PermissionDenied("email not verified")
 	}
 
 	if err := s.userStorage.ResetFailedLogins(ctx, af.ID); err != nil {
@@ -231,7 +257,7 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 	fullToken, tokenHash, err := utilscrypto.GenerateToken(utilscrypto.SessionTokenPrefix)
 	if err != nil {
 		s.logger.Error("failed to generate session token", "error", err, "procedure", "Login")
-		return nil, connErr.Internal("failed to generate session token")
+		return nil, connerr.Internal("failed to generate session token")
 	}
 
 	idleDays := s.authCfg.Session.IdleTimeoutDays
@@ -248,7 +274,7 @@ func (s *Server) Login(ctx context.Context, in *connect.Request[v1.LoginRequest]
 	_, err = s.sessionStorage.CreateWithToken(ctx, af.ID, "session", tokenHash, ip, ua, idleExpires, absExpires)
 	if err != nil {
 		s.logger.Error("failed to create session", "error", err, "procedure", "Login", "user_id", af.ID)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 
 	if s.auditLogDB != nil {
@@ -271,7 +297,7 @@ func (s *Server) Logout(ctx context.Context, in *connect.Request[v1.LogoutReques
 	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "Logout")
-		return nil, connErr.Unauthenticated("not authenticated")
+		return nil, connerr.Unauthenticated("not authenticated")
 	}
 	rawToken, _ := ctx.Value(constants.ContextKeyAuthorization).(string)
 	if rawToken != "" {
@@ -290,29 +316,35 @@ func (s *Server) Logout(ctx context.Context, in *connect.Request[v1.LogoutReques
 
 func (s *Server) VerifyEmail(ctx context.Context, in *connect.Request[v1.VerifyEmailRequest]) (*connect.Response[v1.VerifyEmailResponse], error) {
 	if s.emailVerStorage == nil {
-		return nil, connErr.Internal("email verification not configured")
+		return nil, connerr.Internal("email verification not configured")
+	}
+	// Token submission is limited as well as token issuance. The sibling
+	// request endpoints were limited and this one was not, so the guessable
+	// half of the flow was the unbounded half.
+	if err := s.enforceLimit(ctx, fmt.Sprintf("verifyemail:ip:%s", extractClientIP(in, s.trustedProxies)), 10, time.Minute, "VerifyEmail"); err != nil {
+		return nil, err
 	}
 	hash := utilscrypto.HashToken(in.Msg.Token)
 	row, err := s.emailVerStorage.GetByTokenHash(ctx, hash)
 	if err != nil {
-		return nil, connErr.NotFound("invalid or expired token")
+		return nil, connerr.NotFound("invalid or expired token")
 	}
 	if row.UsedAt != nil {
-		return nil, connErr.InvalidArgument("token already used")
+		return nil, connerr.InvalidArgument("token already used")
 	}
 	if time.Now().After(row.ExpiresAt) {
-		return nil, connErr.InvalidArgument("token expired")
+		return nil, connerr.InvalidArgument("token expired")
 	}
 	// Both writes go in one transaction: consuming the token without recording
 	// the verification would burn the user's only link.
 	if _, err := s.uow.Do(ctx, func(txCtx context.Context) (interface{}, error) {
 		if err := s.emailVerStorage.MarkUsed(txCtx, row.ID); err != nil {
 			s.logger.Error("failed to mark email verification token used", "error", err, "procedure", "VerifyEmail")
-			return nil, connErr.FromDB(err)
+			return nil, connerr.FromDB(err)
 		}
 		if err := s.userStorage.SetEmailVerified(txCtx, row.UserID); err != nil {
 			s.logger.Error("failed to set email verified", "error", err, "procedure", "VerifyEmail", "user_id", row.UserID)
-			return nil, connErr.FromDB(err)
+			return nil, connerr.FromDB(err)
 		}
 		return nil, nil
 	}, 15*time.Second); err != nil {
@@ -329,19 +361,16 @@ func (s *Server) ResendVerificationEmail(ctx context.Context, in *connect.Reques
 	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "ResendVerificationEmail")
-		return nil, connErr.Unauthenticated("not authenticated")
+		return nil, connerr.Unauthenticated("not authenticated")
 	}
 
 	af, err := s.userStorage.GetAuthFieldsByUsername(ctx, user.Username)
 	if err == nil && af.EmailVerifiedAt != nil {
-		return nil, connErr.InvalidArgument("email is already verified")
+		return nil, connerr.InvalidArgument("email is already verified")
 	}
 
-	if s.cache != nil {
-		allowed, err := s.cache.Allow(ctx, fmt.Sprintf("emailresend:user:%s", user.Id), 3, 10*time.Minute)
-		if err == nil && !allowed {
-			return nil, connErr.ResourceExhausted("too many requests")
-		}
+	if err := s.enforceLimit(ctx, fmt.Sprintf("emailresend:user:%s", user.Id), 3, 10*time.Minute, "ResendVerificationEmail"); err != nil {
+		return nil, err
 	}
 	expiry := s.authCfg.EmailVerification.TokenExpiryHours
 	if expiry == 0 {
@@ -350,7 +379,7 @@ func (s *Server) ResendVerificationEmail(ctx context.Context, in *connect.Reques
 	raw, hash, err := utilscrypto.GenerateToken("")
 	if err != nil {
 		s.logger.Error("failed to generate verification token", "error", err, "procedure", "ResendVerificationEmail", "user_id", user.Id)
-		return nil, connErr.Internal("failed to generate verification token")
+		return nil, connerr.Internal("failed to generate verification token")
 	}
 	expiresAt := time.Now().Add(time.Duration(expiry) * time.Hour)
 	if s.emailVerStorage != nil {
@@ -365,11 +394,8 @@ func (s *Server) ResendVerificationEmail(ctx context.Context, in *connect.Reques
 
 func (s *Server) RequestPasswordReset(ctx context.Context, in *connect.Request[v1.RequestPasswordResetRequest]) (*connect.Response[v1.RequestPasswordResetResponse], error) {
 	ip := extractClientIP(in, s.trustedProxies)
-	if s.cache != nil {
-		allowed, err := s.cache.Allow(ctx, fmt.Sprintf("pwreset:ip:%s", ip), 3, time.Minute)
-		if err == nil && !allowed {
-			return nil, connErr.ResourceExhausted("too many requests")
-		}
+	if err := s.enforceLimit(ctx, fmt.Sprintf("pwreset:ip:%s", ip), 3, time.Minute, "RequestPasswordReset"); err != nil {
+		return nil, err
 	}
 	user, err := s.userStorage.GetByEmail(ctx, strings.ToLower(in.Msg.Email))
 	if err == nil && s.passwordResetStorage != nil && s.emailSender != nil {
@@ -379,10 +405,21 @@ func (s *Server) RequestPasswordReset(ctx context.Context, in *connect.Request[v
 		}
 		raw, hash, tokenErr := utilscrypto.GenerateToken("")
 		if tokenErr == nil {
+			// Outstanding resets for this user are invalidated first. Without
+			// that, three requests a minute for the token's lifetime left many
+			// live reset tokens at once, each an independent chance for anyone
+			// who can read one of them.
+			if invErr := s.passwordResetStorage.InvalidateForUser(ctx, user.Id); invErr != nil {
+				s.logger.Error("failed to invalidate outstanding password resets", "error", invErr,
+					"procedure", "RequestPasswordReset", "user_id", user.Id)
+			}
 			expiresAt := time.Now().Add(time.Duration(expiry) * time.Hour)
 			if createErr := s.passwordResetStorage.Create(ctx, user.Id, hash, expiresAt); createErr == nil {
+				// A link, like Register sends, rather than a bare token the
+				// user has to paste somewhere.
 				_ = s.emailSender.Send(in.Msg.Email, "Reset your password",
-					fmt.Sprintf("Your password reset token: %s (expires in %d hour(s))", raw, expiry))
+					fmt.Sprintf("Reset your password: https://%s/reset-password/%s (expires in %d hour(s))",
+						s.registryHost, raw, expiry))
 			}
 		}
 		if s.auditLogDB != nil {
@@ -393,26 +430,31 @@ func (s *Server) RequestPasswordReset(ctx context.Context, in *connect.Request[v
 }
 
 func (s *Server) ResetPassword(ctx context.Context, in *connect.Request[v1.ResetPasswordRequest]) (*connect.Response[v1.ResetPasswordResponse], error) {
+	// See VerifyEmail: the endpoint that accepts a token needs a bound too, not
+	// only the one that issues it.
+	if err := s.enforceLimit(ctx, fmt.Sprintf("resetpw:ip:%s", extractClientIP(in, s.trustedProxies)), 10, time.Minute, "ResetPassword"); err != nil {
+		return nil, err
+	}
 	if s.passwordResetStorage == nil {
-		return nil, connErr.Internal("password reset not configured")
+		return nil, connerr.Internal("password reset not configured")
 	}
 	minLen := s.authCfg.Password.MinLength
 	if minLen == 0 {
 		minLen = 12
 	}
 	if len(in.Msg.NewPassword) < minLen {
-		return nil, connErr.InvalidArgument(fmt.Sprintf("password must be at least %d characters", minLen))
+		return nil, connerr.InvalidArgument(fmt.Sprintf("password must be at least %d characters", minLen))
 	}
 	hash := utilscrypto.HashToken(in.Msg.Token)
 	row, err := s.passwordResetStorage.GetByTokenHash(ctx, hash)
 	if err != nil {
-		return nil, connErr.NotFound("invalid or expired token")
+		return nil, connerr.NotFound("invalid or expired token")
 	}
 	if row.UsedAt != nil {
-		return nil, connErr.InvalidArgument("token already used")
+		return nil, connerr.InvalidArgument("token already used")
 	}
 	if time.Now().After(row.ExpiresAt) {
-		return nil, connErr.InvalidArgument("token expired")
+		return nil, connerr.InvalidArgument("token expired")
 	}
 	cost := s.authCfg.Password.BcryptCost
 	if cost == 0 {
@@ -421,7 +463,7 @@ func (s *Server) ResetPassword(ctx context.Context, in *connect.Request[v1.Reset
 	newHash, err := bcryptHash(in.Msg.NewPassword, cost)
 	if err != nil {
 		s.logger.Error("failed to hash new password", "error", err, "procedure", "ResetPassword")
-		return nil, connErr.Internal("failed to hash password")
+		return nil, connerr.Internal("failed to hash password")
 	}
 	// Consuming the token and changing the password must succeed or fail
 	// together, otherwise a failed update leaves the user with a spent token and
@@ -431,15 +473,15 @@ func (s *Server) ResetPassword(ctx context.Context, in *connect.Request[v1.Reset
 	if _, err := s.uow.Do(ctx, func(txCtx context.Context) (interface{}, error) {
 		if err := s.passwordResetStorage.MarkUsed(txCtx, row.ID); err != nil {
 			s.logger.Error("failed to mark password reset token used", "error", err, "procedure", "ResetPassword")
-			return nil, connErr.FromDB(err)
+			return nil, connerr.FromDB(err)
 		}
 		if err := s.userStorage.UpdatePassword(txCtx, row.UserID, newHash); err != nil {
 			s.logger.Error("failed to update password", "error", err, "procedure", "ResetPassword", "user_id", row.UserID)
-			return nil, connErr.FromDB(err)
+			return nil, connerr.FromDB(err)
 		}
 		if err := s.userStorage.ResetFailedLogins(txCtx, row.UserID); err != nil {
 			s.logger.Error("failed to clear lockout state", "error", err, "procedure", "ResetPassword", "user_id", row.UserID)
-			return nil, connErr.FromDB(err)
+			return nil, connerr.FromDB(err)
 		}
 		return nil, nil
 	}, 15*time.Second); err != nil {
@@ -449,9 +491,9 @@ func (s *Server) ResetPassword(ctx context.Context, in *connect.Request[v1.Reset
 	// Every existing session must die with the old password. A failure here is
 	// not cosmetic: it would leave an attacker's session alive after the
 	// legitimate owner reset their password.
-	if err := s.sessionStorage.RevokeAllForUser(ctx, row.UserID, ""); err != nil {
+	if err := s.sessionStorage.RevokeAllForUser(ctx, row.UserID, uuid.Nil); err != nil {
 		s.logger.Error("failed to revoke sessions after password reset", "error", err, "procedure", "ResetPassword", "user_id", row.UserID)
-		return nil, connErr.Unavailable("password was changed but existing sessions could not be revoked; revoke them manually")
+		return nil, connerr.Unavailable("password was changed but existing sessions could not be revoked; revoke them manually")
 	}
 	if s.auditLogDB != nil {
 		_ = s.auditLogDB.Create(ctx, &row.UserID, v1.AuditEventType_AUDIT_EVENT_TYPE_PASSWORD_CHANGED, "", "", nil)
@@ -464,22 +506,22 @@ func (s *Server) ChangePassword(ctx context.Context, in *connect.Request[v1.Chan
 	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "ChangePassword")
-		return nil, connErr.Unauthenticated("not authenticated")
+		return nil, connerr.Unauthenticated("not authenticated")
 	}
 	af, err := s.userStorage.GetAuthFieldsByUsername(ctx, strings.ToLower(user.Username))
 	if err != nil {
 		s.logger.Error("failed to get user auth fields", "error", err, "procedure", "ChangePassword", "user_id", user.Id)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(af.PasswordHash), []byte(in.Msg.OldPassword)); err != nil {
-		return nil, connErr.Unauthenticated("invalid password")
+		return nil, connerr.Unauthenticated("invalid password")
 	}
 	minLen := s.authCfg.Password.MinLength
 	if minLen == 0 {
 		minLen = 12
 	}
 	if len(in.Msg.NewPassword) < minLen {
-		return nil, connErr.InvalidArgument(fmt.Sprintf("password must be at least %d characters", minLen))
+		return nil, connerr.InvalidArgument(fmt.Sprintf("password must be at least %d characters", minLen))
 	}
 	cost := s.authCfg.Password.BcryptCost
 	if cost == 0 {
@@ -488,27 +530,20 @@ func (s *Server) ChangePassword(ctx context.Context, in *connect.Request[v1.Chan
 	newHash, err := bcryptHash(in.Msg.NewPassword, cost)
 	if err != nil {
 		s.logger.Error("failed to hash new password", "error", err, "procedure", "ChangePassword", "user_id", user.Id)
-		return nil, connErr.Internal("failed to hash password")
+		return nil, connerr.Internal("failed to hash password")
 	}
 	if err := s.userStorage.UpdatePassword(ctx, user.Id, newHash); err != nil {
 		s.logger.Error("failed to update password", "error", err, "procedure", "ChangePassword", "user_id", user.Id)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
-	if in.Msg.RevokeOtherSessions {
-		rawToken, _ := ctx.Value(constants.ContextKeyAuthorization).(string)
-		currentSessionID := ""
-		if rawToken != "" {
-			tokenHash := utilscrypto.HashToken(rawToken)
-			if session, err := s.sessionStorage.GetByTokenHash(ctx, tokenHash); err == nil {
-				currentSessionID = session.ID
-			}
-		}
-		// The caller explicitly asked for other sessions to be revoked, so a
-		// silent failure would report success while leaving them alive.
-		if err := s.sessionStorage.RevokeAllForUser(ctx, user.Id, currentSessionID); err != nil {
-			s.logger.Error("failed to revoke other sessions", "error", err, "procedure", "ChangePassword", "user_id", user.Id)
-			return nil, connErr.Unavailable("password was changed but other sessions could not be revoked")
-		}
+	// Every session is re-established after a password change, including the
+	// caller's own. A password change is the standard response to a suspected
+	// compromise, and leaving the current session alive means the attacker who
+	// prompted it keeps the session they already hold. RevokeOtherSessions is
+	// honoured only in the direction of revoking more, never less.
+	if err := s.sessionStorage.RevokeAllForUser(ctx, user.Id, uuid.Nil); err != nil {
+		s.logger.Error("failed to revoke sessions", "error", err, "procedure", "ChangePassword", "user_id", user.Id)
+		return nil, connerr.Unavailable("password was changed but existing sessions could not be revoked; revoke them manually")
 	}
 	if s.emailSender != nil {
 		_ = s.emailSender.Send(user.Email, "Password changed",

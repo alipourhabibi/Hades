@@ -21,6 +21,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/server/content"
 	"github.com/alipourhabibi/Hades/internal/hades/server/module"
 	notificationdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/notification"
+	gitstorage "github.com/alipourhabibi/Hades/internal/hades/storage/git"
 	"github.com/alipourhabibi/Hades/internal/hades/testsupport"
 	"github.com/alipourhabibi/Hades/internal/proto/lint"
 )
@@ -171,9 +172,21 @@ func TestPushIsDeduplicatedByContentDigest(t *testing.T) {
 	assert.Len(t, all, 2, "the initial commit from module creation, plus one push")
 }
 
-// TestPushCarriesForwardPreviousFiles covers the merge: a push containing one
-// file must not delete the files an earlier push added.
-func TestPushCarriesForwardPreviousFiles(t *testing.T) {
+// TestPushReplacesModuleContents covers the upload contract: the files in a
+// push are the module, so a file the push omits is gone from the new commit.
+//
+// This replaced a test asserting the opposite, that a push merges into the
+// previous commit's file set. The merge was the reason a proto file could never
+// be removed from a module: deleted or renamed away, it stayed published and
+// stayed readable by direct path, and there was no way to withdraw a schema
+// short of deleting the module. It also made the stored digest describe
+// something the client never sent, so a client verifying what it downloaded got
+// a mismatch.
+//
+// buf push sends the complete module content, so full replacement is what the
+// protocol means. The cost is real and worth stating: a caller that pushes a
+// subset now truncates the module rather than adding to it.
+func TestPushReplacesModuleContents(t *testing.T) {
 	s := newStack(t, false)
 	_, ctx := s.user(t, "alice")
 	s.mustCreateModule(t, ctx, "mymod")
@@ -190,10 +203,12 @@ func TestPushCarriesForwardPreviousFiles(t *testing.T) {
 	}})
 	require.NoError(t, err)
 
-	for _, path := range []string{"foo/v1/a.proto", "foo/v1/b.proto"} {
-		_, _, err := s.env.Git.GetFile(ctx, "alice/mymod", second[0].CommitHash, path)
-		assert.NoError(t, err, "%s must still be present after the second push", path)
-	}
+	_, _, err = s.env.Git.GetFile(ctx, "alice/mymod", second[0].CommitHash, "foo/v1/b.proto")
+	assert.NoError(t, err, "the pushed file must be present")
+
+	_, _, err = s.env.Git.GetFile(ctx, "alice/mymod", second[0].CommitHash, "foo/v1/a.proto")
+	assert.ErrorIs(t, err, gitstorage.ErrNotFound,
+		"a file the push omitted must be absent from the new commit")
 }
 
 // TestPushToAnotherUsersModuleIsDenied is the authorisation boundary, decided
@@ -240,13 +255,13 @@ func TestPushNotifiesTheOrgMembers(t *testing.T) {
 	}})
 	require.NoError(t, err)
 
-	bobNotifications, err := s.env.DB.Notification().ListForUser(context.Background(), bob.Id)
+	bobNotifications, err := s.env.DB.Notification().ListForUser(context.Background(), bob.Id, 50, 0)
 	require.NoError(t, err)
 	require.Len(t, bobNotifications, 1, "a member of the owning org hears about the push")
 	assert.Equal(t, notificationdb.TypeCommitPushed, bobNotifications[0].Type)
 	assert.Contains(t, bobNotifications[0].Body, "alice pushed")
 
-	aliceNotifications, err := s.env.DB.Notification().ListForUser(context.Background(), alice.Id)
+	aliceNotifications, err := s.env.DB.Notification().ListForUser(context.Background(), alice.Id, 50, 0)
 	require.NoError(t, err)
 	assert.Empty(t, aliceNotifications, "the person who pushed is not told about their own push")
 }
@@ -308,7 +323,10 @@ func TestPushRunsLintAndRecordsTheResult(t *testing.T) {
 	run, err := s.env.DB.CIRun().GetByModuleAndCommit(ctx, mod.Id, commits[0].CommitHash)
 	require.NoError(t, err, "a push that ran the checks records the result")
 	assert.True(t, run.LintPassed)
-	assert.True(t, run.BreakingPassed)
+	// This module has breaking checks disabled and no predecessor to compare
+	// against, so no comparison ran and the record must not claim one passed.
+	assert.False(t, run.BreakingRan)
+	assert.False(t, run.BreakingPassed, "breaking_passed is a claim about a comparison that happened")
 
 	// A file whose package does not match its directory violates the default
 	// preset, so the push is refused.

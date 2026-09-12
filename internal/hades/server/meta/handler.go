@@ -15,7 +15,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/cirun"
 	moduledb "github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sdkjob"
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
@@ -59,7 +59,7 @@ func (h *Handler) GetCIRun(ctx context.Context, in *connect.Request[registrypbv1
 	})
 	if err != nil || len(modules) == 0 {
 		h.logger.Warn("module not found", "procedure", "GetCIRun", "user_id", userID, "owner", in.Msg.Owner, "module", in.Msg.ModuleName)
-		return nil, connErr.NotFound("module not found")
+		return nil, connerr.NotFound("module not found")
 	}
 
 	if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
@@ -69,7 +69,7 @@ func (h *Handler) GetCIRun(ctx context.Context, in *connect.Request[registrypbv1
 	run, err := h.ciRunStorage.GetByModuleAndCommit(ctx, modules[0].Id, in.Msg.CommitHash)
 	if err != nil {
 		h.logger.Warn("CI run not found", "error", err, "procedure", "GetCIRun", "user_id", userID, "module_id", modules[0].Id, "commit_hash", in.Msg.CommitHash)
-		return nil, connErr.NotFound("CI run not found")
+		return nil, connerr.NotFound("CI run not found")
 	}
 
 	return &connect.Response[registrypbv1.GetCIRunResponse]{
@@ -91,7 +91,7 @@ func (h *Handler) ListSDKs(ctx context.Context, in *connect.Request[registrypbv1
 	})
 	if err != nil || len(modules) == 0 {
 		h.logger.Warn("module not found", "procedure", "ListSDKs", "user_id", userID, "owner", in.Msg.Owner, "module", in.Msg.Module)
-		return nil, connErr.NotFound("module not found")
+		return nil, connerr.NotFound("module not found")
 	}
 
 	if err := h.authz.CheckReadAccess(ctx, user, modules); err != nil {
@@ -101,7 +101,7 @@ func (h *Handler) ListSDKs(ctx context.Context, in *connect.Request[registrypbv1
 	jobs, err := h.sdkJobStorage.ListByModule(ctx, modules[0].Id)
 	if err != nil {
 		h.logger.Error("failed to list SDK jobs", "error", err, "procedure", "ListSDKs", "user_id", userID, "module_id", modules[0].Id)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 
 	sdkJobs := make([]*registrypbv1.SDKJob, 0, len(jobs))

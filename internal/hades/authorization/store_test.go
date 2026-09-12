@@ -31,7 +31,7 @@ func (d *hybridStoreDB) ListBySubject(_ context.Context, subject string) ([]opab
 
 func newStore(t *testing.T, db hybridBindingDB, c cache.Cache, ttl time.Duration) *hybridStore {
 	t.Helper()
-	s, err := newHybridStore(c, db, ttl)
+	s, err := newHybridStore(c, db, ttl, nil)
 	require.NoError(t, err)
 	return s
 }

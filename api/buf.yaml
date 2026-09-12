@@ -3,3 +3,17 @@ deps:
   - buf.build/bufbuild/protovalidate
 modules:
   - path: .
+
+# Lint and breaking configuration.
+lint:
+  use:
+    - STANDARD
+  except:
+    - PACKAGE_DIRECTORY_MATCH
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - ENUM_VALUE_PREFIX
+    - SERVICE_SUFFIX
+
+breaking:
+  use:
+    - WIRE_JSON

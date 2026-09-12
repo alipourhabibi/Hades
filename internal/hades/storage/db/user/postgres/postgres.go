@@ -6,6 +6,7 @@ import (
 	"time"
 
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/user"
 	"github.com/jackc/pgx/v5"
@@ -236,14 +237,18 @@ INSERT INTO users (
 }
 
 // List returns users (type=USER_TYPE_USER) whose username contains query (case-insensitive).
-func (u *UserStorage) List(ctx context.Context, query string) ([]*identityv1.User, error) {
+//
+// The term is escaped and an ESCAPE clause declared, so "%" matches a literal
+// percent sign rather than every row, and the page is bounded by the caller
+// rather than by a hardcoded LIMIT that made the 51st user unreachable.
+func (u *UserStorage) List(ctx context.Context, query string, limit, offset int) ([]*identityv1.User, error) {
 	rows, err := u.q(ctx).Query(ctx, `
 SELECT id, create_time, update_time, username, email, type, state, description, url
 FROM users
 WHERE type = 2
-  AND ($1 = '' OR username ILIKE '%' || $1 || '%')
+  AND ($1 = '' OR username ILIKE '%' || $2 || '%' ESCAPE '\')
 ORDER BY username
-LIMIT 50`, query)
+LIMIT $3 OFFSET $4`, query, sqlutil.LikePrefix(query), limit, offset)
 	if err != nil {
 		return nil, err
 	}

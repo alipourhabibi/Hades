@@ -38,14 +38,27 @@ VALUES ($1, $2, $3, $4, $5)`, userID, notificationType, title, body, resourceID)
 	return err
 }
 
-func (s *NotificationStorage) ListForUser(ctx context.Context, userID string) ([]*identityv1.Notification, error) {
+// CreateBatch inserts one row per user in a single statement.
+func (s *NotificationStorage) CreateBatch(ctx context.Context, userIDs []string, notificationType, title, body, resourceID string) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+	_, err := s.q(ctx).Exec(ctx, `
+INSERT INTO notifications (user_id, type, title, body, resource_id)
+SELECT unnest($1::uuid[]), $2, $3, $4, $5`,
+		userIDs, notificationType, title, body, resourceID)
+	return err
+}
+
+func (s *NotificationStorage) ListForUser(ctx context.Context, userID string, limit, offset int) ([]*identityv1.Notification, error) {
 	query := `
 SELECT id, type, title, COALESCE(body,''), COALESCE(resource_id,''), read_at, created_at
 FROM notifications
 WHERE user_id = $1
-ORDER BY created_at DESC`
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3`
 
-	rows, err := s.q(ctx).Query(ctx, query, userID)
+	rows, err := s.q(ctx).Query(ctx, query, userID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -70,8 +83,18 @@ ORDER BY created_at DESC`
 }
 
 func (s *NotificationStorage) MarkRead(ctx context.Context, id, userID string) error {
-	_, err := s.q(ctx).Exec(ctx,
+	tag, err := s.q(ctx).Exec(ctx,
 		`UPDATE notifications SET read_at = NOW() WHERE id = $1 AND user_id = $2 AND read_at IS NULL`,
 		id, userID)
-	return err
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		// Zero rows means the notification does not exist, belongs to someone
+		// else, or was already read. Reporting success for all three, which is
+		// what this did, meant one user marking another's notification read
+		// looked like it worked.
+		return notification.ErrNotFound
+	}
+	return nil
 }

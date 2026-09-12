@@ -29,6 +29,14 @@ type LockoutConfig struct {
 
 type EmailVerifConfig struct {
 	TokenExpiryHours int `json:"tokenExpiryHours" yaml:"tokenExpiryHours"`
+	// AutoVerify marks every newly registered address as verified without the
+	// user proving they control it.
+	//
+	// It exists for development, where email.stub is true so no mail is ever
+	// delivered and there is nothing for anyone to click.
+	//
+	// False by default.
+	AutoVerify bool `json:"autoVerify" yaml:"autoVerify"`
 }
 
 type PasswordResetConfig struct {
@@ -51,6 +59,17 @@ type SMTPConfig struct {
 type OAuthConfig struct {
 	GitHub OAuthProvider `json:"github" yaml:"github"`
 	Google OAuthProvider `json:"google" yaml:"google"`
+
+	// AllowAccountLinkingByEmail permits a first-time OAuth login to take over
+	// an existing local account whose email address matches the one the
+	// provider reports as verified.
+	//
+	// It defaults to false. With it on, a compromise of the user's provider
+	// account, or a provider that mis-reports verification, is a full takeover
+	// of the Hades account including every organisation role it holds, with no
+	// confirmation step. Turn it on only where the identity provider is the
+	// same trust domain as the registry.
+	AllowAccountLinkingByEmail bool `json:"allowAccountLinkingByEmail" yaml:"allowAccountLinkingByEmail"`
 }
 
 type OAuthProvider struct {

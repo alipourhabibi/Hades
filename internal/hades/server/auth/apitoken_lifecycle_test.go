@@ -193,7 +193,13 @@ func TestCreateAPIToken_AnonymousIsUnauthenticated(t *testing.T) {
 
 // --- listing and revocation ------------------------------------------------
 
-func TestListAPITokens_ReportsStatusAndHidesRevoked(t *testing.T) {
+// TestListAPITokens_ReportsStatusIncludingRevoked pins that a revoked token is
+// still listed, with status REVOKED.
+//
+// It used to be filtered out of the query, which made the REVOKED status
+// unreachable: the row simply vanished, which reads the same to a user as "it
+// was never there" and gives no confirmation that the revocation worked.
+func TestListAPITokens_ReportsStatusIncludingRevoked(t *testing.T) {
 	f := newTokenFixture(t)
 
 	live, err := f.srv.CreateAPIToken(f.ctx, connect.NewRequest(&authv1.CreateAPITokenRequest{
@@ -210,9 +216,17 @@ func TestListAPITokens_ReportsStatusAndHidesRevoked(t *testing.T) {
 
 	listed, err := f.srv.ListAPITokens(f.ctx, connect.NewRequest(&authv1.ListAPITokensRequest{}))
 	require.NoError(t, err)
-	require.Len(t, listed.Msg.Tokens, 1)
-	assert.Equal(t, live.Msg.Id, listed.Msg.Tokens[0].Id)
-	assert.Equal(t, authv1.APITokenStatus_API_TOKEN_STATUS_ACTIVE, listed.Msg.Tokens[0].Status)
+	require.Len(t, listed.Msg.Tokens, 2)
+
+	byID := map[string]*authv1.APIToken{}
+	for _, tok := range listed.Msg.Tokens {
+		byID[tok.Id] = tok
+	}
+	require.Contains(t, byID, live.Msg.Id)
+	require.Contains(t, byID, doomed.Msg.Id)
+	assert.Equal(t, authv1.APITokenStatus_API_TOKEN_STATUS_ACTIVE, byID[live.Msg.Id].Status)
+	assert.Equal(t, authv1.APITokenStatus_API_TOKEN_STATUS_REVOKED, byID[doomed.Msg.Id].Status,
+		"a revoked token is shown as revoked, not hidden")
 }
 
 func TestListAPITokens_ExpiredTokenIsListedAsExpired(t *testing.T) {
@@ -261,7 +275,7 @@ func TestRevokeAPIToken_MalformedIdIsInvalidArgument(t *testing.T) {
 // scopedCtx is what the interceptor builds for a request carrying a scoped
 // personal API token.
 func (f *tokenFixture) scopedCtx(scopes ...string) context.Context {
-	return context.WithValue(f.ctx, constants.ContextKeyTokenScopes, scopes)
+	return context.WithValue(f.ctx, constants.ContextKeyTokenScopes, authorizationsvc.ScopesFromValues(scopes))
 }
 
 func (f *tokenFixture) module(t *testing.T, name string, visibility registryv1.ModuleVisibility) *registryv1.Module {

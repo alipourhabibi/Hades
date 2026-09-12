@@ -32,6 +32,7 @@ func New(bufBin string) *Linter {
 
 // Lint runs buf lint against protoDir. buf.yaml must already exist in protoDir.
 func (l *Linter) Lint(ctx context.Context, protoDir string) error {
+	// #nosec G204 -- the binary is sdk.bufBin from configuration, and the arguments are paths this process created.
 	out, err := exec.CommandContext(ctx, l.bufBin, "lint", protoDir).CombinedOutput()
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {

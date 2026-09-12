@@ -5,12 +5,12 @@ import (
 	"errors"
 	"time"
 
-	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	identityv1 "github.com/alipourhabibi/Hades/api/gen/api/identity/v1"
+	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -75,10 +75,12 @@ WHERE c.id = $1`
 	}
 	var createTime, updateTime time.Time
 	var mCreateTime, mUpdateTime *time.Time
+	// digest_value is hex text in the column and raw bytes on the wire.
+	var digestHex *string
 
 	err := c.q(ctx).QueryRow(ctx, query, id).Scan(
 		&cmt.Id, &cmt.CommitHash, &createTime, &updateTime,
-		&cmt.OwnerId, &cmt.ModuleId, &cmt.Digest.Type, &cmt.Digest.Value,
+		&cmt.OwnerId, &cmt.ModuleId, &cmt.Digest.Type, &digestHex,
 		&cmt.CreatedByUserId, &cmt.SourceControlUrl,
 		&cmt.Module.Id, &mCreateTime, &mUpdateTime,
 		&cmt.Module.Name, &cmt.Module.OwnerId,
@@ -88,10 +90,11 @@ WHERE c.id = $1`
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, connErr.NotFound("commit not found")
+			return nil, commit.ErrNotFound
 		}
 		return nil, err
 	}
+	cmt.Digest.Value = commit.DecodeDigest(digestHex)
 	cmt.CreateTime = timestamppb.New(createTime)
 	cmt.UpdateTime = timestamppb.New(updateTime)
 	if mCreateTime != nil {
@@ -114,20 +117,28 @@ LIMIT 1`
 
 	cmt := &registryv1.Commit{Digest: &registryv1.Digest{}}
 	var createTime, updateTime time.Time
+	var digestHex *string
 	err := c.q(ctx).QueryRow(ctx, q, moduleID, digestValue).Scan(
 		&cmt.Id, &cmt.CommitHash, &createTime, &updateTime,
 		&cmt.OwnerId, &cmt.ModuleId,
-		&cmt.Digest.Type, &cmt.Digest.Value,
+		&cmt.Digest.Type, &digestHex,
 		&cmt.CreatedByUserId, &cmt.SourceControlUrl,
 	)
-	cmt.CreateTime = timestamppb.New(createTime)
-	cmt.UpdateTime = timestamppb.New(updateTime)
+	// The scan error is checked before anything is derived from the scanned
+	// values, which is the order every other method here uses. It used to run
+	// the three conversions first: on ErrNoRows that meant stamping the zero
+	// time, so a row that does not exist was decorated as though it did before
+	// being thrown away, and any future line added to that block would run
+	// against a struct pgx never filled in.
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	cmt.Digest.Value = commit.DecodeDigest(digestHex)
+	cmt.CreateTime = timestamppb.New(createTime)
+	cmt.UpdateTime = timestamppb.New(updateTime)
 	return cmt, nil
 }
 
@@ -173,6 +184,11 @@ WHERE c.id = ANY($1::uuid[])`
 	}
 
 	if len(nameRefs) > 0 {
+		// The ordering carries a tiebreaker. TIMESTAMP here has sub-second
+		// resolution so a tie is unlikely rather than routine, which is exactly
+		// what made the same missing key on SQLite, where resolution is one
+		// second, so hard to see: DISTINCT ON picks the first row of each
+		// group, and with a tie that row is whichever the planner produced.
 		q := `
 SELECT DISTINCT ON (c.module_id)
   c.id, c.commit_hash, c.create_time, c.update_time,
@@ -184,7 +200,7 @@ FROM commits c
 JOIN users u ON u.id = c.owner_id
 JOIN modules m ON m.id = c.module_id
 WHERE m.name = ANY($1::text[])
-ORDER BY c.module_id, c.create_time DESC`
+ORDER BY c.module_id, c.create_time DESC, c.id DESC`
 		rows, err := c.q(ctx).Query(ctx, q, nameRefs)
 		if err != nil {
 			return nil, err
@@ -209,16 +225,18 @@ func scanCommitRows(rows pgx.Rows) ([]*registryv1.Commit, error) {
 		var moduleName string
 		var moduleID uuid.UUID
 		var createTime, updateTime time.Time
+		var digestHex *string
 
 		if err := rows.Scan(
 			&cmt.Id, &cmt.CommitHash, &createTime, &updateTime,
 			&cmt.OwnerId, &cmt.ModuleId,
-			&cmt.Digest.Type, &cmt.Digest.Value,
+			&cmt.Digest.Type, &digestHex,
 			&cmt.CreatedByUserId, &cmt.SourceControlUrl,
 			&ownerName, &ownerID, &moduleName, &moduleID,
 		); err != nil {
 			return nil, err
 		}
+		cmt.Digest.Value = commit.DecodeDigest(digestHex)
 		cmt.CreateTime = timestamppb.New(createTime)
 		cmt.UpdateTime = timestamppb.New(updateTime)
 		cmt.Owner = &identityv1.User{Username: ownerName}
@@ -245,7 +263,7 @@ FROM commits c
 JOIN users u ON u.id = c.owner_id
 JOIN modules m ON m.id = c.module_id
 WHERE c.module_id = $1
-ORDER BY c.create_time DESC LIMIT $2 OFFSET $3`
+ORDER BY c.create_time DESC, c.id DESC LIMIT $2 OFFSET $3`
 
 	rows, err := c.q(ctx).Query(ctx, q, moduleID, limit, offset)
 	if err != nil {
@@ -277,7 +295,7 @@ WHERE c.commit_hash = $1`
 		return nil, err
 	}
 	if len(commits) == 0 {
-		return nil, connErr.NotFound("commit not found")
+		return nil, commit.ErrNotFound
 	}
 	return commits[0], nil
 }
@@ -292,10 +310,18 @@ SELECT
 FROM commits c
 JOIN users u ON u.id = c.owner_id
 JOIN modules m ON m.id = c.module_id
-WHERE c.commit_hash ILIKE $1 || '%'
+WHERE c.commit_hash ILIKE $1 || '%' ESCAPE '\'
 LIMIT 1`
 
-	rows, err := c.q(ctx).Query(ctx, q, prefix)
+	// The prefix is escaped and an ESCAPE clause declared. A caller-supplied
+	// "%" would otherwise match everything and return an arbitrary commit to
+	// someone who supplied no real prefix at all.
+	//
+	// One backslash in the literal, not two. The query is a raw string, where
+	// there are no escape sequences, so "\\" is two characters and ESCAPE takes
+	// exactly one: PostgreSQL rejected every call with SQLSTATE 22025, which
+	// meant .info, .mod and .zip all returned 500 from the Go module proxy.
+	rows, err := c.q(ctx).Query(ctx, q, sqlutil.LikePrefix(prefix))
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +331,7 @@ LIMIT 1`
 		return nil, err
 	}
 	if len(commits) == 0 {
-		return nil, connErr.NotFound("commit not found")
+		return nil, commit.ErrNotFound
 	}
 	return commits[0], nil
 }

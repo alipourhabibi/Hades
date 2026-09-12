@@ -7,9 +7,9 @@ import (
 
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/emailverification"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/google/uuid"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 )
 
 // SQLiteEmailVerificationStorage implements emailverification.Storage using database/sql with SQLite.
@@ -29,6 +29,8 @@ func (s *SQLiteEmailVerificationStorage) q(ctx context.Context) txkeys.SQLQuerie
 }
 
 func (s *SQLiteEmailVerificationStorage) Create(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	_, err := s.q(ctx).ExecContext(ctx,
 		`INSERT INTO email_verifications (user_id, token_hash, expires_at) VALUES (?, ?, ?)`,
 		userID, tokenHash, expiresAt)
@@ -46,6 +48,7 @@ func (s *SQLiteEmailVerificationStorage) GetByTokenHash(ctx context.Context, tok
 		return nil, err
 	}
 	row.ExpiresAt = expiresAt.V
+	row.UserID = sqlutil.Canonical(row.UserID)
 	row.UsedAt = usedAt.Ptr()
 	return row, nil
 }

@@ -33,7 +33,7 @@ type Handler struct {
 	breakingChecker *breaking.Checker
 	uow             db.UnitOfWork
 	authz           *authorization.Server
-	gitalyOpLog     *gitalyoplog.GitalyOpLogStorage
+	gitalyOpLog     gitalyoplog.Storage
 	logger          *log.LoggerWrapper
 	registryHost    string
 }

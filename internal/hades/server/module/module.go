@@ -7,6 +7,7 @@ package module
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -22,7 +23,7 @@ import (
 	commitdb "github.com/alipourhabibi/Hades/internal/hades/storage/db/commit"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/gitalyoplog"
 	gitstorage "github.com/alipourhabibi/Hades/internal/hades/storage/git"
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 	"github.com/alipourhabibi/Hades/utils/log"
 	"github.com/google/uuid"
 )
@@ -70,7 +71,7 @@ type Server struct {
 	authorization   authService
 	orgDBStorage    orgStorage
 	uow             db.UnitOfWork
-	gitalyOpLog     *gitalyoplog.GitalyOpLogStorage
+	gitalyOpLog     gitalyoplog.Storage
 }
 
 func NewServer(deps *server.Dependencies) *Server {
@@ -138,7 +139,7 @@ func (s *Server) ListModules(ctx context.Context, in *connect.Request[registrypb
 		modules, err := s.moduleDBStorage.ListVisibleModules(ctx, in.Msg.Owner, subject, subjectID, pageSize, scanOffset)
 		if err != nil {
 			s.logger.Error("failed to list modules", "error", err, "procedure", "ListModules", "user_id", userID)
-			return nil, connErr.FromDB(err)
+			return nil, connerr.FromDB(err)
 		}
 		if len(modules) == 0 {
 			exhausted = true
@@ -189,12 +190,12 @@ func (s *Server) GetModule(ctx context.Context, in *connect.Request[registrypbv1
 			userID = user.Id
 		}
 		s.logger.Warn("module not found", "procedure", "GetModule", "user_id", userID, "owner", in.Msg.Owner, "name", in.Msg.Name, "error", err)
-		return nil, connErr.NotFound("module not found")
+		return nil, connerr.NotFound("module not found")
 	}
 
 	if err := s.authorization.CheckReadAccess(ctx, user, []*registrypbv1.Module{m}); err != nil {
 		// Surface as not-found so as not to leak existence of private modules.
-		return nil, connErr.NotFound("module not found")
+		return nil, connerr.NotFound("module not found")
 	}
 
 	return &connect.Response[registrypbv1.GetModuleResponse]{
@@ -204,7 +205,15 @@ func (s *Server) GetModule(ctx context.Context, in *connect.Request[registrypbv1
 
 func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[registrypbv1.CreateModuleByNameRequest]) (*connect.Response[registrypbv1.CreateModuleByNameResponse], error) {
 
-	in.Msg.Name = strings.ToLower(in.Msg.Name)
+	in.Msg.Name = strings.ToLower(strings.TrimSpace(in.Msg.Name))
+	// Before any storage or git call. The module name becomes the second
+	// segment of every URL the module appears at and the second segment of its
+	// repository path on disk, and neither was checked: "../escape" created a
+	// repository outside the owner's namespace and "has space" created a
+	// database row with no repository behind it. See constants.ValidateName.
+	if err := constants.ValidateName(in.Msg.Name); err != nil {
+		return nil, connerr.InvalidArgument("module " + err.Error())
+	}
 	if in.Msg.DefaultBranch == "" {
 		in.Msg.DefaultBranch = "main"
 	}
@@ -212,7 +221,7 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "CreateModuleByName")
-		return nil, connErr.Unauthenticated("not authenticated")
+		return nil, connerr.Unauthenticated("not authenticated")
 	}
 
 	// The namespace defaults to the caller's own username. Naming an
@@ -228,7 +237,7 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 		org, err := s.orgDBStorage.GetByName(ctx, ownerName)
 		if err != nil {
 			s.logger.Warn("module owner namespace not found", "procedure", "CreateModuleByName", "user_id", user.Id, "owner", ownerName)
-			return nil, connErr.NotFound("owner namespace not found")
+			return nil, connerr.NotFound("owner namespace not found")
 		}
 		ownerID = org.Id
 	}
@@ -246,7 +255,24 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 	}
 	if !can.Allowed {
 		s.logger.Warn("user not allowed to create module", "procedure", "CreateModuleByName", "user_id", user.Id, "module", moduleFullName)
-		return nil, connErr.PermissionDenied("user is not allowed to create this repo")
+		return nil, connerr.PermissionDenied("user is not allowed to create this repo")
+	}
+
+	// Answer "this name is taken" before doing any git work.
+	//
+	// Creating the same module twice used to return Internal. The unique
+	// constraint is on the database row, and the git steps run first: the
+	// repository already existed, CreateRepository is idempotent, and PutFiles
+	// then refused with ErrRefMoved because it expected no branch. That error
+	// reached the interceptor untranslated and was flattened, so a client could
+	// not tell "this name is taken" from "the server is broken" and a retry
+	// loop retried something that would never succeed.
+	//
+	// The database constraint is still the authority: this is a check, not a
+	// lock, and two concurrent creates can both pass it. The one that loses
+	// gets AlreadyExists from connerr.FromDB inside the transaction below.
+	if existing, err := s.moduleDBStorage.GetModuleByOwnerAndName(ctx, ownerName, in.Msg.Name); err == nil && existing != nil {
+		return nil, connerr.AlreadyExists("module " + moduleFullName + " already exists")
 	}
 
 	lintPreset := in.Msg.LintPreset
@@ -294,8 +320,25 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 	for i, f := range initialFiles {
 		gitFiles[i] = &gitstorage.File{Path: f.Path, Content: f.Content}
 	}
-	commitHash, err := s.gitStorage.PutFiles(ctx, moduleFullName, in.Msg.DefaultBranch, gitFiles, user.Username, user.Email, "initial commit", nil)
+	// ExpectedHead is empty: this is the first commit in a repository that was
+	// created a few lines above, so the branch must not exist yet. If it does,
+	// something else raced us and PutFiles refuses rather than overwriting.
+	commitHash, err := s.gitStorage.PutFiles(ctx, gitstorage.PutFilesRequest{
+		RepoPath:    moduleFullName,
+		Branch:      in.Msg.DefaultBranch,
+		Files:       gitFiles,
+		AuthorName:  user.Username,
+		AuthorEmail: user.Email,
+		Message:     "initial commit",
+	})
 	if err != nil {
+		// The repository is not deleted when the branch already existed: it
+		// belongs to a module someone else created, and removing it would turn
+		// a duplicate-name error into data loss.
+		if errors.Is(err, gitstorage.ErrRefMoved) {
+			s.recordOpLogFailure(ctx, logID, err)
+			return nil, connerr.AlreadyExists("module " + moduleFullName + " already exists")
+		}
 		_ = s.gitStorage.DeleteRepository(ctx, moduleFullName)
 		s.recordOpLogFailure(ctx, logID, err)
 		return nil, err
@@ -316,7 +359,7 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 			breakingEnabled,
 		)
 		if err != nil {
-			return nil, connErr.FromDB(err)
+			return nil, connerr.FromDB(err)
 		}
 
 		if err := s.commitDBStorage.Create(
@@ -330,14 +373,26 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 			user.Id,
 			"",
 		); err != nil {
-			return nil, connErr.FromDB(err)
+			return nil, connerr.FromDB(err)
 		}
 
 		return module, nil
 	}, 30*time.Second)
 	if err != nil {
-		// The DB rolled itself back; undo the git side to match.
-		_ = s.gitStorage.DeleteRepository(ctx, moduleFullName)
+		// The DB rolled itself back; undo the git side to match. A failure to
+		// compensate is logged rather than dropped: it leaves an orphan
+		// repository that will collide with the next attempt to create a module
+		// with this name, and the failure would otherwise surface there, far
+		// from its cause.
+		if delErr := s.gitStorage.DeleteRepository(ctx, moduleFullName); delErr != nil {
+			s.logger.Error("failed to remove the repository after a failed module creation",
+				"error", delErr, "procedure", "CreateModule", "module", moduleFullName,
+				"cause", err)
+			if s.gitalyOpLog != nil && logID != uuid.Nil {
+				_ = s.gitalyOpLog.UpdateStatus(ctx, logID, gitalyoplog.StatusFailed, "",
+					"module creation failed and the repository could not be removed: "+delErr.Error())
+			}
+		}
 	}
 
 	// Update the operation log (auto-committed, outside the UoW).
@@ -355,7 +410,12 @@ func (s *Server) CreateModuleByName(ctx context.Context, in *connect.Request[reg
 		return nil, err
 	}
 
-	module := result.(*registrypbv1.Module)
+	module, ok := result.(*registrypbv1.Module)
+	if !ok {
+		s.logger.Error("unexpected result type from the create-module transaction",
+			"procedure", "CreateModuleByName", "module", moduleFullName)
+		return nil, connerr.Internal("failed to create module")
+	}
 
 	return &connect.Response[registrypbv1.CreateModuleByNameResponse]{
 		Msg: &registrypbv1.CreateModuleByNameResponse{
@@ -368,7 +428,7 @@ func (s *Server) UpdateModule(ctx context.Context, in *connect.Request[registryp
 	user, ok := ctx.Value(constants.ContextKeyUser).(*identityv1.User)
 	if !ok {
 		s.logger.Error("missing user in context", "procedure", "UpdateModule")
-		return nil, connErr.Unauthenticated("not authenticated")
+		return nil, connerr.Unauthenticated("not authenticated")
 	}
 
 	moduleFullName := in.Msg.Owner + "/" + in.Msg.Name
@@ -384,13 +444,45 @@ func (s *Server) UpdateModule(ctx context.Context, in *connect.Request[registryp
 	}
 	if !can.Allowed {
 		s.logger.Warn("user not allowed to update module", "procedure", "UpdateModule", "user_id", user.Id, "module", moduleFullName)
-		return nil, connErr.PermissionDenied("user is not allowed to update this module")
+		return nil, connerr.PermissionDenied("user is not allowed to update this module")
+	}
+
+	// Making a private module public is checked separately.
+	//
+	// module:update covers editing a description; publishing a private schema
+	// to the world is a materially different decision, and a contributor who
+	// legitimately holds update rights should not necessarily hold it. Only the
+	// private-to-public direction needs the extra permission: making a public
+	// module private removes access rather than granting it.
+	if in.Msg.Visibility != nil && *in.Msg.Visibility == registrypbv1.ModuleVisibility_MODULE_VISIBILITY_PUBLIC {
+		current, err := s.moduleDBStorage.GetModuleByOwnerAndName(ctx, in.Msg.Owner, in.Msg.Name)
+		if err != nil {
+			s.logger.Error("failed to read the module before a visibility change", "error", err,
+				"procedure", "UpdateModule", "module", moduleFullName)
+			return nil, connerr.FromDB(err)
+		}
+		if current.Visibility != registrypbv1.ModuleVisibility_MODULE_VISIBILITY_PUBLIC {
+			canPublish, err := s.authorization.Can(ctx, &constants.Policy{
+				Subject:      user.Username,
+				ResourceType: string(constants.ResourceModule),
+				Action:       string(constants.ActionPublish),
+				Domain:       moduleFullName,
+			})
+			if err != nil {
+				return nil, err
+			}
+			if !canPublish.Allowed {
+				s.logger.Warn("user not allowed to publish module", "procedure", "UpdateModule",
+					"user_id", user.Id, "module", moduleFullName)
+				return nil, connerr.PermissionDenied("user is not allowed to make this module public")
+			}
+		}
 	}
 
 	updated, err := s.moduleDBStorage.Update(ctx, in.Msg)
 	if err != nil {
 		s.logger.Error("failed to update module", "error", err, "procedure", "UpdateModule", "module", moduleFullName)
-		return nil, connErr.FromDB(err)
+		return nil, connerr.FromDB(err)
 	}
 
 	return &connect.Response[registrypbv1.UpdateModuleResponse]{

@@ -253,7 +253,7 @@ func TestCommitListPagination(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			require.NoError(t, store.Commit().Create(ctx, uuid.New(),
 				commitHash(i), alice.Id, module.Id,
-				registryv1.DigestType_DIGEST_TYPE_B5, commitHash(i)[:16], alice.Id, ""))
+				registryv1.DigestType_DIGEST_TYPE_B5, commitHash(i), alice.Id, ""))
 			// create_time has one-second resolution on SQLite; without a gap the
 			// ordering between rows is not observable.
 			time.Sleep(5 * time.Millisecond)
@@ -301,7 +301,8 @@ func TestAPITokenLifecycle(t *testing.T) {
 
 		listed, err = tokens.ListByUserID(ctx, alice.Id, 50, 0)
 		require.NoError(t, err)
-		assert.Empty(t, listed, "a revoked token drops out of the listing")
+		require.Len(t, listed, 1, "a revoked token stays in the listing so its status can be reported")
+		assert.NotNil(t, listed[0].RevokedAt)
 
 		byHash, err = tokens.GetByTokenHash(ctx, "tokenhash")
 		require.NoError(t, err, "the row survives revocation so the interceptor can reject it by name")

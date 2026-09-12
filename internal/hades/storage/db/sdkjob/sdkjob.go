@@ -33,6 +33,9 @@ type Storage interface {
 	ClaimPending(ctx context.Context, limit int) ([]*SDKJob, error)
 	MarkSucceeded(ctx context.Context, jobID, outputLocation string) error
 	MarkFailed(ctx context.Context, jobID, errMsg string, attempts int) error
+	// ListByModule returns the module's jobs, newest first, capped at 1000.
+	// One row exists per generator per commit, so the set grows with history
+	// and the method must not be able to return all of it at once.
 	ListByModule(ctx context.Context, moduleID string) ([]*SDKJob, error)
 	ListSucceededByModuleAndLang(ctx context.Context, moduleID, language string) ([]*SDKJob, error)
 	GetByCommitAndLang(ctx context.Context, commitID, language string) (*SDKJob, error)

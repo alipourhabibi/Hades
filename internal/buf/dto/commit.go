@@ -5,7 +5,7 @@ import (
 
 	modulev1 "buf.build/gen/go/bufbuild/registry/protocolbuffers/go/buf/registry/module/v1"
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
-	generalutils "github.com/alipourhabibi/Hades/utils/general"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/google/uuid"
 )
 
@@ -26,7 +26,11 @@ func ToCommitPB(in *registryv1.Commit) *modulev1.Commit {
 	}
 
 	return &modulev1.Commit{
-		Id:         generalutils.ToDashless(tId),
+		// The buf protocol carries commit ids without hyphens. sqlutil.UUID is
+		// the one conversion in the tree; utils/general.ToDashless was a second
+		// implementation of the same thing under a different name, which with
+		// two identifier formats in play was an active hazard.
+		Id:         sqlutil.UUID(tId),
 		CreateTime: in.CreateTime,
 		OwnerId:    in.OwnerId,
 		ModuleId:   in.ModuleId,

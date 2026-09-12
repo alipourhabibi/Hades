@@ -50,6 +50,15 @@ func (s *PasswordResetStorage) GetByTokenHash(ctx context.Context, tokenHash str
 	return row, nil
 }
 
+// InvalidateForUser retires every outstanding reset token for the user.
+func (s *PasswordResetStorage) InvalidateForUser(ctx context.Context, userID string) error {
+	_, err := s.q(ctx).Exec(ctx,
+		`UPDATE password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL`,
+		userID,
+	)
+	return err
+}
+
 func (s *PasswordResetStorage) MarkUsed(ctx context.Context, id uuid.UUID) error {
 	_, err := s.q(ctx).Exec(ctx,
 		`UPDATE password_resets SET used_at = NOW() WHERE id = $1`,

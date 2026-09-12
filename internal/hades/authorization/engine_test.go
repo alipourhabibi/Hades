@@ -18,12 +18,6 @@ type fakeStore struct {
 	listBySubjectHit int // counts ListBySubject calls to verify cache path
 }
 
-func (f *fakeStore) ListAll(_ context.Context) ([]opabinding.RoleBinding, error) {
-	cp := make([]opabinding.RoleBinding, len(f.bindings))
-	copy(cp, f.bindings)
-	return cp, nil
-}
-
 func (f *fakeStore) Create(_ context.Context, subject, role, domain string) error {
 	f.bindings = append(f.bindings, opabinding.RoleBinding{
 		Subject: subject, Role: role, Domain: domain,
@@ -45,7 +39,7 @@ func (f *fakeStore) ListBySubject(_ context.Context, subject string) ([]opabindi
 func (f *fakeStore) DeleteBySubjectDomain(_ context.Context, subject, domain string) error {
 	filtered := f.bindings[:0]
 	for _, b := range f.bindings {
-		if !(b.Subject == subject && b.Domain == domain) {
+		if b.Subject != subject || b.Domain != domain {
 			filtered = append(filtered, b)
 		}
 	}
@@ -56,6 +50,16 @@ func (f *fakeStore) DeleteBySubjectDomain(_ context.Context, subject, domain str
 func engine(t *testing.T, bindings ...opabinding.RoleBinding) *Engine {
 	t.Helper()
 	e, err := newFromStore(context.Background(), &fakeStore{bindings: bindings}, cache.NewMemoryCache(), 0)
+	require.NoError(t, err)
+	return e
+}
+
+// engineWithSuperAdmins builds an engine whose policy bypass list is seeded,
+// which is what WithSuperAdmins does in production.
+func engineWithSuperAdmins(t *testing.T, admins []string) *Engine {
+	t.Helper()
+	e, err := newFromStore(context.Background(), &fakeStore{}, cache.NewMemoryCache(), 0,
+		WithSuperAdmins(admins))
 	require.NoError(t, err)
 	return e
 }
@@ -109,9 +113,9 @@ func TestAdmin_CanDelete(t *testing.T) {
 	assert.True(t, allow(t, e, "bob", "alice/foo", "module", "delete", "private"))
 }
 
-func TestAdmin_CanReadLabels(t *testing.T) {
+func TestAdmin_CanAdministerTheOrg(t *testing.T) {
 	e := engine(t, opabinding.RoleBinding{Subject: "bob", Role: "admin", Domain: "alice/foo"})
-	assert.True(t, allow(t, e, "bob", "alice/foo", "label", "read", "private"))
+	assert.True(t, allow(t, e, "bob", "alice/foo", "org", "admin", "private"))
 }
 
 // contributor role
@@ -126,9 +130,27 @@ func TestContributor_CannotDelete(t *testing.T) {
 	assert.False(t, allow(t, e, "carol", "alice/foo", "module", "delete", "private"))
 }
 
-func TestContributor_CanReadCommits(t *testing.T) {
+func TestContributor_CanReadTheOrg(t *testing.T) {
 	e := engine(t, opabinding.RoleBinding{Subject: "carol", Role: "contributor", Domain: "alice/foo"})
-	assert.True(t, allow(t, e, "carol", "alice/foo", "commit", "read", "private"))
+	assert.True(t, allow(t, e, "carol", "alice/foo", "org", "read", "private"))
+}
+
+// TestContributor_CannotPublish pins the split between module:update and
+// module:publish: pushing commits does not imply the right to publish a
+// private module to the world.
+func TestContributor_CannotPublish(t *testing.T) {
+	e := engine(t, opabinding.RoleBinding{Subject: "carol", Role: "contributor", Domain: "alice/foo"})
+	assert.False(t, allow(t, e, "carol", "alice/foo", "module", "publish", "private"))
+}
+
+// TestSuperAdminBypassFires is the regression test for the bypass clause that
+// could never fire, because data.superadmins was seeded by nothing.
+func TestSuperAdminBypassFires(t *testing.T) {
+	e := engineWithSuperAdmins(t, []string{"root"})
+	assert.True(t, allow(t, e, "root", "someone/else", "module", "delete", "private"),
+		"a configured superadmin bypasses every check")
+	assert.False(t, allow(t, e, "mallory", "someone/else", "module", "delete", "private"),
+		"anyone else is still refused")
 }
 
 // reader role
@@ -243,7 +265,7 @@ func TestAddBinding_CacheInvalidatedOnWrite(t *testing.T) {
 	assert.False(t, allow(t, e, "alice", "alice/foo", "module", "read", "private"))
 	assert.Equal(t, 1, store.listBySubjectHit)
 
-	// Add a binding. This must clear the cache.
+	// Add binding; must invalidate cache.
 	require.NoError(t, e.AddBinding(ctx, "alice", "owner", "alice/*"))
 
 	// Next Allow must hit DB (cache miss after invalidation).
@@ -372,7 +394,8 @@ func TestCache_HybridStorePopulatedOnAllow(t *testing.T) {
 
 	// Cache key must be populated.
 	key := bindingCacheKey("alice")
-	_, ok := c.Get(ctx, key)
+	_, ok, err := c.Get(ctx, key)
+	require.NoError(t, err)
 	assert.True(t, ok, "cache should be populated after first Allow")
 
 	// Second Allow: should read from cache, not DB.

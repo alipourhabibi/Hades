@@ -64,7 +64,6 @@ func TestValidateCode_WrongSecret(t *testing.T) {
 	code, err := totp.GenerateCode(other, time.Now())
 	require.NoError(t, err)
 
-
 	// Re-generate alice's secret (they differ each call), just use a fresh one.
 	aliceSecret, _, err := GenerateSecret("Hades", "alice")
 	require.NoError(t, err)

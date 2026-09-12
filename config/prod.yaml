@@ -3,6 +3,19 @@ server:
   registryHost: "example.com" # CHANGE: set to your domain
   # Serves the unauthenticated gRPC reflection API. Keep off in production.
   enableReflection: false
+  # CIDR ranges whose X-Forwarded-For / X-Real-IP headers are believed.
+  # docker-compose.yml puts Caddy in front of this service, so without an entry
+  # here every client IP is the proxy's: rate limiting becomes global and every
+  # audit-log row records the same address. The default bridge network is
+  # 172.16.0.0/12; narrow it to Caddy's address if you pin one.
+  trustedProxies:
+    - "172.16.0.0/12"
+  # Listener timeouts. There is deliberately no write timeout: the Go module
+  # proxy streams SDK zips of unknown size.
+  readHeaderTimeout: 15s
+  readTimeout: 5m
+  idleTimeout: 120s
+  shutdownTimeout: 30s
 
 backends:
   database: postgres
@@ -35,12 +48,43 @@ gitaly:
   port: 9999
   defaultStorageName: default
   # hostname resolved via Docker network to the gitaly service
+  # Transport security on the Gitaly connection. Leave false only while Gitaly
+  # is reachable exclusively on a private network you control.
+  tls: false
+  caCertFile: ""
+  serverNameOverride: ""
+
+# Used only when backends.database is sqlite; present so the file states every
+# key the server reads rather than falling back to a built-in default silently.
+sqlite:
+  path: ./hades.db
+
+# Used only when backends.git is gogit.
+gitStorage:
+  root: ./_data/repos
+
+# Used only when backends.artifactStorage is disk.
+diskStorage:
+  path: ./_data/artifacts
 
 db:
   connectionString: "postgres://hades:hades@postgres:5432/hades?sslmode=disable"
 
 telemetry:
   enabled: false
+  serviceName: hades
+  otlpEndpoint: "otel-collector:4317"
+  # The metrics and pprof listeners start only when enabled is true. pprof
+  # dumps process memory, which contains live session tokens, and neither
+  # listener authenticates, so bindAddr stays on loopback.
+  prometheusPort: 9090
+  pprofPort: 0
+  bindAddr: "127.0.0.1"
+  # Required before either listener will bind to a non-loopback address. A
+  # pprof heap dump contains live session tokens and neither endpoint
+  # authenticates, so publishing them is a separate, named decision.
+  allowPublicDiagnostics: false
+  samplingRatio: 0.1
 
 auth:
   password:
@@ -62,6 +106,10 @@ email:
   from: "noreply@example.com"
 
 oauth:
+  # Off by default. With it on, a first-time OAuth login takes over any local
+  # account whose email the provider reports as verified, with no confirmation
+  # step: a compromised provider account is then a full takeover of this one.
+  allowAccountLinkingByEmail: false
   github:
     clientId: ""
     clientSecret: ""
@@ -92,21 +140,30 @@ sdk:
   breakingEnabled: false
   generators:
     - language: go
-      plugin: go
+      # The binary buf execs. It is protoc-gen-go, not "go": generate.go writes
+      # this straight into `local:` in buf.gen.yaml, so "go" ran the Go
+      # toolchain instead of the protobuf plugin.
+      plugin: protoc-gen-go
       options: "paths=source_relative"
   storage:
     type: s3
     s3:
       endpoint: "minio:9000"
       bucket: "hades-sdks"
-      accessKeyId: "minioadmin" # change if you set custom MINIO credentials
-      secretAccessKey: "minioadmin" # change if you set custom MINIO credentials
+      # Supplied through the environment. A default of minioadmin/minioadmin in
+      # a file that docker-compose mounts as the running configuration is a
+      # published credential, not a placeholder.
+      accessKeyId: "${HADES_S3_ACCESS_KEY_ID}"
+      secretAccessKey: "${HADES_S3_SECRET_ACCESS_KEY}"
       useSSL: false
       region: "us-east-1"
 
 # OPA authorization engine tuning.
 # With cache: redis, bindings are invalidated across all pods immediately
 # (Redis Del propagates). With cache: memory, each pod caches independently
-# and stale bindings stay until the TTL runs out. See DEPLOYMENT.md.
+# and stale bindings persist until TTL expires; see DEPLOYMENT.md.
 opa:
   bindingCacheTTL: 60s # redis=60s is appropriate; lower to reduce revocation latency
+  # Subjects that bypass every policy check. Empty is the recommendation: the
+  # bypass has no scoping and no distinct audit signal.
+  superAdmins: []

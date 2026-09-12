@@ -7,9 +7,9 @@ import (
 
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/devicegrant"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 	"github.com/google/uuid"
-	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 )
 
 // SQLiteDeviceGrantStorage implements devicegrant.Storage using database/sql with SQLite.
@@ -39,6 +39,10 @@ func scanSQLiteDeviceGrant(row *sql.Row) (*devicegrant.Row, error) {
 	if err != nil {
 		return nil, err
 	}
+	if r.UserID != nil {
+		canonical := sqlutil.Canonical(*r.UserID)
+		r.UserID = &canonical
+	}
 	r.ApprovedAt = approvedAt.Ptr()
 	r.ExpiresAt = expiresAt.V
 	r.CreatedAt = createdAt.V
@@ -67,11 +71,46 @@ func (s *SQLiteDeviceGrantStorage) GetByUserCode(ctx context.Context, userCode s
 		`SELECT `+sqliteDeviceGrantCols+` FROM device_grants WHERE user_code = ?`, userCode))
 }
 
-func (s *SQLiteDeviceGrantStorage) Approve(ctx context.Context, id uuid.UUID, userID string, apiTokenID *uuid.UUID) error {
-	_, err := s.q(ctx).ExecContext(ctx,
-		`UPDATE device_grants SET user_id = ?, api_token_id = ?, approved_at = datetime('now') WHERE id = ?`,
-		userID, apiTokenID, sqlutil.UUID(id))
-	return err
+func (s *SQLiteDeviceGrantStorage) Approve(ctx context.Context, id uuid.UUID, userID string) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
+	res, err := s.q(ctx).ExecContext(ctx,
+		`UPDATE device_grants SET user_id = ?, approved_at = datetime('now')
+		 WHERE id = ? AND approved_at IS NULL`,
+		userID, sqlutil.UUID(id))
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return devicegrant.ErrAlreadyApproved
+	}
+	return nil
+}
+
+// AttachToken stores the API token id in the dashless form the rest of the
+// SQLite schema uses. Binding the uuid.UUID directly would go through its
+// driver.Valuer, which emits the hyphenated form, and the column would then
+// never join against api_tokens.id.
+func (s *SQLiteDeviceGrantStorage) AttachToken(ctx context.Context, id uuid.UUID, apiTokenID uuid.UUID) error {
+	res, err := s.q(ctx).ExecContext(ctx,
+		`UPDATE device_grants SET api_token_id = ?
+		 WHERE id = ? AND api_token_id IS NULL`,
+		sqlutil.UUID(apiTokenID), sqlutil.UUID(id))
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return devicegrant.ErrTokenAlreadyIssued
+	}
+	return nil
 }
 
 var _ devicegrant.Storage = (*SQLiteDeviceGrantStorage)(nil)

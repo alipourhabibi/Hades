@@ -14,7 +14,7 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/server"
 	commit "github.com/alipourhabibi/Hades/internal/hades/server/commit"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 	"github.com/alipourhabibi/Hades/utils/log"
 )
 
@@ -51,7 +51,7 @@ func (s *Server) GetCommits(ctx context.Context, req *connect.Request[modulev1.G
 	// Reject label/generic name refs before routing.
 	for _, r := range req.Msg.ResourceRefs {
 		if r.GetName().GetLabelName() != "" || r.GetName().GetRef() != "" {
-			return nil, connErr.Unimplemented("label refs and generic refs are not yet supported; use a module owner/name or a direct commit id")
+			return nil, connerr.Unimplemented("label refs and generic refs are not yet supported; use a module owner/name or a direct commit id")
 		}
 	}
 
@@ -62,7 +62,11 @@ func (s *Server) GetCommits(ctx context.Context, req *connect.Request[modulev1.G
 		if r.GetId() != "" {
 			rt, err := s.resolver.ResolveType(ctx, r.GetId())
 			if err != nil {
-				return nil, err
+				// Translated rather than returned raw. The error interceptor
+				// flattens anything that is not already a connect error to
+				// Internal, so an unregistered id surfaced as a 500 and a
+				// database failure surfaced as whatever the driver produced.
+				return nil, connerr.FromDB(err)
 			}
 			switch rt {
 			case resource.ResourceTypeCommit:
@@ -70,9 +74,9 @@ func (s *Server) GetCommits(ctx context.Context, req *connect.Request[modulev1.G
 			case resource.ResourceTypeModule:
 				moduleRefs = append(moduleRefs, &registryv1.ModuleRef{Id: r.GetId()})
 			case resource.ResourceTypeLabel:
-				return nil, connErr.Unimplemented("label refs are not yet supported in GetCommits")
+				return nil, connerr.Unimplemented("label refs are not yet supported in GetCommits")
 			default:
-				return nil, connErr.Unimplemented("unknown resource type for id: " + r.GetId())
+				return nil, connerr.Unimplemented("unknown resource type for id: " + r.GetId())
 			}
 		} else {
 			moduleRefs = append(moduleRefs, &registryv1.ModuleRef{

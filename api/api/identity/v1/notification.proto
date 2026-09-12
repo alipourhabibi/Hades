@@ -43,14 +43,25 @@ message Notification {
 }
 
 // ListNotificationsRequest is the input for NotificationService.ListNotifications.
-// No parameters are needed; the service always returns notifications for the
-// authenticated caller.
-message ListNotificationsRequest {}
+// The service always returns notifications for the authenticated caller.
+message ListNotificationsRequest {
+  // Maximum number of notifications to return. Zero uses the default (50) and
+  // the server clamps to 100.
+  //
+  // A notification is created on every push to every module the caller can see,
+  // so this set grows without bound over the life of an account: it is the one
+  // per-user list that genuinely needs a cursor.
+  int32 page_size = 1;
+  // Opaque cursor from a previous response's next_page_token.
+  string page_token = 2;
+}
 
 // ListNotificationsResponse is the output for NotificationService.ListNotifications.
 message ListNotificationsResponse {
-  // All notifications for the caller, ordered newest first.
+  // Notifications for the caller, ordered newest first.
   repeated Notification notifications = 1;
+  // Cursor for the next page, or empty when this was the last one.
+  string next_page_token = 2;
 }
 
 // MarkNotificationReadRequest marks a single notification as acknowledged.

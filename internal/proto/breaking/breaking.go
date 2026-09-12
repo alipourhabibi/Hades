@@ -42,6 +42,7 @@ func (c *Checker) Check(ctx context.Context, newDir, prevDir string) error {
 	if prevDir == "" {
 		return nil
 	}
+	// #nosec G204 -- the binary is sdk.bufBin from configuration, and the arguments are paths this process created.
 	out, err := exec.CommandContext(ctx, c.bufBin,
 		"breaking", newDir, "--against", prevDir).CombinedOutput()
 	if err == nil {

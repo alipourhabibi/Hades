@@ -112,13 +112,22 @@ message RemoveOrgMemberResponse {}
 // ListOrganizationsRequest searches for organization accounts.
 message ListOrganizationsRequest {
   // Optional substring search on org username. Empty matches every
-  // organization. At most 50 are returned either way; there is no pagination.
+  // organization.
+  //
+  // The search term is matched literally: "%" and "_" are escaped.
   string query = 1;
+  // Maximum number of organizations to return. Zero uses the default (50) and
+  // the server clamps to 100.
+  int32 page_size = 2;
+  // Opaque cursor from a previous response's next_page_token.
+  string page_token = 3;
 }
 
 // ListOrganizationsResponse carries matching organization records.
 message ListOrganizationsResponse {
   repeated User organizations = 1;
+  // Cursor for the next page, or empty when this was the last one.
+  string next_page_token = 2;
 }
 
 // GetUserOrgsRequest lists the organizations a user belongs to.

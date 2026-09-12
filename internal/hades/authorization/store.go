@@ -8,6 +8,7 @@ import (
 
 	"github.com/alipourhabibi/Hades/internal/hades/cache"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/opabinding"
+	"github.com/alipourhabibi/Hades/utils/log"
 	"github.com/open-policy-agent/opa/v1/storage"
 	"github.com/open-policy-agent/opa/v1/storage/inmem"
 )
@@ -15,20 +16,23 @@ import (
 const bindingCacheKeyPrefix = "opa:bindings:"
 
 // hybridStore implements storage.Store.
+// Policy (Rego) paths are handled by the embedded inmem delegate.
+// Data reads for path /role_bindings/{subject} are served from cache (with DB
+// fallback on miss). Writes to /role_bindings/{subject} only invalidate the
+// per-subject cache entry; the authoritative store is always the database.
 //
-// The Rego policy stays in the inmem store. Reads of /role_bindings/{subject}
-// come from the cache, and from the database when the cache misses. A write
-// only clears that one subject from the cache. The database is always the
-// source of truth.
-//
-// The memory cache is per process. A binding written on one pod is not seen by
-// the other pods until the TTL runs out. Use Redis if you run more than one
-// pod. SQLite runs in one process, so the memory cache fits it well.
+// Multi-pod note: in-memory cache is per-process. Bindings written on one pod
+// are not visible to others until their cache TTL expires. Use Redis
+// (backends.cache: redis) for cross-pod consistency. SQLite is single-process
+// by design and pairs naturally with the in-memory cache.
 type hybridStore struct {
-	inner storage.Store // inmem store, holds the Rego policy only
+	inner storage.Store // inmem, holds Rego policy only
 	cache cache.Cache
 	db    hybridBindingDB
 	ttl   time.Duration
+	// logger is optional; when set, cache outages are reported rather than
+	// silently degrading into a database read on every request.
+	logger *log.LoggerWrapper
 }
 
 // hybridBindingDB is the subset of opabinding.Storage used by hybridStore.
@@ -36,17 +40,37 @@ type hybridBindingDB interface {
 	ListBySubject(ctx context.Context, subject string) ([]opabinding.RoleBinding, error)
 }
 
-func newHybridStore(c cache.Cache, db hybridBindingDB, ttl time.Duration) (*hybridStore, error) {
+// negativeBindingCacheTTL bounds how long "this subject has no bindings" is
+// remembered.
+//
+// Caching an empty result for the full TTL means a read that races the write
+// granting a role pins the negative answer, and the new role does not take
+// effect for up to the TTL even on the pod that granted it. A short window
+// still absorbs the repeated lookups an unauthorised caller generates without
+// making a fresh grant look like it did not happen.
+const negativeBindingCacheTTL = 2 * time.Second
+
+func newHybridStore(c cache.Cache, db hybridBindingDB, ttl time.Duration, superAdmins []string) (*hybridStore, error) {
 	inner := inmem.New()
 
 	// Seed inner with an empty role_bindings map so OPA policy compilation
-	// sees a valid (though empty) data document and does not fail type-checks.
+	// sees a valid (though empty) data document and does not fail type-checks,
+	// and with the superadmin set the policy's bypass clause reads.
 	ctx := context.Background()
 	txn, err := inner.NewTransaction(ctx, storage.WriteParams)
 	if err != nil {
 		return nil, fmt.Errorf("hybridStore: seed txn: %w", err)
 	}
-	seed := map[string]any{"role_bindings": map[string]any{}}
+	admins := make([]any, 0, len(superAdmins))
+	for _, s := range superAdmins {
+		if s != "" {
+			admins = append(admins, s)
+		}
+	}
+	seed := map[string]any{
+		"role_bindings": map[string]any{},
+		"superadmins":   admins,
+	}
 	if err := inner.Write(ctx, txn, storage.AddOp, storage.MustParsePath("/"), seed); err != nil {
 		inner.Abort(ctx, txn)
 		return nil, fmt.Errorf("hybridStore: seed write: %w", err)
@@ -116,7 +140,17 @@ func (s *hybridStore) Read(ctx context.Context, txn storage.Transaction, path st
 		subject := path[1]
 		key := bindingCacheKey(subject)
 
-		if raw, ok := s.cache.Get(ctx, key); ok {
+		raw, ok, err := s.cache.Get(ctx, key)
+		if err != nil {
+			// Falling through to the database is the right answer here: the
+			// authoritative store still works. It is logged because it is a
+			// load transfer onto the database on every single request, and a
+			// silent one is a load transfer nobody is alerted to.
+			if s.logger != nil {
+				s.logger.Error("binding cache unavailable, reading from database",
+					"error", err, "subject", subject)
+			}
+		} else if ok {
 			bindings, err := unmarshalSubjectBindings(raw)
 			if err != nil {
 				return nil, fmt.Errorf("hybridStore: cache unmarshal: %w", err)
@@ -134,9 +168,12 @@ func (s *hybridStore) Read(ctx context.Context, txn storage.Transaction, path st
 			bindings = append(bindings, opaSubjectBinding{Role: r.Role, Domain: r.Domain})
 		}
 
-		raw, err := marshalSubjectBindings(rows)
-		if err == nil {
-			_ = s.cache.Set(ctx, key, raw, s.ttl)
+		if encoded, err := marshalSubjectBindings(rows); err == nil {
+			ttl := s.ttl
+			if len(rows) == 0 && negativeBindingCacheTTL < ttl {
+				ttl = negativeBindingCacheTTL
+			}
+			_ = s.cache.Set(ctx, key, encoded, ttl)
 		}
 
 		return toOPASlice(bindings), nil

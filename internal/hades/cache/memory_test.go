@@ -15,7 +15,10 @@ func TestMemoryCache_GetSet(t *testing.T) {
 	if err := c.Set(ctx, "k", "v", 0); err != nil {
 		t.Fatal(err)
 	}
-	val, ok := c.Get(ctx, "k")
+	val, ok, err := c.Get(ctx, "k")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok || val != "v" {
 		t.Fatalf("Get: got (%q, %v), want (\"v\", true)", val, ok)
 	}
@@ -23,7 +26,10 @@ func TestMemoryCache_GetSet(t *testing.T) {
 
 func TestMemoryCache_GetMissing(t *testing.T) {
 	c := cache.NewMemoryCache()
-	_, ok := c.Get(context.Background(), "no-such-key")
+	_, ok, err := c.Get(context.Background(), "no-such-key")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if ok {
 		t.Fatal("expected false for missing key")
 	}
@@ -37,26 +43,13 @@ func TestMemoryCache_TTLExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Key should exist immediately.
-	if _, ok := c.Get(ctx, "ttl-key"); !ok {
+	if _, ok, _ := c.Get(ctx, "ttl-key"); !ok {
 		t.Fatal("expected key to exist before TTL expires")
 	}
 	time.Sleep(100 * time.Millisecond)
 	// Key should be gone after TTL.
-	if _, ok := c.Get(ctx, "ttl-key"); ok {
+	if _, ok, _ := c.Get(ctx, "ttl-key"); ok {
 		t.Fatal("expected key to be expired")
-	}
-}
-
-func TestMemoryCache_Incr(t *testing.T) {
-	c := cache.NewMemoryCache()
-	ctx := context.Background()
-
-	v1, _ := c.Incr(ctx, "counter")
-	v2, _ := c.Incr(ctx, "counter")
-	v3, _ := c.Incr(ctx, "counter")
-
-	if v1 != 1 || v2 != 2 || v3 != 3 {
-		t.Fatalf("Incr: got %d, %d, %d; want 1, 2, 3", v1, v2, v3)
 	}
 }
 

@@ -2,7 +2,12 @@
 // types used across all service handlers and middleware.
 package constants
 
-import "strings"
+import (
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+)
 
 // contextKey is an unexported type to prevent context key collisions.
 type contextKey string
@@ -36,6 +41,53 @@ func IsReservedName(name string) bool {
 	return found
 }
 
+// nameRe is the character set for a namespace or module name: lowercase
+// alphanumerics, with dashes, underscores and dots allowed in the interior
+// only. A single character is allowed by the second alternative.
+//
+// Anchored at both ends, so nothing containing "/", "\", whitespace or a path
+// segment can match. Refusing a leading or trailing punctuation character is
+// what keeps ".git", "..", "-dash" and "name." out.
+var nameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$`)
+
+// MaxNameLength bounds a namespace or module name. It matches the username
+// bound declared in auth.proto.
+const MaxNameLength = 32
+
+// ValidateName checks a name that will become a path segment: a username, an
+// organisation name, or a module name.
+//
+// A module name reaches the filesystem. gogit builds a repository path with
+// filepath.Join(root, "<owner>/<name>"), and filepath.Join calls Clean, which
+// resolves ".." rather than rejecting it: a module named "../escape" produced a
+// git repository one level above the owner's namespace, in the directory where
+// owner namespaces live. "a/b" created a nested subtree, ".git" created a
+// directory git itself treats specially, and the Gitaly backend passes the same
+// string as a RelativePath. Module names were not checked at all before this,
+// even though the first path segment, the username, was.
+//
+// The check belongs in the handler, before any storage or git call, so a
+// rejected name never leaves a half-created record: "has space" was accepted,
+// got a database row, and failed to get a repository, so the record and the
+// storage disagreed from the moment it existed.
+//
+// The name is expected already lowercased and trimmed by the caller, which is
+// what every handler does; an uppercase letter is rejected rather than folded,
+// so a caller that forgot finds out.
+func ValidateName(name string) error {
+	switch {
+	case name == "":
+		return errors.New("name is required")
+	case len(name) > MaxNameLength:
+		return fmt.Errorf("name must be at most %d characters", MaxNameLength)
+	case !nameRe.MatchString(name):
+		return errors.New("name must be lowercase letters, digits, dashes, underscores or dots, and must start and end with a letter or digit")
+	case IsReservedName(name):
+		return errors.New("name is reserved")
+	}
+	return nil
+}
+
 type Action string
 
 const (
@@ -50,17 +102,22 @@ const (
 	RoleAdmin       = "admin"
 	RoleContributor = "contributor"
 	RoleReader      = "reader"
-	RoleSuperAdmin  = "superadmin"
+	// RoleSuperAdmin bypasses every policy check. The subjects it applies to
+	// come from opa.superAdmins in configuration, which is what the policy's
+	// data.superadmins clause reads; before that was wired the clause could
+	// never fire and granting the role granted nothing.
+	RoleSuperAdmin = "superadmin"
 )
 
 // ResourceType identifies the kind of resource in an OPA policy check.
 type ResourceType string
 
 const (
-	ResourceModule    ResourceType = "module"
-	ResourceLabel     ResourceType = "label"
-	ResourceCommit    ResourceType = "commit"
-	ResourceNamespace ResourceType = "namespace"
+	ResourceModule ResourceType = "module"
+	// ResourceOrg covers organisation membership and settings. Organisation
+	// mutations used to authorise themselves against the org_memberships table
+	// directly, which left two sources of truth for the same question.
+	ResourceOrg ResourceType = "org"
 )
 
 // Extended action set used by the OPA policy.
@@ -73,6 +130,14 @@ const (
 	ActionDelete   Action = "delete"
 	ActionAdmin    Action = "admin"
 	ActionTransfer Action = "transfer"
+
+	// ActionPublish is the private-to-public visibility transition.
+	//
+	// It is checked separately from ActionUpdate because publishing a private
+	// schema to the world is a materially different decision from editing its
+	// description, and a contributor who legitimately holds update rights
+	// should not necessarily hold it.
+	ActionPublish Action = "publish"
 )
 
 // Visibility levels used as OPA input.
@@ -142,21 +207,17 @@ func DomainMatches(pattern, domain string) bool {
 
 // scopedResources are the resource types a token scope may name.
 //
-// Only "module" is listed, even though ResourceLabel, ResourceCommit and
-// ResourceNamespace exist as policy vocabulary. No authorization check ever
-// asks about those three: every call site passes ResourceModule, so a scope
-// naming one of them matches nothing and the token it belongs to can do
-// nothing. Accepting such a scope would hand out a credential that is dead on
-// arrival and looks deliberate. Extend this list in the same change that starts
-// enforcing the resource type, not before.
-var scopedResources = []ResourceType{ResourceModule}
+// A resource type belongs here once some authorization check actually asks
+// about it; a scope naming a type nobody asks about matches nothing, so the
+// token it belongs to is dead on arrival while looking deliberate.
+var scopedResources = []ResourceType{ResourceModule, ResourceOrg}
 
 // knownScopes is the complete set of scope strings an API token may declare.
 // A wildcard form ("module:*") is accepted for every resource type.
 var knownScopes = func() map[string]struct{} {
 	actions := []Action{
 		ActionCreate, ActionRead, ActionList, ActionUpdate,
-		ActionPush, ActionDelete, ActionAdmin, ActionTransfer,
+		ActionPush, ActionDelete, ActionAdmin, ActionTransfer, ActionPublish,
 	}
 	out := make(map[string]struct{}, len(scopedResources)*(len(actions)+1))
 	for _, r := range scopedResources {

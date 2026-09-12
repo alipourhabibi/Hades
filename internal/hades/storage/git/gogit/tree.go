@@ -30,6 +30,9 @@ func (g *GoGitStorage) GetFile(_ context.Context, repoPath, ref, filePath string
 	if err != nil {
 		return nil, 0, git.ErrNotFound
 	}
+	// f.Contents materialises the file as a string and the conversion below
+	// copies it again. Both copies are unavoidable while git.Storage.GetFile
+	// returns []byte rather than a reader; see REVIEW.md R4.4.
 	content, err := f.Contents()
 	if err != nil {
 		return nil, 0, err
@@ -55,10 +58,14 @@ func (g *GoGitStorage) ListFiles(_ context.Context, repoPath, ref string) ([]str
 		return nil, err
 	}
 	var paths []string
-	tree.Files().ForEach(func(f *object.File) error {
+	// The iteration error is returned. Discarding it silently truncated the
+	// listing, so a read failure part-way through looked like a small module.
+	if err := tree.Files().ForEach(func(f *object.File) error {
 		paths = append(paths, f.Name)
 		return nil
-	})
+	}); err != nil {
+		return nil, err
+	}
 	return paths, nil
 }
 
@@ -103,6 +110,7 @@ func (g *GoGitStorage) GetTreeEntries(_ context.Context, repoPath, ref, dir stri
 			Path: fullPath,
 			OID:  e.Hash.String(),
 			Type: t,
+			// #nosec G115 -- a git file mode fits in 32 bits with room to spare; the proto field is int32.
 			Mode: int32(e.Mode),
 		})
 	}

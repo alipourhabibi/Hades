@@ -1,0 +1,128 @@
+# The configuration baked into the container image as /app/config/config.yaml.
+#
+# It has to start with no operator input and nothing else running, so it uses
+# the zero-dependency backends and terminates no TLS. sample.yaml used to be
+# baked in instead, and it points at TLS certificates that are gitignored and
+# never generated, so a stock container failed in ListenAndServeTLS.
+#
+# Mount your own file over /app/config/config.yaml for a real deployment;
+# config/prod.yaml is the starting point for that.
+
+server:
+  listenPort: 50051
+  # Defaulted, so `docker run` with no environment starts rather than exiting on
+  # a validation error. An unset ${VAR} expands to the empty string, and
+  # Config.Validate rejects an empty registryHost, correctly: the value is
+  # embedded in generated buf.yaml files and in Go module paths, so an empty one
+  # produces broken paths at runtime.
+  #
+  # "localhost:50051" is a smoke-start value, not a deployment one: inside a
+  # container it names the container itself, so a client on the host cannot
+  # reach it, and any module path generated with it is wrong the moment it
+  # leaves the machine. Set HADES_REGISTRY_HOST for anything real.
+  registryHost: "${HADES_REGISTRY_HOST:-localhost:50051}" # e.g. registry.example.com
+  # No certFile or certKey: TLS is terminated by the proxy in front of this.
+  enableReflection: false
+  # Set this to the proxy's network when running behind one. Left empty, every
+  # client IP is the proxy's, which makes per-IP rate limiting global and every
+  # audit-log row record the same address.
+  trustedProxies: []
+  readHeaderTimeout: 15s
+  readTimeout: 5m
+  idleTimeout: 120s
+  shutdownTimeout: 30s
+
+backends:
+  database: sqlite
+  cache: memory
+  git: gogit
+  artifactStorage: disk
+
+sqlite:
+  path: /app/_data/hades.db
+
+gitStorage:
+  root: /app/_data/repos
+
+diskStorage:
+  path: /app/_data/artifacts
+
+logger:
+  engine: zap
+  format: json
+  level: info
+  output: stdout
+  timeFormat: ISO8601
+  levelFormat: lowercase
+  durationFormat: string
+  callerFormat: short
+  timeKey: time
+  levelKey: level
+  nameKey: name
+  callerKey: caller
+  messageKey: message
+  stacktraceKey: stacktrace
+  sampling:
+    initial: 100
+    thereafter: 100
+
+telemetry:
+  enabled: false
+  serviceName: hades
+  prometheusPort: 9090
+  pprofPort: 0
+  bindAddr: "127.0.0.1"
+  allowPublicDiagnostics: false
+  samplingRatio: 0.1
+
+auth:
+  password:
+    minLength: 12
+    bcryptCost: 12
+  session:
+    idleTimeoutDays: 7
+    absoluteTimeoutDays: 14
+  lockout:
+    maxAttempts: 5
+    cooldownMinutes: 30
+  emailVerification:
+    tokenExpiryHours: 24
+  passwordReset:
+    tokenExpiryHours: 1
+
+email:
+  stub: true
+  from: "noreply@example.com"
+
+oauth:
+  allowAccountLinkingByEmail: false
+  github:
+    clientId: ""
+    clientSecret: ""
+    redirectUrl: ""
+  google:
+    clientId: ""
+    clientSecret: ""
+    redirectUrl: ""
+
+totp:
+  # 32-byte AES-256 key as 64 hex characters: openssl rand -hex 32.
+  # Unset means TOTP enrolment is unavailable.
+  encryptionKey: "${HADES_TOTP_ENCRYPTION_KEY}"
+  issuer: "Hades"
+
+opa:
+  bindingCacheTTL: 0s
+  superAdmins: []
+
+sdk:
+  enabled: true
+  bufBin: "buf"
+  lintEnabled: false
+  breakingEnabled: false
+  generators:
+    - language: go
+      plugin: protoc-gen-go
+      options: "paths=source_relative"
+  storage:
+    type: disk

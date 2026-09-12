@@ -4,6 +4,7 @@ package hades
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -87,6 +88,13 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 		return nil, fmt.Errorf("server: git: %w", err)
 	}
 
+	// Fail here rather than on every request. A git root that does not hold the
+	// repositories the database knows about breaks every read and every push,
+	// deep inside a handler, with the cause masked at the RPC boundary.
+	if err := verifyGitStorage(ctx, logger, dbBackend.Module(), gitStorage); err != nil {
+		return nil, fmt.Errorf("server: git storage: %w", err)
+	}
+
 	ss := &SchemaRegistryServer{
 		listenPort: 50051,
 		config:     c,
@@ -113,7 +121,10 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 			opaTTL = 10 * time.Second
 		}
 	}
-	opaEngine, err := authorizationengine.New(ctx, ss.db.OPABinding(), cacheBackend, opaTTL)
+	opaEngine, err := authorizationengine.New(ctx, ss.db.OPABinding(), cacheBackend, opaTTL,
+		authorizationengine.WithSuperAdmins(c.OPA.SuperAdmins),
+		authorizationengine.WithLogger(ss.logger),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("server: opa engine: %w", err)
 	}
@@ -121,7 +132,15 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 	authorizationServer := authorization.NewServer(ss.logger, ss.db.User(), ss.db.Session(), opaEngine)
 	authorizationServer.
 		WithAPITokenStorage(ss.db.APIToken()).
-		WithTOTPSecretStorage(ss.db.TOTPSecret())
+		WithTOTPSecretStorage(ss.db.TOTPSecret()).
+		WithCache(cacheBackend)
+
+	// Refuse to start with a half-wired authorization server. Every dependency
+	// it takes is optional at the type level, and a missing one used to turn a
+	// security control into a silent no-op rather than an error.
+	if err := authorizationServer.Validate(); err != nil {
+		return nil, fmt.Errorf("server: %w", err)
+	}
 
 	sdkBackend, err := storagefactory.New(*c, ss.gitStorage)
 	if err != nil {
@@ -190,6 +209,25 @@ func NewServer(ctx context.Context, c *config.Config) (*SchemaRegistryServer, er
 	}
 
 	return ss, nil
+}
+
+// Close releases the resources the server owns. It is called once, after Run
+// has returned, so the git connections are closed and the logger's buffered
+// writes are flushed rather than lost on exit.
+func (s *SchemaRegistryServer) Close() error {
+	var errs []error
+	if s.gitStorage != nil {
+		if err := s.gitStorage.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("git storage: %w", err))
+		}
+	}
+	// The logger closes last: everything above may want to log.
+	if s.logger != nil {
+		if err := s.logger.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("logger: %w", err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // newLogger constructs a logger from config.

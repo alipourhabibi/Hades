@@ -18,6 +18,8 @@ type Storage interface {
 	Create(ctx context.Context, userID, name, prefix, tokenHash string, scopes []string, expiresAt *time.Time) (*Row, error)
 	GetByTokenHash(ctx context.Context, tokenHash string) (*Row, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Row, error)
+	// ListByUserID returns the user's tokens, revoked ones included, so that
+	// APITokenStatus can report REVOKED rather than the row disappearing.
 	ListByUserID(ctx context.Context, userID string, limit, offset int) ([]*Row, error)
 	Revoke(ctx context.Context, id uuid.UUID) error
 	// RevokeByOwner atomically revokes the token only if it is owned by userID.

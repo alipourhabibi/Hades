@@ -2,6 +2,7 @@ package meta
 
 import (
 	"context"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/cirun"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -68,7 +69,7 @@ func newFixture(t *testing.T) *fixture {
 func TestGetCIRun_ReturnsTheRecordedRun(t *testing.T) {
 	f := newFixture(t)
 	hash := f.env.Commit(t, f.module, f.alice, "first", map[string]string{"a.proto": "syntax = \"proto3\";"})
-	_, err := f.env.DB.CIRun().Create(context.Background(), f.module.Id, hash, true, true, nil, nil)
+	_, err := f.env.DB.CIRun().Create(context.Background(), cirun.CreateParams{ModuleID: f.module.Id, CommitHash: hash, LintPassed: true, BreakingPassed: true, BreakingRan: true, LintErrors: nil, BreakingErrors: nil})
 	require.NoError(t, err)
 
 	resp, err := f.h.GetCIRun(f.ctx, connect.NewRequest(&registryv1.GetCIRunRequest{
@@ -113,7 +114,7 @@ func TestGetCIRun_RunOfAnotherModuleIsNotVisible(t *testing.T) {
 	f := newFixture(t)
 	other := f.env.CreateModule(t, "alice/other", f.alice, registryv1.ModuleVisibility_MODULE_VISIBILITY_PRIVATE)
 	hash := f.env.Commit(t, other, f.alice, "first", map[string]string{"a.proto": "syntax = \"proto3\";"})
-	_, err := f.env.DB.CIRun().Create(context.Background(), other.Id, hash, true, true, nil, nil)
+	_, err := f.env.DB.CIRun().Create(context.Background(), cirun.CreateParams{ModuleID: other.Id, CommitHash: hash, LintPassed: true, BreakingPassed: true, BreakingRan: true, LintErrors: nil, BreakingErrors: nil})
 	require.NoError(t, err)
 
 	_, err = f.h.GetCIRun(f.ctx, connect.NewRequest(&registryv1.GetCIRunRequest{

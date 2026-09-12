@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -21,20 +22,22 @@ func NewRedisCache(client *redis.Client) *RedisCache {
 	return &RedisCache{client: client}
 }
 
-func (r *RedisCache) Get(ctx context.Context, key string) (string, bool) {
+// Get returns the value at key. A missing key is (", false, nil); a Redis
+// failure is reported as an error rather than being flattened into a miss, so
+// callers can tell an outage from an absent entry.
+func (r *RedisCache) Get(ctx context.Context, key string) (string, bool, error) {
 	val, err := r.client.Get(ctx, key).Result()
-	if err != nil {
-		return "", false
+	if errors.Is(err, redis.Nil) {
+		return "", false, nil
 	}
-	return val, true
+	if err != nil {
+		return "", false, fmt.Errorf("cache: redis get: %w", err)
+	}
+	return val, true, nil
 }
 
 func (r *RedisCache) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
 	return r.client.Set(ctx, key, value, ttl).Err()
-}
-
-func (r *RedisCache) Incr(ctx context.Context, key string) (int64, error) {
-	return r.client.Incr(ctx, key).Result()
 }
 
 // slidingWindowScript trims, records, counts and expires a sliding window in
@@ -59,10 +62,10 @@ return redis.call('ZCARD', KEYS[1])
 
 // Allow implements a sliding-window rate limiter backed by a Redis sorted set.
 //
-// A Redis failure returns an error and reports the request as not allowed.
-// Callers decide what to do with that: the auth handlers currently treat an
-// error as "limiter unavailable, let the request through", which is a
-// deliberate availability choice recorded at those call sites.
+// A Redis failure returns an error and reports the request as not allowed,
+// which is the same shape MemoryCache uses. Callers must not read the false as
+// a deliberate deny; see internal/hades/server/auth.enforceLimit for the
+// project-wide policy on limiter failure.
 func (r *RedisCache) Allow(ctx context.Context, key string, limit int64, window time.Duration) (bool, error) {
 	now := time.Now()
 	windowStart := now.Add(-window).UnixNano()

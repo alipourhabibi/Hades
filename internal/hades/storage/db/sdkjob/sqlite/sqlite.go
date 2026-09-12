@@ -9,6 +9,7 @@ import (
 	"github.com/alipourhabibi/Hades/config"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sdkjob"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
 )
 
@@ -29,6 +30,9 @@ func (s *SQLiteSDKJobStorage) q(ctx context.Context) txkeys.SQLQuerier {
 }
 
 func (s *SQLiteSDKJobStorage) CreateBatch(ctx context.Context, commitID, moduleID string, generators []config.GeneratorConfig) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	commitID = sqlutil.ID(commitID)
+	moduleID = sqlutil.ID(moduleID)
 	for _, g := range generators {
 		_, err := s.q(ctx).ExecContext(ctx,
 			`INSERT INTO sdk_jobs (commit_id, module_id, language, plugin, plugin_options) VALUES (?, ?, ?, ?, ?)`,
@@ -40,6 +44,15 @@ func (s *SQLiteSDKJobStorage) CreateBatch(ctx context.Context, commitID, moduleI
 	return nil
 }
 
+// ClaimPending marks up to limit pending jobs as running and returns them.
+//
+// The UPDATE carries `AND status = 'pending'` and the affected row count is
+// checked, so a job another worker claimed between the SELECT and the UPDATE
+// is skipped rather than claimed twice. The previous version did an unguarded
+// SELECT then a separate unguarded UPDATE per row, with no transaction: two
+// SQLite workers, or one worker plus the stale-recovery pass, could hand the
+// same job out twice and generate it twice. The PostgreSQL implementation gets
+// this from FOR UPDATE SKIP LOCKED, which SQLite does not have.
 func (s *SQLiteSDKJobStorage) ClaimPending(ctx context.Context, limit int) ([]*sdkjob.SDKJob, error) {
 	rows, err := s.q(ctx).QueryContext(ctx, `
 SELECT id FROM sdk_jobs
@@ -59,13 +72,25 @@ LIMIT ?`, sdkjob.MaxAttempts, limit)
 		ids = append(ids, id)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	var jobs []*sdkjob.SDKJob
 	for _, id := range ids {
-		_, err := s.q(ctx).ExecContext(ctx,
-			`UPDATE sdk_jobs SET status = 'running', started_at = datetime('now'), attempts = attempts + 1 WHERE id = ?`, id)
+		res, err := s.q(ctx).ExecContext(ctx,
+			`UPDATE sdk_jobs SET status = 'running', started_at = datetime('now'), attempts = attempts + 1
+			 WHERE id = ? AND status = 'pending'`, id)
 		if err != nil {
 			return nil, err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			// Claimed by someone else between the select and here.
+			continue
 		}
 		job := &sdkjob.SDKJob{}
 		if err := s.q(ctx).QueryRowContext(ctx,
@@ -73,12 +98,17 @@ LIMIT ?`, sdkjob.MaxAttempts, limit)
 		).Scan(&job.ID, &job.CommitID, &job.ModuleID, &job.Status, &job.Language, &job.Plugin, &job.PluginOptions, &job.Attempts); err != nil {
 			return nil, err
 		}
+		job.ID = sqlutil.Canonical(job.ID)
+		job.CommitID = sqlutil.Canonical(job.CommitID)
+		job.ModuleID = sqlutil.Canonical(job.ModuleID)
 		jobs = append(jobs, job)
 	}
 	return jobs, nil
 }
 
 func (s *SQLiteSDKJobStorage) MarkSucceeded(ctx context.Context, jobID, outputLocation string) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	jobID = sqlutil.ID(jobID)
 	_, err := s.q(ctx).ExecContext(ctx,
 		`UPDATE sdk_jobs SET status='succeeded', output_location=?, finished_at=datetime('now') WHERE id=?`,
 		outputLocation, jobID)
@@ -86,6 +116,8 @@ func (s *SQLiteSDKJobStorage) MarkSucceeded(ctx context.Context, jobID, outputLo
 }
 
 func (s *SQLiteSDKJobStorage) MarkFailed(ctx context.Context, jobID, errMsg string, attempts int) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	jobID = sqlutil.ID(jobID)
 	status := "failed"
 	if attempts >= sdkjob.MaxAttempts {
 		status = "dead"
@@ -114,6 +146,9 @@ func scanSQLiteJobs(rows *sql.Rows) ([]*sdkjob.SDKJob, error) {
 		); err != nil {
 			return nil, err
 		}
+		job.ID = sqlutil.Canonical(job.ID)
+		job.CommitID = sqlutil.Canonical(job.CommitID)
+		job.ModuleID = sqlutil.Canonical(job.ModuleID)
 		job.CreatedAt = createdAt.V
 		job.StartedAt = startedAt.Ptr()
 		job.FinishedAt = finishedAt.Ptr()
@@ -123,8 +158,10 @@ func scanSQLiteJobs(rows *sql.Rows) ([]*sdkjob.SDKJob, error) {
 }
 
 func (s *SQLiteSDKJobStorage) ListByModule(ctx context.Context, moduleID string) ([]*sdkjob.SDKJob, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	moduleID = sqlutil.ID(moduleID)
 	rows, err := s.q(ctx).QueryContext(ctx,
-		`SELECT `+sqliteSDKJobCols+` FROM sdk_jobs WHERE module_id = ? ORDER BY created_at DESC`, moduleID)
+		`SELECT `+sqliteSDKJobCols+` FROM sdk_jobs WHERE module_id = ? ORDER BY created_at DESC LIMIT 1000`, moduleID)
 	if err != nil {
 		return nil, err
 	}
@@ -133,8 +170,10 @@ func (s *SQLiteSDKJobStorage) ListByModule(ctx context.Context, moduleID string)
 }
 
 func (s *SQLiteSDKJobStorage) ListSucceededByModuleAndLang(ctx context.Context, moduleID, language string) ([]*sdkjob.SDKJob, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	moduleID = sqlutil.ID(moduleID)
 	rows, err := s.q(ctx).QueryContext(ctx,
-		`SELECT `+sqliteSDKJobCols+` FROM sdk_jobs WHERE module_id = ? AND language = ? AND status = 'succeeded' ORDER BY created_at DESC`,
+		`SELECT `+sqliteSDKJobCols+` FROM sdk_jobs WHERE module_id = ? AND language = ? AND status = 'succeeded' ORDER BY created_at DESC LIMIT 1000`,
 		moduleID, language)
 	if err != nil {
 		return nil, err
@@ -144,6 +183,8 @@ func (s *SQLiteSDKJobStorage) ListSucceededByModuleAndLang(ctx context.Context, 
 }
 
 func (s *SQLiteSDKJobStorage) GetByCommitAndLang(ctx context.Context, commitID, language string) (*sdkjob.SDKJob, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	commitID = sqlutil.ID(commitID)
 	rows, err := s.q(ctx).QueryContext(ctx,
 		`SELECT `+sqliteSDKJobCols+` FROM sdk_jobs WHERE commit_id = ? AND language = ? AND status = 'succeeded' ORDER BY created_at DESC LIMIT 1`,
 		commitID, language)

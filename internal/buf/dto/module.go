@@ -36,4 +36,3 @@ func FromModuleRefPB(in *modulev1.ModuleRef) *registryv1.ModuleRef {
 		Module: in.GetName().GetModule(),
 	}
 }
-

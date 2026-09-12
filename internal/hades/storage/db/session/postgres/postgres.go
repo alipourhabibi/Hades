@@ -30,7 +30,7 @@ func (s *SessionStorage) q(ctx context.Context) txkeys.PgxQuerier {
 	return s.pool
 }
 
-func (s *SessionStorage) Create(ctx context.Context, userId, authModule string, expiresAt time.Time) (string, error) {
+func (s *SessionStorage) Create(ctx context.Context, userId, authModule string, expiresAt time.Time) (uuid.UUID, error) {
 	query := `
 INSERT INTO sessions (
   user_id,
@@ -38,10 +38,10 @@ INSERT INTO sessions (
   expires_at
 ) VALUES ($1, $2, $3) RETURNING id`
 
-	var id string
+	var id uuid.UUID
 	err := s.q(ctx).QueryRow(ctx, query, userId, authModule, expiresAt).Scan(&id)
 	if err != nil {
-		return "", err
+		return uuid.Nil, err
 	}
 	return id, nil
 }
@@ -50,7 +50,7 @@ func (s *SessionStorage) CreateWithToken(
 	ctx context.Context,
 	userID, authModule, tokenHash, ipAddress, userAgent string,
 	idleExpires, absoluteExpires time.Time,
-) (string, error) {
+) (uuid.UUID, error) {
 	query := `
 INSERT INTO sessions (
   user_id, auth_module, expires_at,
@@ -59,14 +59,14 @@ INSERT INTO sessions (
 ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
 RETURNING id`
 
-	var id string
+	var id uuid.UUID
 	err := s.q(ctx).QueryRow(ctx, query,
 		userID, authModule, idleExpires,
 		tokenHash, ipAddress, userAgent,
 		absoluteExpires,
 	).Scan(&id)
 	if err != nil {
-		return "", err
+		return uuid.Nil, err
 	}
 	return id, nil
 }
@@ -98,7 +98,7 @@ WHERE token_hash = $1`
 	return row, nil
 }
 
-func (s *SessionStorage) Touch(ctx context.Context, id string, idleExpires time.Time) error {
+func (s *SessionStorage) Touch(ctx context.Context, id uuid.UUID, idleExpires time.Time) error {
 	_, err := s.q(ctx).Exec(ctx,
 		`UPDATE sessions SET last_activity_at = NOW(), expires_at = $1 WHERE id = $2 AND revoked_at IS NULL`,
 		idleExpires, id,
@@ -106,12 +106,12 @@ func (s *SessionStorage) Touch(ctx context.Context, id string, idleExpires time.
 	return err
 }
 
-func (s *SessionStorage) Revoke(ctx context.Context, id string) error {
+func (s *SessionStorage) Revoke(ctx context.Context, id uuid.UUID) error {
 	_, err := s.q(ctx).Exec(ctx, `UPDATE sessions SET revoked_at = NOW() WHERE id = $1`, id)
 	return err
 }
 
-func (s *SessionStorage) RevokeAllForUser(ctx context.Context, userID, exceptID string) error {
+func (s *SessionStorage) RevokeAllForUser(ctx context.Context, userID string, exceptID uuid.UUID) error {
 	_, err := s.q(ctx).Exec(ctx,
 		`UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND id != $2 AND revoked_at IS NULL`,
 		userID, exceptID,
@@ -130,7 +130,8 @@ SELECT
   COALESCE(totp_verified, FALSE)
 FROM sessions
 WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
-ORDER BY last_activity_at DESC`
+ORDER BY last_activity_at DESC
+LIMIT 500`
 
 	rows, err := s.q(ctx).Query(ctx, query, userID)
 	if err != nil {
@@ -156,7 +157,7 @@ ORDER BY last_activity_at DESC`
 	return result, rows.Err()
 }
 
-func (s *SessionStorage) MarkTOTPVerified(ctx context.Context, id string) error {
+func (s *SessionStorage) MarkTOTPVerified(ctx context.Context, id uuid.UUID) error {
 	_, err := s.q(ctx).Exec(ctx, `UPDATE sessions SET totp_verified = TRUE WHERE id = $1`, id)
 	return err
 }

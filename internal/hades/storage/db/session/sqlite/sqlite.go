@@ -28,16 +28,23 @@ func (s *SQLiteSessionStorage) q(ctx context.Context) txkeys.SQLQuerier {
 	return s.db
 }
 
-func (s *SQLiteSessionStorage) Create(ctx context.Context, userId, authModule string, expiresAt time.Time) (string, error) {
+func (s *SQLiteSessionStorage) Create(ctx context.Context, userId, authModule string, expiresAt time.Time) (uuid.UUID, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userId = sqlutil.ID(userId)
 	var id string
 	err := s.q(ctx).QueryRowContext(ctx,
 		`INSERT INTO sessions (user_id, auth_module, expires_at) VALUES (?, ?, ?) RETURNING id`,
 		userId, authModule, expiresAt,
 	).Scan(&id)
-	return id, err
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return uuid.Parse(id)
 }
 
-func (s *SQLiteSessionStorage) CreateWithToken(ctx context.Context, userID, authModule, tokenHash, ipAddress, userAgent string, idleExpires, absoluteExpires time.Time) (string, error) {
+func (s *SQLiteSessionStorage) CreateWithToken(ctx context.Context, userID, authModule, tokenHash, ipAddress, userAgent string, idleExpires, absoluteExpires time.Time) (uuid.UUID, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	var id string
 	err := s.q(ctx).QueryRowContext(ctx, `
 INSERT INTO sessions (
@@ -47,7 +54,10 @@ INSERT INTO sessions (
 ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?) RETURNING id`,
 		userID, authModule, idleExpires, tokenHash, ipAddress, userAgent, absoluteExpires,
 	).Scan(&id)
-	return id, err
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return uuid.Parse(id)
 }
 
 const sqliteSessionCols = `
@@ -74,6 +84,15 @@ func scanSQLiteSession(row *sql.Row) (*session.SessionRow, error) {
 	if err != nil {
 		return nil, err
 	}
+	// UserID is canonicalised on the way out, like every other id scanned from
+	// SQLite. ID is a uuid.UUID and is parsed, which accepts the dashless form,
+	// so it always looked right; UserID is a plain string and escaped
+	// un-normalised. The handler's ownership check compares it against the
+	// user id the API supplied, which is hyphenated, so the comparison was
+	// always unequal: RevokeSession found the row, decided it belonged to
+	// someone else, and answered 404. A user could not sign a device out on the
+	// default backend, and the session stayed live for up to its full lifetime.
+	r.UserID = sqlutil.Canonical(r.UserID)
 	r.CreatedAt = createdAt.V
 	r.LastActivityAt = lastActivityAt.V
 	r.AbsoluteExpiresAt = absExpiresAt.V
@@ -91,26 +110,34 @@ func (s *SQLiteSessionStorage) GetByID(ctx context.Context, id uuid.UUID) (*sess
 	return scanSQLiteSession(s.q(ctx).QueryRowContext(ctx, `SELECT `+sqliteSessionCols+` WHERE id = ?`, sqlutil.UUID(id)))
 }
 
-func (s *SQLiteSessionStorage) Touch(ctx context.Context, id string, idleExpires time.Time) error {
+// Every id comparison below goes through sqlutil.UUID. SQLite ids are 32 hex
+// characters with no hyphens; uuid.UUID.String() is hyphenated, so an
+// un-normalised parameter matches nothing and the UPDATE silently affects zero
+// rows while Exec still reports success.
+func (s *SQLiteSessionStorage) Touch(ctx context.Context, id uuid.UUID, idleExpires time.Time) error {
 	_, err := s.q(ctx).ExecContext(ctx,
 		`UPDATE sessions SET last_activity_at = datetime('now'), expires_at = ? WHERE id = ? AND revoked_at IS NULL`,
-		idleExpires, id)
+		idleExpires, sqlutil.UUID(id))
 	return err
 }
 
-func (s *SQLiteSessionStorage) Revoke(ctx context.Context, id string) error {
-	_, err := s.q(ctx).ExecContext(ctx, `UPDATE sessions SET revoked_at = datetime('now') WHERE id = ?`, id)
+func (s *SQLiteSessionStorage) Revoke(ctx context.Context, id uuid.UUID) error {
+	_, err := s.q(ctx).ExecContext(ctx, `UPDATE sessions SET revoked_at = datetime('now') WHERE id = ?`, sqlutil.UUID(id))
 	return err
 }
 
-func (s *SQLiteSessionStorage) RevokeAllForUser(ctx context.Context, userID, exceptID string) error {
+func (s *SQLiteSessionStorage) RevokeAllForUser(ctx context.Context, userID string, exceptID uuid.UUID) error {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	_, err := s.q(ctx).ExecContext(ctx,
 		`UPDATE sessions SET revoked_at = datetime('now') WHERE user_id = ? AND id != ? AND revoked_at IS NULL`,
-		userID, exceptID)
+		userID, sqlutil.UUID(exceptID))
 	return err
 }
 
 func (s *SQLiteSessionStorage) ListByUserID(ctx context.Context, userID string) ([]*session.SessionRow, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	userID = sqlutil.ID(userID)
 	// datetime() on both sides, not a bare column comparison.
 	//
 	// The driver stores a time.Time as RFC3339 with a numeric offset
@@ -121,7 +148,8 @@ func (s *SQLiteSessionStorage) ListByUserID(ctx context.Context, userID string) 
 	// both spellings and normalises them to UTC.
 	rows, err := s.q(ctx).QueryContext(ctx, `SELECT `+sqliteSessionCols+`
 WHERE user_id = ? AND revoked_at IS NULL AND datetime(expires_at) > datetime('now')
-ORDER BY last_activity_at DESC`, userID)
+ORDER BY last_activity_at DESC
+LIMIT 500`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +169,8 @@ ORDER BY last_activity_at DESC`, userID)
 		); err != nil {
 			return nil, err
 		}
+		// Canonical here too; see scanSQLiteSession.
+		r.UserID = sqlutil.Canonical(r.UserID)
 		r.CreatedAt = createdAt.V
 		r.LastActivityAt = lastActivityAt.V
 		r.AbsoluteExpiresAt = absExpiresAt.V
@@ -152,8 +182,8 @@ ORDER BY last_activity_at DESC`, userID)
 	return result, rows.Err()
 }
 
-func (s *SQLiteSessionStorage) MarkTOTPVerified(ctx context.Context, id string) error {
-	_, err := s.q(ctx).ExecContext(ctx, `UPDATE sessions SET totp_verified = 1 WHERE id = ?`, id)
+func (s *SQLiteSessionStorage) MarkTOTPVerified(ctx context.Context, id uuid.UUID) error {
+	_, err := s.q(ctx).ExecContext(ctx, `UPDATE sessions SET totp_verified = 1 WHERE id = ?`, sqlutil.UUID(id))
 	return err
 }
 

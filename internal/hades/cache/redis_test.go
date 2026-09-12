@@ -28,21 +28,12 @@ func TestRedisCache_GetSet(t *testing.T) {
 	if err := c.Set(ctx, "k", "v", 0); err != nil {
 		t.Fatal(err)
 	}
-	val, ok := c.Get(ctx, "k")
+	val, ok, err := c.Get(ctx, "k")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok || val != "v" {
 		t.Fatalf("Get: got (%q, %v), want (\"v\", true)", val, ok)
-	}
-}
-
-func TestRedisCache_Incr(t *testing.T) {
-	c, mr := newTestRedisCache(t)
-	defer mr.Close()
-	ctx := context.Background()
-
-	v1, _ := c.Incr(ctx, "counter")
-	v2, _ := c.Incr(ctx, "counter")
-	if v1 != 1 || v2 != 2 {
-		t.Fatalf("Incr: got %d, %d; want 1, 2", v1, v2)
 	}
 }
 

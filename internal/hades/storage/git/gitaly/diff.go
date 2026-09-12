@@ -3,13 +3,13 @@ package gitaly
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"strings"
 
 	"github.com/alipourhabibi/Hades/config"
 	pb "gitlab.com/gitlab-org/gitaly/v16/proto/go/gitalypb"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // emptyTreeSHA is the well-known git SHA1 for an empty tree. Used as the
@@ -37,16 +37,12 @@ type DiffService struct {
 	defaultStorageName string
 }
 
-func newDiffService(c config.Gitaly) (*DiffService, error) {
-	conn, err := grpc.NewClient(gitalyAddr(c), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, err
-	}
+func newDiffService(conn *grpc.ClientConn, c config.Gitaly) *DiffService {
 	return &DiffService{
 		diffClient:         pb.NewDiffServiceClient(conn),
 		commitClient:       pb.NewCommitServiceClient(conn),
 		defaultStorageName: c.DefaultStorageName,
-	}, nil
+	}
 }
 
 // GetCommitDiff returns the per-file diffs for the given commit hash.
@@ -86,7 +82,7 @@ func (s *DiffService) GetCommitDiff(ctx context.Context, owner, module, commitHa
 
 	for {
 		chunk, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -95,7 +91,12 @@ func (s *DiffService) GetCommitDiff(ctx context.Context, owner, module, commitHa
 
 		if current == nil || (len(chunk.FromPath) > 0 || len(chunk.ToPath) > 0) {
 			if current != nil {
+				// countDiffLines runs here too, not only on the EndOfPatch
+				// branch. Without it, any file whose diff did not end with an
+				// EndOfPatch chunk was reported with zero additions and zero
+				// deletions.
 				current.Patch = patchBuf.String()
+				countDiffLines(current)
 				diffs = append(diffs, current)
 				patchBuf.Reset()
 			}

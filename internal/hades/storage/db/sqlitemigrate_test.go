@@ -27,14 +27,16 @@ func columnExists(t *testing.T, db *sql.DB, table, column string) bool {
 	rows, err := db.Query(`SELECT name FROM pragma_table_info(?)`, table)
 	require.NoError(t, err)
 	defer rows.Close()
+	found := false
 	for rows.Next() {
 		var name string
 		require.NoError(t, rows.Scan(&name))
 		if name == column {
-			return true
+			found = true
 		}
 	}
-	return false
+	require.NoError(t, rows.Err())
+	return found
 }
 
 func maxVersion(t *testing.T, db *sql.DB) int {
@@ -178,6 +180,13 @@ func TestMigrateSQLite_RebuildSurvivesReferencedRows(t *testing.T) {
 	require.NoError(t, err)
 	_, err = sqlDB.Exec(string(schema))
 	require.NoError(t, err)
+	// legacyBaselineVersion is 2, which means the pre-runner startup code had
+	// already applied 002's ALTER statements. The fixture has to match, or the
+	// stamped version claims columns that are not there.
+	_, err = sqlDB.Exec(`
+		ALTER TABLE modules ADD COLUMN lint_preset INTEGER NOT NULL DEFAULT 1;
+		ALTER TABLE modules ADD COLUMN breaking_enabled INTEGER NOT NULL DEFAULT 1;`)
+	require.NoError(t, err)
 
 	_, err = sqlDB.Exec(`
 		INSERT INTO users (id, username, email) VALUES
@@ -205,6 +214,7 @@ func TestMigrateSQLite_RebuildSurvivesReferencedRows(t *testing.T) {
 	require.NoError(t, err)
 	defer rows.Close()
 	assert.False(t, rows.Next(), "the rebuilt schema must have no foreign key violations")
+	require.NoError(t, rows.Err())
 
 	// Enforcement is back on for ordinary work, not left off by the migration.
 	_, err = sqlDB.Exec(`INSERT INTO sessions (user_id, expires_at) VALUES ('nobody', datetime('now'))`)

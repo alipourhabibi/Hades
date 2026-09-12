@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -34,7 +33,7 @@ func (r *ResourceStorage) ResolveType(ctx context.Context, id string) (resource.
 		"SELECT resource_type FROM resources WHERE id = $1", id,
 	).Scan(&rt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", connect.NewError(connect.CodeNotFound, errors.New("resource not found"))
+		return "", resource.ErrNotFound
 	}
 	if err != nil {
 		return "", err

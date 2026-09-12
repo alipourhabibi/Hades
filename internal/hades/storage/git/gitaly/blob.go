@@ -2,6 +2,7 @@ package gitaly
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,9 +10,9 @@ import (
 
 	registryv1 "github.com/alipourhabibi/Hades/api/gen/api/registry/v1"
 	"github.com/alipourhabibi/Hades/config"
+	"github.com/alipourhabibi/Hades/utils/paths"
 	pb "gitlab.com/gitlab-org/gitaly/v16/proto/go/gitalypb"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // BlobService wraps the Gitaly BlobService gRPC client.
@@ -20,15 +21,11 @@ type BlobService struct {
 	defaultStorageName string
 }
 
-func newBlobService(c config.Gitaly) (*BlobService, error) {
-	conn, err := grpc.NewClient(gitalyAddr(c), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, err
-	}
+func newBlobService(conn *grpc.ClientConn, c config.Gitaly) *BlobService {
 	return &BlobService{
 		client:             pb.NewBlobServiceClient(conn),
 		defaultStorageName: c.DefaultStorageName,
-	}, nil
+	}
 }
 
 // ListBlobs returns all files at the given commit revision as in-memory blobs.
@@ -48,12 +45,21 @@ func (b *BlobService) ListBlobs(ctx context.Context, commit *registryv1.Commit) 
 		return nil, err
 	}
 
+	// The discriminator between "a new file starts here" and "this is more of
+	// the previous file" is the presence of the path field, not the size.
+	//
+	// Using size meant a legitimate zero-byte file was treated as a
+	// continuation chunk, so it was either dropped or its (empty) data was
+	// appended to the previous file, and if the very first message of a stream
+	// was a continuation chunk then lastPath was still "" and the map lookup
+	// returned nil, which is a nil-pointer panic on a request path.
 	mapFiles := map[string]*registryv1.File{}
+	var order []string
 	var lastPath string
 
 	for {
 		msg, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -61,21 +67,36 @@ func (b *BlobService) ListBlobs(ctx context.Context, commit *registryv1.Commit) 
 		}
 
 		for _, blob := range msg.Blobs {
-			if blob.Size != 0 {
-				lastPath = string(blob.GetPath())
+			if path := string(blob.GetPath()); path != "" {
+				if err := paths.ValidatePath(path); err != nil {
+					return nil, fmt.Errorf("gitaly: refusing blob %q: %w", path, err)
+				}
+				lastPath = path
+				if _, seen := mapFiles[lastPath]; !seen {
+					order = append(order, lastPath)
+				}
 				mapFiles[lastPath] = &registryv1.File{
 					Path:    lastPath,
-					Content: blob.Data,
+					Content: append([]byte(nil), blob.Data...),
 				}
-			} else if len(blob.Data) != 0 {
-				mapFiles[lastPath].Content = append(mapFiles[lastPath].Content, blob.Data...)
+				continue
 			}
+			if len(blob.Data) == 0 {
+				continue
+			}
+			f, ok := mapFiles[lastPath]
+			if !ok {
+				return nil, fmt.Errorf("gitaly: continuation chunk with no preceding path")
+			}
+			f.Content = append(f.Content, blob.Data...)
 		}
 	}
 
-	files := make([]*registryv1.File, 0, len(mapFiles))
-	for _, f := range mapFiles {
-		files = append(files, f)
+	// Deterministic order, matching the order Gitaly streamed them in. Ranging
+	// over the map returned a different order on every call.
+	files := make([]*registryv1.File, 0, len(order))
+	for _, p := range order {
+		files = append(files, mapFiles[p])
 	}
 
 	return []*registryv1.DownloadResponseContent{{Commit: commit, Files: files}}, nil
@@ -115,7 +136,7 @@ func (b *BlobService) StreamBlobsToDir(ctx context.Context, commit *registryv1.C
 
 	for {
 		msg, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -124,15 +145,25 @@ func (b *BlobService) StreamBlobsToDir(ctx context.Context, commit *registryv1.C
 		}
 
 		for _, blob := range msg.Blobs {
-			if blob.Size != 0 {
+			// Presence of the path, not the size, marks a new file. See
+			// ListBlobs: a zero-byte file is a real file.
+			if path := string(blob.GetPath()); path != "" {
 				if err := closeCurrentFile(); err != nil {
 					return err
 				}
-				currentPath = string(blob.GetPath())
+				// Validate on read-back too. Anything already in the object
+				// store was otherwise trusted, and this writes to the
+				// filesystem, so a tree entry named "../../etc/x" would escape
+				// dir.
+				if err := paths.ValidatePath(path); err != nil {
+					return fmt.Errorf("gitaly: refusing to write %q: %w", path, err)
+				}
+				currentPath = path
 				destPath := filepath.Join(dir, currentPath)
-				if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+				if err := os.MkdirAll(filepath.Dir(destPath), 0o750); err != nil {
 					return fmt.Errorf("mkdir for %s: %w", currentPath, err)
 				}
+				// #nosec G304 -- the path is validated by paths.ValidatePath a few lines above and is rooted at dir.
 				currentFile, err = os.Create(destPath)
 				if err != nil {
 					return fmt.Errorf("create %s: %w", currentPath, err)
@@ -143,7 +174,9 @@ func (b *BlobService) StreamBlobsToDir(ctx context.Context, commit *registryv1.C
 						return fmt.Errorf("write %s: %w", currentPath, err)
 					}
 				}
-			} else if len(blob.Data) > 0 {
+				continue
+			}
+			if len(blob.Data) > 0 {
 				if currentFile == nil {
 					return fmt.Errorf("received continuation chunk with no open file")
 				}

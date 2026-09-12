@@ -14,14 +14,20 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/cache"
 	"github.com/alipourhabibi/Hades/internal/hades/constants"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/opabinding"
+	"github.com/alipourhabibi/Hades/utils/log"
 	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/open-policy-agent/opa/v1/storage"
 )
 
-// bindingStore is the minimal interface the Engine needs from the binding storage.
+// bindingStore is the minimal interface the Engine needs from the binding
+// storage.
+//
+// It does not include ListAll. Nothing has read every binding since the policy
+// store stopped being reloaded wholesale: hybridStore serves one subject at a
+// time. Declaring it here meant every implementation had to provide a method
+// that was never called.
 type bindingStore interface {
 	Create(ctx context.Context, subject, role, domain string) error
-	ListAll(ctx context.Context) ([]opabinding.RoleBinding, error)
 	ListBySubject(ctx context.Context, subject string) ([]opabinding.RoleBinding, error)
 	DeleteBySubjectDomain(ctx context.Context, subject, domain string) error
 }
@@ -29,17 +35,14 @@ type bindingStore interface {
 //go:embed hades/authz/authz.rego
 var policyContent string
 
-// Engine is the OPA authorization engine. It runs inside this process.
-// It is safe to use from many goroutines at once.
-//
-// The policy is compiled once at startup. Role bindings are read per subject by
-// the hybridStore, from the cache first and the database on a miss. Writing a
-// binding does not reload the policy.
-//
-// The prepared queries are built once in the constructor and never replaced, so
-// no lock guards them. rego.PreparedEvalQuery is safe to use from many
-// goroutines. Allow and BatchAllow run on the hottest path, and a mutex that is
-// never write-locked only costs time.
+// Engine is the in-process OPA authorization engine.
+// It is safe to use concurrently. The policy is compiled once at startup;
+// role bindings are served per-subject from cache (with DB fallback) by the
+// hybridStore: no global reload happens on binding writes.
+// The prepared queries are compiled once in the constructor and never
+// replaced, so no lock guards them: rego.PreparedEvalQuery is safe for
+// concurrent Eval. Allow and BatchAllow are on the hottest path in the system,
+// and a mutex that is never write-locked only adds atomic traffic.
 type Engine struct {
 	query      rego.PreparedEvalQuery // single: data.hades.authz.allow
 	batchQuery rego.PreparedEvalQuery // batch:  data.hades.authz.denied_indices
@@ -48,19 +51,46 @@ type Engine struct {
 	cache      cache.Cache
 }
 
+// Option configures an Engine at construction time.
+type Option func(*engineOptions)
+
+type engineOptions struct {
+	superAdmins []string
+	logger      *log.LoggerWrapper
+}
+
+// WithSuperAdmins seeds the subjects the policy's superadmin bypass matches.
+// Without it the clause in authz.rego reads data.superadmins, which is
+// undefined, and the rule can never fire.
+func WithSuperAdmins(subjects []string) Option {
+	return func(o *engineOptions) { o.superAdmins = subjects }
+}
+
+// WithLogger lets the binding store report cache outages instead of silently
+// falling back to the database on every request.
+func WithLogger(l *log.LoggerWrapper) Option {
+	return func(o *engineOptions) { o.logger = l }
+}
+
 // New creates a new Engine with a cache-backed hybridStore and compiles the
 // Rego policy once. DefaultTTL is used when ttl is zero.
-func New(ctx context.Context, db opabinding.Storage, c cache.Cache, ttl time.Duration) (*Engine, error) {
-	return newFromStore(ctx, db, c, ttl)
+func New(ctx context.Context, db opabinding.Storage, c cache.Cache, ttl time.Duration, opts ...Option) (*Engine, error) {
+	return newFromStore(ctx, db, c, ttl, opts...)
 }
 
 // newFromStore is the internal constructor accepting the bindingStore interface
 // so tests can inject a fake implementation.
-func newFromStore(ctx context.Context, db bindingStore, c cache.Cache, ttl time.Duration) (*Engine, error) {
-	hs, err := newHybridStore(c, db, ttl)
+func newFromStore(ctx context.Context, db bindingStore, c cache.Cache, ttl time.Duration, opts ...Option) (*Engine, error) {
+	var o engineOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	hs, err := newHybridStore(c, db, ttl, o.superAdmins)
 	if err != nil {
 		return nil, fmt.Errorf("authorization: engine: hybrid store: %w", err)
 	}
+	hs.logger = o.logger
 
 	e := &Engine{
 		store: hs,
@@ -127,15 +157,13 @@ func (e *Engine) Allow(ctx context.Context, input constants.Policy) (bool, error
 	return allowed, nil
 }
 
-// BatchAllow checks many policies in one OPA call.
-// It returns one bool for each input, in the same order. True means allowed.
-//
-// OPA loops over input.policies itself. hybridStore reads each subject once,
-// from the cache or from the database. So the number of reads follows the
-// number of different subjects, not the number of policies.
-//
-// constants.Policy has JSON tags that match the Rego field names, so we pass it
-// straight to rego.EvalInput with no extra struct in between.
+// BatchAllow evaluates all policies in a single OPA Eval() call.
+// Returns a []bool slice (true = allowed, false = denied) in the same order
+// as inputs. OPA iterates input.policies internally; hybridStore serves each
+// unique subject from cache (or DB on miss), so K unique subjects → K reads
+// regardless of N total policies.
+// constants.Policy JSON tags match the Rego input field names so it is passed
+// directly to rego.EvalInput without an intermediate conversion struct.
 func (e *Engine) BatchAllow(ctx context.Context, inputs []constants.Policy) ([]bool, error) {
 	results := make([]bool, len(inputs))
 	if len(inputs) == 0 {

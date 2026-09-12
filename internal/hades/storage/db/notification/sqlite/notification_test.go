@@ -43,14 +43,14 @@ func TestCreateAndList(t *testing.T) {
 	require.NoError(t, store.Create(ctx, "u-alice", notification.TypeCommitPushed, "New commit on alice/mymod", "bob pushed abcdef123456.", "c-1"))
 	require.NoError(t, store.Create(ctx, "u-bob", notification.TypeSDKFailed, "go SDK generation failed", "boom", "job-1"))
 
-	alice, err := store.ListForUser(ctx, "u-alice")
+	alice, err := store.ListForUser(ctx, "u-alice", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, alice, 1, "a notification is addressed to one user, not broadcast")
 	assert.Equal(t, notification.TypeCommitPushed, alice[0].Type)
 	assert.Equal(t, "c-1", alice[0].ResourceId)
 	assert.False(t, alice[0].Read)
 
-	bob, err := store.ListForUser(ctx, "u-bob")
+	bob, err := store.ListForUser(ctx, "u-bob", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, bob, 1)
 	assert.Equal(t, notification.TypeSDKFailed, bob[0].Type)
@@ -62,20 +62,23 @@ func TestMarkReadIsScopedToTheOwner(t *testing.T) {
 	ctx := context.Background()
 
 	require.NoError(t, store.Create(ctx, "u-alice", notification.TypeCommitPushed, "t", "b", "c-1"))
-	listed, err := store.ListForUser(ctx, "u-alice")
+	listed, err := store.ListForUser(ctx, "u-alice", 50, 0)
 	require.NoError(t, err)
 	require.Len(t, listed, 1)
 	id := listed[0].Id
 
-	// Another user naming the same id changes nothing and reports no error:
-	// ownership is enforced by matching no row, not by reporting one.
-	require.NoError(t, store.MarkRead(ctx, id, "u-bob"))
-	listed, err = store.ListForUser(ctx, "u-alice")
+	// Another user naming the same id changes nothing, and the storage layer
+	// says so: it returns ErrNotFound rather than reporting success for a
+	// statement that matched no row. The handler is where the decision to
+	// answer the caller with success is made, so that NotFound never confirms
+	// which ids exist; see server/notification.MarkNotificationRead.
+	require.ErrorIs(t, store.MarkRead(ctx, id, "u-bob"), notification.ErrNotFound)
+	listed, err = store.ListForUser(ctx, "u-alice", 50, 0)
 	require.NoError(t, err)
 	assert.False(t, listed[0].Read)
 
 	require.NoError(t, store.MarkRead(ctx, id, "u-alice"))
-	listed, err = store.ListForUser(ctx, "u-alice")
+	listed, err = store.ListForUser(ctx, "u-alice", 50, 0)
 	require.NoError(t, err)
 	assert.True(t, listed[0].Read)
 }

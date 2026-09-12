@@ -9,8 +9,9 @@ import (
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/module"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/resource"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqltypes"
+	"github.com/alipourhabibi/Hades/internal/hades/storage/db/sqlutil"
 	"github.com/alipourhabibi/Hades/internal/hades/storage/db/txkeys"
-	connErr "github.com/alipourhabibi/Hades/utils/errors"
+	"github.com/alipourhabibi/Hades/utils/connerr"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -46,6 +47,8 @@ func scanSQLiteModule(row *sql.Row) (*registryv1.Module, error) {
 	if err != nil {
 		return nil, err
 	}
+	mod.Id = sqlutil.Canonical(mod.Id)
+	mod.OwnerId = sqlutil.Canonical(mod.OwnerId)
 	mod.CreateTime = timestamppb.New(createTime.V)
 	mod.UpdateTime = timestamppb.New(updateTime.V)
 	mod.BreakingEnabled = breakingEnabled != 0
@@ -65,6 +68,8 @@ func scanSQLiteModuleRow(rows *sql.Rows) (*registryv1.Module, error) {
 	if err != nil {
 		return nil, err
 	}
+	mod.Id = sqlutil.Canonical(mod.Id)
+	mod.OwnerId = sqlutil.Canonical(mod.OwnerId)
 	mod.CreateTime = timestamppb.New(createTime.V)
 	mod.UpdateTime = timestamppb.New(updateTime.V)
 	mod.BreakingEnabled = breakingEnabled != 0
@@ -72,6 +77,8 @@ func scanSQLiteModuleRow(rows *sql.Rows) (*registryv1.Module, error) {
 }
 
 func (m *SQLiteModuleStorage) Create(ctx context.Context, name, ownerId string, visibility registryv1.ModuleVisibility, state registryv1.ModuleState, description, url, defaultLabelName, defaultBranch string, lintPreset registryv1.LintPreset, breakingEnabled bool) (*registryv1.Module, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	ownerId = sqlutil.ID(ownerId)
 	breakingInt := 0
 	if breakingEnabled {
 		breakingInt = 1
@@ -182,7 +189,7 @@ WHERE users.username = ? AND modules.name = ?`, owner, owner+"/"+name)
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, connErr.NotFound("module not found")
+		return nil, connerr.NotFound("module not found")
 	}
 	return scanSQLiteModuleRow(rows)
 }
@@ -193,7 +200,7 @@ func (m *SQLiteModuleStorage) GetModulesByRefs(ctx context.Context, refs ...*reg
 		var row *sql.Row
 		if ref.Id != "" {
 			row = m.q(ctx).QueryRowContext(ctx,
-				`SELECT `+sqliteModuleCols+` FROM modules WHERE id = ?`, ref.Id)
+				`SELECT `+sqliteModuleCols+` FROM modules WHERE id = ?`, sqlutil.ID(ref.Id))
 		} else {
 			row = m.q(ctx).QueryRowContext(ctx,
 				`SELECT `+sqliteModuleCols+` FROM modules WHERE name = ?`, ref.Owner+"/"+ref.Module)
@@ -201,7 +208,7 @@ func (m *SQLiteModuleStorage) GetModulesByRefs(ctx context.Context, refs ...*reg
 		mod, err := scanSQLiteModule(row)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return nil, connErr.NotFound("module not found")
+				return nil, connerr.NotFound("module not found")
 			}
 			return nil, err
 		}
@@ -211,6 +218,8 @@ func (m *SQLiteModuleStorage) GetModulesByRefs(ctx context.Context, refs ...*reg
 }
 
 func (m *SQLiteModuleStorage) CountByOwner(ctx context.Context, ownerID string) (int32, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	ownerID = sqlutil.ID(ownerID)
 	var count int32
 	err := m.q(ctx).QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM modules WHERE owner_id = ?`, ownerID).Scan(&count)
@@ -234,12 +243,15 @@ const sqliteVisibilityPredicate = `(
         SELECT 1 FROM opa_role_bindings b
         WHERE b.subject = ?
           AND (b.domain = modules.name
-               OR b.domain = substr(modules.name, 1, instr(modules.name, '/')) || '*')
+               OR (instr(modules.name, '/') > 0
+                   AND b.domain = substr(modules.name, 1, instr(modules.name, '/')) || '*'))
     ))
 )`
 
 // ListVisibleModules implements module.Storage.
 func (m *SQLiteModuleStorage) ListVisibleModules(ctx context.Context, ownerUsername, subject, subjectID string, limit, offset int) ([]*registryv1.Module, error) {
+	// SQLite stores identifiers without hyphens; see sqlutil.ID.
+	subjectID = sqlutil.ID(subjectID)
 	if limit <= 0 {
 		limit = 50
 	}
