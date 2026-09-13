@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 go build -a -installsuffix cgo \
 # runtime than the server was compiled against.
 RUN go build -o /out/protoc-gen-go google.golang.org/protobuf/cmd/protoc-gen-go
 
-FROM alpine:3.21
+FROM alpine:3.24
 WORKDIR /app
 
 RUN apk add --no-cache curl ca-certificates && \
