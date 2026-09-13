@@ -29,6 +29,18 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # TypeScript majors are held back, and the whole group fails without this.
+    #
+    # typescript-eslint pins a peer of typescript "<6.1.0", and
+    # eslint-config-next depends on typescript-eslint, so TypeScript 7 makes
+    # npm ci fail to resolve. The group is "*", so one package nobody can
+    # install takes the other seventeen updates down with it, every week.
+    #
+    # Remove this once typescript-eslint widens that peer range. Check with:
+    #   npm view typescript-eslint peerDependencies.typescript
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       all:
         patterns:
