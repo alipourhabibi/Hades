@@ -27,7 +27,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Log in to ghcr.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -76,7 +76,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Log in to ghcr.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -119,7 +119,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Log in to ghcr.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
