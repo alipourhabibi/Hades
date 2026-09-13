@@ -54,6 +54,10 @@ func TestSchemaParity(t *testing.T) {
 	}
 	ctx := context.Background()
 
+	// PostgreSQL is not migrated by NewFromConfig the way SQLite is, so without
+	// this there is no schema to compare against. See postgres_testenv_test.go.
+	preparePostgres(t, dsn)
+
 	// Both schemas are built by the production migration paths, not by reading
 	// the migration files: what matters is the schema a deployment ends up
 	// with, including anything a later migration altered.

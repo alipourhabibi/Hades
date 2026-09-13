@@ -59,6 +59,9 @@ func backends(t *testing.T) []backend {
 		out = append(out, backend{
 			name: "postgres",
 			open: func(t *testing.T) db.Store {
+				// The same clean slate the SQLite temp file gives.
+				// See postgres_testenv_test.go.
+				preparePostgres(t, dsn)
 				cfg := config.Config{
 					Backends: config.BackendsConfig{Database: config.DatabasePostgres},
 					DB:       config.DB{ConnectionString: dsn},
@@ -371,6 +374,26 @@ func TestExpiredSessionIsNotListed(t *testing.T) {
 		listed, err := store.Session().ListByUserID(ctx, alice.Id)
 		require.NoError(t, err)
 		assert.Empty(t, listed)
+	})
+}
+
+// TestExpiryIgnoresTheZoneTheTimestampCarries pins the expiry comparison to the
+// instant, not to a wall clock.
+func TestExpiryIgnoresTheZoneTheTimestampCarries(t *testing.T) {
+	east := time.FixedZone("east", 4*60*60)
+
+	eachBackend(t, func(t *testing.T, store db.Store) {
+		ctx := context.Background()
+		alice := mustUser(t, store, "alice", "alice@example.com")
+
+		// One instant, expressed four hours east. Still an hour in the past.
+		past := time.Now().Add(-time.Hour).In(east)
+		_, err := store.Session().CreateWithToken(ctx, alice.Id, "session", "hash-east", "10.0.0.1", "curl", past, past)
+		require.NoError(t, err)
+
+		listed, err := store.Session().ListByUserID(ctx, alice.Id)
+		require.NoError(t, err)
+		assert.Empty(t, listed, "an expired session must stay hidden whatever zone its timestamp carries")
 	})
 }
 
