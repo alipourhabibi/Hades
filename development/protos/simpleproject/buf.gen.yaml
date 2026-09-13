@@ -1,4 +1,9 @@
 version: v2
 plugins:
   - local: protoc-gen-go
-    out: gen/go
+    # The go tool skips directories starting with "_", so this generated code
+    # stays out of the module. It used to land in gen/, which made it a real
+    # package: it imports genproto, so `go mod tidy` kept that dependency on
+    # any machine where the fixture had been generated and dropped it in CI,
+    # where the directory does not exist.
+    out: _gen/go
