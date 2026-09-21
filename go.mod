@@ -3,11 +3,11 @@ module github.com/alipourhabibi/Hades
 go 1.26.0
 
 require (
-	buf.build/gen/go/bufbuild/buf/connectrpc/go v1.21.0-20260909140742-b5025225111c.1
-	buf.build/gen/go/bufbuild/buf/protocolbuffers/go v1.36.12-20260909140742-b5025225111c.2
+	buf.build/gen/go/bufbuild/buf/connectrpc/go v1.21.0-20260917134545-54ac65bebc31.1
+	buf.build/gen/go/bufbuild/buf/protocolbuffers/go v1.36.12-20260917134545-54ac65bebc31.2
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2
-	buf.build/gen/go/bufbuild/registry/connectrpc/go v1.21.0-20260831211851-b4432e12a6e7.1
-	buf.build/gen/go/bufbuild/registry/protocolbuffers/go v1.36.12-20260831211851-b4432e12a6e7.2
+	buf.build/gen/go/bufbuild/registry/connectrpc/go v1.21.0-20260917220747-82d6da681af1.1
+	buf.build/gen/go/bufbuild/registry/protocolbuffers/go v1.36.12-20260917220747-82d6da681af1.2
 	buf.build/go/protovalidate v1.4.0
 	connectrpc.com/connect v1.21.0
 	connectrpc.com/grpcreflect v1.3.0
@@ -41,7 +41,7 @@ require (
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.58.0
+	modernc.org/sqlite v1.59.0
 )
 
 require (
@@ -130,7 +130,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	modernc.org/libc v1.75.6 // indirect
+	modernc.org/libc v1.75.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
