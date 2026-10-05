@@ -10,8 +10,8 @@ require (
 	buf.build/gen/go/bufbuild/registry/protocolbuffers/go v1.36.12-20260831211851-b4432e12a6e7.2
 	buf.build/go/protovalidate v1.4.0
 	connectrpc.com/connect v1.21.0
-	connectrpc.com/grpcreflect v1.3.0
-	connectrpc.com/otelconnect v0.9.0
+	connectrpc.com/grpcreflect v1.3.1
+	connectrpc.com/otelconnect v0.10.0
 	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/go-git/go-billy/v5 v5.9.1
 	github.com/go-git/go-git/v5 v5.19.2
@@ -38,7 +38,7 @@ require (
 	go.uber.org/zap/exp v0.3.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/oauth2 v0.37.0
-	google.golang.org/grpc v1.83.2
+	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.58.0
