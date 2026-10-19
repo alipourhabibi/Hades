@@ -9,9 +9,9 @@ require (
 	buf.build/gen/go/bufbuild/registry/connectrpc/go v1.21.0-20260831211851-b4432e12a6e7.1
 	buf.build/gen/go/bufbuild/registry/protocolbuffers/go v1.36.12-20260831211851-b4432e12a6e7.2
 	buf.build/go/protovalidate v1.4.0
-	connectrpc.com/connect v1.21.0
-	connectrpc.com/grpcreflect v1.3.0
-	connectrpc.com/otelconnect v0.9.0
+	connectrpc.com/connect v1.21.1
+	connectrpc.com/grpcreflect v1.3.1
+	connectrpc.com/otelconnect v0.12.0
 	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/go-git/go-billy/v5 v5.9.1
 	github.com/go-git/go-git/v5 v5.19.2
@@ -38,7 +38,7 @@ require (
 	go.uber.org/zap/exp v0.3.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/oauth2 v0.37.0
-	google.golang.org/grpc v1.83.2
+	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.58.0
@@ -48,6 +48,7 @@ require (
 	cel.dev/cel-go v0.32.0 // indirect
 	cel.dev/expr v0.25.3 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
+	connectrpc.com/connect/v2 v2.0.0 // indirect
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
